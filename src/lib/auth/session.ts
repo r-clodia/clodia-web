@@ -1,0 +1,175 @@
+/**
+ * Session — login dell'utente UMANO in clodia-web (F2a).
+ *
+ * L'utente carica la propria recovery key (pkcs8 base64, mostrata al claim):
+ * il browser deriva la privkey Ed25519 e firma un **session token ckt1**
+ *   ckt1.<b64url(payload)>.<b64url(sig)>   payload={agent,execution_id,iat,exp,aud}
+ * identico al formato del runner (pki.mint/verify_session_token). Il token va
+ * nel localStorage e viene allegato come `Authorization: Bearer` alle API; il
+ * backend lo verifica con la CA e ne ricava il **principal** (l'utente connesso),
+ * propagato fino a `runtime.current_user`.
+ *
+ * La privkey NON viene persistita: si rifirma il token dalla recovery quando
+ * serve. WebCrypto Ed25519 richiede secure context (https o localhost).
+ */
+import { writable, type Readable } from 'svelte/store';
+
+const LS_KEY = 'clodia.session';
+const AUD = 'keystore';
+const PREFIX = 'ckt1';
+const DEFAULT_TTL = 12 * 3600; // 12h
+
+export interface Session {
+	principal: string;
+	token: string;
+	exp: number; // epoch seconds
+}
+
+function load(): Session | null {
+	if (typeof localStorage === 'undefined') return null;
+	try {
+		const raw = localStorage.getItem(LS_KEY);
+		if (!raw) return null;
+		const s = JSON.parse(raw) as Session;
+		if (!s?.token || (s.exp && s.exp * 1000 < Date.now())) {
+			localStorage.removeItem(LS_KEY);
+			return null;
+		}
+		return s;
+	} catch {
+		return null;
+	}
+}
+
+const _store = writable<Session | null>(load());
+export const session: Readable<Session | null> = { subscribe: _store.subscribe };
+
+function b64urlBytes(b: ArrayBuffer | Uint8Array): string {
+	const u = b instanceof Uint8Array ? b : new Uint8Array(b);
+	let s = '';
+	for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]);
+	return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64urlStr(str: string): string {
+	return b64urlBytes(new TextEncoder().encode(str));
+}
+/** Estrae la chiave base64 anche se l'utente incolla l'intero file recovery
+ *  (header + chiave) o se il copy-paste introduce a-capo/spazi/caratteri
+ *  invisibili. Strategia: per ogni riga togli whitespace e invisibili, scarta
+ *  header PEM e righe NON di pura base64 (contengono spazi/accenti/punteggiatura
+ *  → eliminate), poi UNISCI le righe di base64 superstiti (gestisce il wrapping). */
+function extractKeyB64(text: string): string {
+	// Rimuove whitespace e caratteri invisibili (NBSP, zero-width, BOM) da copy-paste.
+	const INVIS = /[\s\u00A0\u200B\u200C\u200D\uFEFF]+/g;
+	const lines = text
+		.split(/\r?\n/)
+		.map((l) => l.replace(INVIS, ''))
+		.filter((l) => l && !l.startsWith('-----') && /^[A-Za-z0-9+/_=-]+$/.test(l));
+	const joined = lines.join('');
+	// fallback: tutto su una riga → tieni solo caratteri base64/base64url
+	return joined || text.replace(INVIS, '').replace(/[^A-Za-z0-9+/_=-]/g, '');
+}
+
+function bytesFromB64(b64: string): Uint8Array {
+	const clean = b64.trim().replace(/-/g, '+').replace(/_/g, '/');
+	const pad = clean + '='.repeat((4 - (clean.length % 4)) % 4);
+	const s = atob(pad);
+	const u = new Uint8Array(s.length);
+	for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+	return u;
+}
+
+/** Firma un session token ckt1 per `principal` con la recovery key (pkcs8 b64). */
+export async function signToken(
+	principal: string,
+	recoveryB64: string,
+	ttlSeconds = DEFAULT_TTL
+): Promise<{ token: string; exp: number }> {
+	if (!globalThis.crypto?.subtle) {
+		throw new Error('WebCrypto non disponibile in questo browser (serve https o localhost)');
+	}
+	const pkcs8 = bytesFromB64(extractKeyB64(recoveryB64));
+	const key = await crypto.subtle.importKey(
+		'pkcs8', pkcs8 as unknown as BufferSource, { name: 'Ed25519' }, false, ['sign']);
+	const now = Math.floor(Date.now() / 1000);
+	const exp = now + ttlSeconds;
+	const payload = { agent: principal, execution_id: '', iat: now, exp, aud: AUD };
+	const body = b64urlStr(JSON.stringify(payload));
+	const sig = await crypto.subtle.sign(
+		{ name: 'Ed25519' }, key, new TextEncoder().encode(body) as unknown as BufferSource);
+	return { token: `${PREFIX}.${body}.${b64urlBytes(sig)}`, exp };
+}
+
+/** Chiede al server CHI è il possessore di questa chiave (identificazione dalla
+ *  firma: prova i cert dei principal umani). 401 se nessuno combacia. */
+async function whoami(token: string): Promise<{ principal: string }> {
+	const res = await fetch('/clodia/whoami', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ token })
+	});
+	if (res.status === 401) {
+		throw new Error('Chiave non riconosciuta: non corrisponde a nessun profilo.');
+	}
+	if (!res.ok) throw new Error(`Login non riuscita (HTTP ${res.status})`);
+	return res.json();
+}
+
+/**
+ * Login: l'utente fornisce SOLO la masterkey (recovery). Il client firma una
+ * probe, il server identifica il principal dalla firma (nome + ruolo derivati
+ * dal cert, non digitati), poi si firma il token di sessione vero col nome.
+ * Una chiave non corrispondente a nessun cert viene rifiutata dal server.
+ */
+export async function login(recoveryB64: string): Promise<void> {
+	if (!recoveryB64.trim()) throw new Error('Incolla la tua masterkey (recovery key)');
+	// 1) probe a breve scadenza per farsi identificare (nome ignoto = '')
+	const probe = await signToken('', recoveryB64, 600);
+	const { principal } = await whoami(probe.token);
+	// 2) token di sessione definitivo col nome verificato dal server
+	const { token, exp } = await signToken(principal, recoveryB64);
+	const s: Session = { principal, token, exp };
+	localStorage.setItem(LS_KEY, JSON.stringify(s));
+	_store.set(s);
+}
+
+export function logout(): void {
+	if (typeof localStorage !== 'undefined') localStorage.removeItem(LS_KEY);
+	_store.set(null);
+}
+
+/** Token corrente per l'header Authorization, o null se non loggato/scaduto. */
+export function authToken(): string | null {
+	return load()?.token ?? null;
+}
+
+/**
+ * Valida la sessione lato SERVER: il token in localStorage potrebbe essere
+ * scaduto o firmato con una chiave non più corrispondente al cert (es. cert
+ * riemesso). Il gate non deve fidarsi della sola presenza. Chiede a
+ * `/clodia/whoami` chi è il proprietario della firma: se non combacia col
+ * principal salvato (o 401) → logout. Fail-open SOLO su errore di rete.
+ */
+export async function validateSession(): Promise<boolean> {
+	const s = load();
+	if (!s) return false;
+	try {
+		const r = await fetch('/clodia/whoami', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ token: s.token })
+		});
+		if (!r.ok) {
+			logout();
+			return false;
+		}
+		const data = (await r.json()) as { principal?: string };
+		if (data.principal !== s.principal) {
+			logout();
+			return false;
+		}
+		return true;
+	} catch {
+		return true; // rete/server giù → non sloggare (fail-open)
+	}
+}

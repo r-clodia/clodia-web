@@ -1,0 +1,111 @@
+:root {
+	--sidebar-width: 220px;
+	--sidebar-bg: #1a1d24;
+	--sidebar-fg: #c8ccd4;
+	--sidebar-fg-muted: #7a8290;
+	--accent: #ff6b3d;
+	--accent-fg: #ffffff;
+	--bg: #0f1115;
+	--fg: #e6e8ec;
+	--fg-muted: #8a91a0;
+	--card-bg: #181b22;
+	--border: #2a2f3a;
+	--danger: #e85d75;
+	--success: #5cb88a;
+	--font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu,
+		Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+	--mono: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Tema chiaro (diurno) — attivato da data-theme="light" sul <html>. */
+:root[data-theme='light'] {
+	--sidebar-bg: #eef0f4;
+	--sidebar-fg: #2a2f3a;
+	--sidebar-fg-muted: #6a7280;
+	--accent: #ff6b3d;
+	--accent-fg: #ffffff;
+	--bg: #ffffff;
+	--fg: #1a1d24;
+	--fg-muted: #5a6270;
+	--card-bg: #f6f7f9;
+	--border: #dce0e8;
+	--danger: #d6304f;
+	--success: #2f9c6a;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+	height: 100%;
+	background: var(--bg);
+	color: var(--fg);
+	font-family: var(--font);
+	font-size: 14px;
+	line-height: 1.5;
+}
+
+a {
+	color: inherit;
+	text-decoration: none;
+}
+
+h1,
+h2,
+h3 {
+	margin: 0 0 0.5em 0;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+h1 {
+	font-size: 1.6rem;
+}
+
+h2 {
+	font-size: 1.2rem;
+}
+
+pre {
+	font-family: var(--mono);
+	background: var(--card-bg);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 12px 14px;
+	overflow: auto;
+	font-size: 12px;
+	line-height: 1.45;
+}
+
+code {
+	font-family: var(--mono);
+	font-size: 0.9em;
+	background: var(--card-bg);
+	padding: 1px 5px;
+	border-radius: 3px;
+}
+
+button {
+	font: inherit;
+	color: inherit;
+	background: transparent;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 6px 12px;
+	cursor: pointer;
+	transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+button:hover {
+	background: var(--card-bg);
+	border-color: var(--fg-muted);
+}
+
+button:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
+}
