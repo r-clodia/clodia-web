@@ -463,6 +463,7 @@
 					Si aprirà la finestra Google con il <strong>selettore account</strong>: scegli
 					tu quale account Google autorizzare, poi premi <em>Consenti</em>.
 				</p>
+					<p class="note tip">💡 <strong>Consigliato</strong> (non obbligatorio): usa un account Google <strong>dedicato</strong> all'agency, non il tuo personale — isoli dati e permessi e revochi l'accesso quando vuoi senza toccare la casella personale.</p>
 			{:else}
 				<p class="note">
 					Dopo il consenso il browser va su <code>{redirectUri}/?code=…</code> (pagina di
@@ -682,6 +683,7 @@
 	.field { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--fg-muted); }
 	.field input { padding: 9px 11px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 13px; }
 	.note { margin: 0; font-size: 12.5px; color: var(--fg-muted); line-height: 1.5; }
+	.note.tip { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 7%, transparent); color: var(--fg); }
 	.note code { font-family: var(--mono); font-size: 11.5px; }
 	.info-btn { background: transparent; border: 1px solid var(--border); border-radius: 999px; width: 20px; height: 20px; color: var(--fg-muted); cursor: pointer; font-size: 11px; padding: 0; }
 	.info { background: color-mix(in srgb, var(--fg-muted) 8%, transparent); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: var(--fg-muted); }
