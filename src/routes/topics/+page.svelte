@@ -390,7 +390,7 @@
 					aria-expanded={expanded[keyOf(t)] ? 'true' : 'false'}
 				>
 					<div class="card-top">
-						<span class="cls cls-{t.tier}" title={`${t.tier} · ${t.tier_name ?? ''}`}>{t.tier_name ?? t.tier}</span>
+						<span class="cls cls-{t.tier}" title={`${t.tier} · ${t.tier_name ?? ''}`}>{t.tier}{t.tier_name ? ' · ' + t.tier_name : ''}</span>
 						{#if t.status && t.status !== 'active'}
 							<span class="state state-{t.status}">{t.status}</span>
 						{/if}
