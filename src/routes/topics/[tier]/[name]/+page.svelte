@@ -552,7 +552,7 @@
 </div>
 
 <style>
-	.channel { display: flex; flex-direction: column; height: calc(100vh - 56px); }
+	.channel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 	.head { flex: none; }
 	.back { font-size: 12px; color: var(--fg-muted); text-decoration: none; }
 	.title-row { display: flex; align-items: baseline; gap: 10px; }

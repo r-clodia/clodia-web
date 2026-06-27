@@ -116,13 +116,21 @@
 <style>
 	.app {
 		display: flex;
-		min-height: 100vh;
+		/* Shell ad altezza fissa: la viewport non scrolla mai come pagina intera;
+		   sidebar e header/input restano fissi, scrolla solo il contenuto interno.
+		   Robusto al cambio di font-size. */
+		height: 100vh;
+		height: 100dvh;
+		overflow: hidden;
 	}
 
 	.main {
 		flex: 1 1 auto;
 		padding: 28px 32px;
 		min-width: 0;
+		/* il contenuto scrolla qui dentro, non sul body */
+		min-height: 0;
+		overflow-y: auto;
 	}
 
 
