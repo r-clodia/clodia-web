@@ -41,7 +41,7 @@
 	let parents: string[] = [];
 	// human: clearance privacy + pubkey opzionale incollata (certifica la chiave
 	// di un utente che ha fatto "Request certificate"; se vuota, si genera qui).
-	let clearance: 'P0' | 'P1' | 'P2' | 'P3' = 'P0';
+	let clearance: 'SEAL-0' | 'SEAL-1' | 'SEAL-2' | 'SEAL-3' | 'SEAL-4' = 'SEAL-0';
 	let humanPubkey = '';
 	let submitting = false;
 	let submitError: string | null = null;
@@ -139,7 +139,7 @@
 		constitution = 'platform-core';
 		avatarColor = '#888888';
 		parents = [];
-		clearance = 'P0';
+		clearance = 'SEAL-0';
 		humanPubkey = '';
 		submitting = false;
 		submitError = null;
@@ -365,10 +365,11 @@
 			<label class="field">
 				<span class="lbl">Clearance privacy</span>
 				<select bind:value={clearance}>
-					<option value="P0">P0 · Public</option>
-					<option value="P1">P1 · Internal</option>
-					<option value="P2">P2 · Confidential</option>
-					<option value="P3">P3 · Restricted</option>
+					<option value="SEAL-0">SEAL-0 · Public</option>
+					<option value="SEAL-1">SEAL-1 · Internal</option>
+					<option value="SEAL-2">SEAL-2 · Confidential</option>
+					<option value="SEAL-3">SEAL-3 · Restricted</option>
+					<option value="SEAL-4">SEAL-4 · Sovereign</option>
 				</select>
 				<span class="hint-inline">Vede un topic sse T.privacy ≤ clearance.</span>
 			</label>

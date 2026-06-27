@@ -429,7 +429,7 @@
 			<label class="sf-wide">Descrizione<input type="text" bind:value={sForm.description} /></label>
 			<label>Model<input type="text" bind:value={sForm.model} placeholder="claude-opus-4-8" /></label>
 			<label>SDK<select bind:value={sForm.agent_sdk}><option value="">(invariato)</option><option value="claude">claude</option><option value="codex">codex</option></select></label>
-			<label>Clearance<select bind:value={sForm.clearance}><option value="">(nessuna)</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option><option value="P3">P3</option></select></label>
+			<label>Clearance<select bind:value={sForm.clearance}><option value="">(nessuna)</option><option value="SEAL-0">SEAL-0</option><option value="SEAL-1">SEAL-1</option><option value="SEAL-2">SEAL-2</option><option value="SEAL-3">SEAL-3</option><option value="SEAL-4">SEAL-4</option></select></label>
 			<label>Mailbox parent<input type="text" bind:value={sForm.mailbox_parent} placeholder="clodia | ophelia" /></label>
 			<label>Email<input type="text" bind:value={sForm.email} placeholder="nome@dominio" /></label>
 			<label>Telegram <span class="opt">(opz.)</span><input type="text" bind:value={sForm.telegram} placeholder="@handle o chat_id" /></label>

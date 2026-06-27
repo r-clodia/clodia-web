@@ -146,7 +146,7 @@
 	let showNew = false;
 	let nName = '';
 	let nTitle = '';
-	let nTier: 'P0' | 'P1' | 'P2' | 'P3' = 'P1';
+	let nTier: 'SEAL-0' | 'SEAL-1' | 'SEAL-2' | 'SEAL-3' | 'SEAL-4' = 'SEAL-1';
 	let nType = 'progetto';
 	let creating = false;
 	let createErr = '';
@@ -154,7 +154,7 @@
 	function openNew() {
 		nName = '';
 		nTitle = '';
-		nTier = 'P1';
+		nTier = 'SEAL-1';
 		nType = 'progetto';
 		createErr = '';
 		showNew = true;
@@ -294,10 +294,11 @@
 			<div class="nt-row">
 				<label class="nt-field"><span>Privacy (tier)</span>
 					<select bind:value={nTier}>
-						<option value="P0">P0 · Public</option>
-						<option value="P1">P1 · Internal</option>
-						<option value="P2">P2 · Confidential</option>
-						<option value="P3">P3 · Restricted</option>
+						<option value="SEAL-0">SEAL-0 · Public</option>
+						<option value="SEAL-1">SEAL-1 · Internal</option>
+						<option value="SEAL-2">SEAL-2 · Confidential</option>
+						<option value="SEAL-3">SEAL-3 · Restricted</option>
+						<option value="SEAL-4">SEAL-4 · Sovereign</option>
 					</select>
 				</label>
 				<label class="nt-field"><span>Tipo</span>
@@ -624,22 +625,26 @@
 		background: rgba(239, 68, 68, 0.12);
 		color: #ef4444;
 	}
-	/* Tier P0–P3 (Public/Internal/Confidential/Restricted): freddo → caldo. */
-	.cls-P0 {
+	/* Tier SEAL-0..4 (Public/Internal/Confidential/Restricted/Sovereign): freddo → caldo. */
+	.cls-SEAL-0 {
 		background: rgba(148, 163, 184, 0.14);
 		color: #94a3b8;
 	}
-	.cls-P1 {
+	.cls-SEAL-1 {
 		background: rgba(96, 165, 250, 0.12);
 		color: #60a5fa;
 	}
-	.cls-P2 {
+	.cls-SEAL-2 {
 		background: rgba(245, 158, 11, 0.14);
 		color: #f59e0b;
 	}
-	.cls-P3 {
+	.cls-SEAL-3 {
 		background: rgba(239, 68, 68, 0.12);
 		color: #ef4444;
+	}
+	.cls-SEAL-4 {
+		background: rgba(168, 85, 247, 0.16);
+		color: #a855f7;
 	}
 
 	.topic-date {

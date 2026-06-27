@@ -97,7 +97,7 @@
 		}
 		try {
 			certReqs = await getCertRequests();
-			for (const r of certReqs) if (!reqClearance[r.id]) reqClearance[r.id] = 'P0';
+			for (const r of certReqs) if (!reqClearance[r.id]) reqClearance[r.id] = 'SEAL-0';
 		} catch {
 			certReqs = [];
 		}
@@ -113,12 +113,12 @@
 			await createHumanAgent({
 				name: r.name,
 				pubkey: r.pubkey,
-				clearance: reqClearance[r.id] || 'P0',
+				clearance: reqClearance[r.id] || 'SEAL-0',
 				email: isEmail ? c : undefined,
 				telegram: !isEmail && c ? c : undefined
 			});
 			await deleteCertRequest(r.id);
-			toastSuccess(`Approvato: ${r.name}`, `clearance ${reqClearance[r.id] || 'P0'}`);
+			toastSuccess(`Approvato: ${r.name}`, `clearance ${reqClearance[r.id] || 'SEAL-0'}`);
 			await Promise.all([load(), refreshRequests()]);
 		} catch (e) {
 			toastError('Approvazione fallita', e instanceof ApiError || e instanceof Error ? e.message : String(e));
@@ -210,10 +210,11 @@
 					</span>
 					<label class="req-clear">clearance
 						<select bind:value={reqClearance[r.id]}>
-							<option value="P0">P0 · Public</option>
-							<option value="P1">P1 · Internal</option>
-							<option value="P2">P2 · Confidential</option>
-							<option value="P3">P3 · Restricted</option>
+							<option value="SEAL-0">SEAL-0 · Public</option>
+							<option value="SEAL-1">SEAL-1 · Internal</option>
+							<option value="SEAL-2">SEAL-2 · Confidential</option>
+							<option value="SEAL-3">SEAL-3 · Restricted</option>
+							<option value="SEAL-4">SEAL-4 · Sovereign</option>
 						</select>
 					</label>
 					<button type="button" class="req-ok" on:click={() => approveRequest(r)} disabled={busyReq === r.id}>
