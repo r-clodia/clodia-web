@@ -1233,6 +1233,15 @@ export async function connectTrello(
 	return apiPost('/tools/trello/connect', { api_key, token }, opts);
 }
 
+/** POST `/tools/github/connect` — deposita il PAT GitHub nel vault e registra il
+ *  backend MCP ufficiale. PAT vuoto → disconnette. */
+export async function connectGithub(
+	pat: string,
+	opts: RequestOptions = {}
+): Promise<{ connected: boolean }> {
+	return apiPost('/tools/github/connect', { pat }, opts);
+}
+
 /** POST `/tools/mcp` — registra uno o più MCP server da mcp.json. I valori in
  *  `secrets` (per i placeholder ${NAME}) sono depositati nel vault, non nel config. */
 export async function registerMcp(

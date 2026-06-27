@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, connectOpenAI, connectTrello, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, ApiError } from '$lib/api/client';
+	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, connectOpenAI, connectTrello, connectGithub, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, ApiError } from '$lib/api/client';
 	import { toastSuccess, toastError, toastInfo } from '$lib/stores/toasts';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
 
@@ -21,7 +21,7 @@
 		connected: boolean;
 		accounts: string[];
 		provider?: string; // etichetta provider (google, openai, storage, …)
-		kind?: 'gmail' | 'gworkspace' | 'openai' | 'trello' | 'mailbox'; // flusso di connessione da usare
+		kind?: 'gmail' | 'gworkspace' | 'openai' | 'trello' | 'mailbox' | 'github'; // flusso di connessione da usare
 		mcp?: boolean; // backend MCP montato (Add-MCP)
 		builtin?: boolean; // integrazione interna (es. storage topic local-fs)
 		transport?: string;
@@ -46,6 +46,10 @@
 		  provider: 'trello', kind: 'trello',
 		  blurb: 'Board/liste/card Trello (nostra implementazione, tool trello.*). Connetti con API key + token.',
 		  scope: 'api.trello.com/1' },
+		{ id: 'github', name: 'GitHub', wired: true, connected: false, accounts: [],
+		  provider: 'github', kind: 'github',
+		  blurb: 'Repo, issue, PR e code search via il server MCP ufficiale GitHub (tool github.*). Connetti con un Personal Access Token.',
+		  scope: 'api.githubcopilot.com/mcp' },
 		{ id: 'mailboxes', name: 'Caselle email (IMAP/SMTP)', wired: true, connected: false, accounts: [],
 		  provider: 'email', kind: 'mailbox',
 		  blurb: 'Connettore multi-casella: aggiungi/togli mailbox IMAP/SMTP (info@, IONOS, …). Delegabili per-agent.',
@@ -264,6 +268,40 @@
 		}
 	}
 
+	// ─── Connessione GitHub — Personal Access Token (paste-key) ───
+	let githubOpen = false;
+	let githubPat = '';
+	let githubBusy = false;
+	let githubError = '';
+
+	function openGithub() {
+		githubPat = '';
+		githubError = '';
+		githubOpen = true;
+	}
+	function closeGithub() {
+		githubOpen = false;
+		githubBusy = false;
+	}
+	async function submitGithub() {
+		if (!githubPat.trim()) {
+			githubError = 'Incolla il Personal Access Token GitHub.';
+			return;
+		}
+		githubBusy = true;
+		githubError = '';
+		try {
+			await connectGithub(githubPat.trim());
+			toastSuccess('GitHub connesso', 'PAT nel vault, backend MCP registrato');
+			closeGithub();
+			await load();
+		} catch (err) {
+			githubError = err instanceof ApiError ? err.message : String(err);
+		} finally {
+			githubBusy = false;
+		}
+	}
+
 	// ─── Caselle email (IMAP/SMTP) — connettore multi-mailbox ───
 	let mailboxes: string[] = [];
 	let mbOpen = false;
@@ -430,9 +468,9 @@
 				{:else if c.kind === 'mailbox'}
 					<button type="button" class="btn primary" on:click={openMailboxes}>Gestisci caselle</button>
 				{:else if c.connected}
-					<button type="button" class="btn ghost" on:click={() => c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : openConnect(c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Riconnetti</button>
+					<button type="button" class="btn ghost" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : openConnect(c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Riconnetti</button>
 				{:else}
-					<button type="button" class="btn primary" on:click={() => c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : openConnect(c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Connetti</button>
+					<button type="button" class="btn primary" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : openConnect(c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Connetti</button>
 				{/if}
 			</div>
 		</div>
@@ -561,6 +599,34 @@
 				<button type="button" class="btn" on:click={closeTrello} disabled={trelloBusy}>Annulla</button>
 				<button type="button" class="btn primary" on:click={submitTrello} disabled={trelloBusy}>
 					{trelloBusy ? 'Connessione…' : 'Connetti'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if githubOpen}
+	<div class="overlay" on:click|self={closeGithub} role="presentation">
+		<div class="modal" role="dialog" aria-modal="true" aria-label="Connetti GitHub">
+			<div class="modal-head">
+				<strong>Connetti GitHub</strong>
+				<button class="x" type="button" on:click={closeGithub} aria-label="Chiudi">×</button>
+			</div>
+			<p class="note">
+				Incolla un <strong>Personal Access Token</strong> GitHub
+				(<code>github.com/settings/tokens</code>) con gli scope che vuoi concedere agli
+				agent (es. <code>repo</code>). Viene custodito nel <strong>vault</strong>, mai
+				esposto agli agent: i tool <code>github.*</code> passano dal server MCP ufficiale.
+			</p>
+			<label class="field">
+				<span>Personal Access Token</span>
+				<input type="password" bind:value={githubPat} placeholder="ghp_… / github_pat_…" autocomplete="off" spellcheck="false" />
+			</label>
+			{#if githubError}<div class="modal-err">{githubError}</div>{/if}
+			<div class="modal-foot">
+				<button type="button" class="btn" on:click={closeGithub} disabled={githubBusy}>Annulla</button>
+				<button type="button" class="btn primary" on:click={submitGithub} disabled={githubBusy}>
+					{githubBusy ? 'Connessione…' : 'Connetti'}
 				</button>
 			</div>
 		</div>
