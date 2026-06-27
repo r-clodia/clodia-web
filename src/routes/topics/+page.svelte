@@ -390,7 +390,6 @@
 					aria-expanded={expanded[keyOf(t)] ? 'true' : 'false'}
 				>
 					<div class="card-top">
-						<span class="cls cls-{t.tier}" title={`${t.tier} · ${t.tier_name ?? ''}`}>{t.tier}{t.tier_name ? ' · ' + t.tier_name : ''}</span>
 						{#if t.status && t.status !== 'active'}
 							<span class="state state-{t.status}">{t.status}</span>
 						{/if}
@@ -467,6 +466,9 @@
 						</div>
 					</div>
 				{/if}
+				<footer class="card-seal cls-{t.tier}" title={t.tier_name ?? ''}>
+					{t.tier}{t.tier_name ? ' · ' + t.tier_name : ''}
+				</footer>
 			</article>
 		{/each}
 	</div>
@@ -626,6 +628,16 @@
 		color: #ef4444;
 	}
 	/* Tier SEAL-0..4 (Public/Internal/Confidential/Restricted/Sovereign): freddo → caldo. */
+	.card-seal {
+		margin-top: auto;
+		width: 100%;
+		padding: 6px 12px;
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-align: center;
+		border-top: 1px solid var(--border);
+	}
 	.cls-SEAL-0 {
 		background: rgba(148, 163, 184, 0.14);
 		color: #94a3b8;
