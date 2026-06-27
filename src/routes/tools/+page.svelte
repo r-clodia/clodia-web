@@ -103,9 +103,13 @@
 					blurb: `Backend di storage dei topic (${x.backend ?? 'local-fs'}, versioning ${x.versioning ?? 'emulated'}). I topic vivono qui, dietro il gateway. Drive/Dropbox in arrivo.`,
 					scope: x.backend ?? 'local-fs'
 				}));
-			// Backend MCP montati → card dinamiche (provider === 'mcp').
+			// Backend MCP montati → card dinamiche (provider === 'mcp'), ESCLUSI gli id
+			// già rappresentati da un connettore nativo (es. 'github': il backend MCP
+			// è la sua implementazione, la card nativa è quella giusta) — evita la card
+			// doppia e il bottone che cade nel fallback (modale gmail).
+			const baseIds = new Set(BASE.map((c) => c.id));
 			const mcp = connectors
-				.filter((x) => x.provider === 'mcp')
+				.filter((x) => x.provider === 'mcp' && !baseIds.has(x.id))
 				.map((x) => ({
 					id: x.id, name: x.label, wired: true, connected: true, accounts: [],
 					mcp: true, transport: x.transport,
