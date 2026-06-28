@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentProfile, setAgentProfile, grantAgentProfile, type Connector, type AgentProfile } from '$lib/api/client';
+	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, type Connector, type AgentProfile } from '$lib/api/client';
 	import { session } from '$lib/auth/session';
 	import Modal from '$lib/components/Modal.svelte';
 	import type {
@@ -219,6 +219,22 @@
 	let pf: Record<string, string> = {};
 	let pfBusy = false;
 	let granteeInput = '';
+	let newFieldKey = '';
+	let agentNames: string[] = [];
+	$: customKeys = Object.keys(pf).filter((k) => !PROFILE_FIELDS.includes(k));
+	function addCustomField() {
+		const k = newFieldKey.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_');
+		if (!k || k in pf) { newFieldKey = ''; return; }
+		pf = { ...pf, [k]: '' };
+		newFieldKey = '';
+	}
+	function removeField(k: string) {
+		const { [k]: _drop, ...rest } = pf;
+		pf = rest;
+	}
+	async function loadAgentNames() {
+		try { agentNames = (await getAgents()).map((a) => a.name); } catch { agentNames = []; }
+	}
 	async function loadProfile() {
 		profileErr = '';
 		try {
@@ -251,7 +267,7 @@
 		try { profile = await grantAgentProfile(name, g, false); toastSuccess('Accesso revocato', g); }
 		catch (e) { toastError('Revoca fallita', e instanceof ApiError ? e.message : String(e)); }
 	}
-	$: if (tab === 'profile' && profile === null && name) void loadProfile();
+	$: if (tab === 'profile' && profile === null && name) { void loadProfile(); void loadAgentNames(); }
 	(async () => {
 		try {
 			const st = await getAdminState();
@@ -918,8 +934,19 @@
 						<input bind:value={pf[f]} disabled={!canManageProfile} autocomplete="off" placeholder={canManageProfile ? '' : '—'} />
 					</label>
 				{/each}
+				{#each customKeys as k}
+					<label class="prof-field">
+						<span>{k}{#if canManageProfile}<button class="link-danger" type="button" on:click={() => removeField(k)}>×</button>{/if}</span>
+						<input bind:value={pf[k]} disabled={!canManageProfile} autocomplete="off" />
+					</label>
+				{/each}
 			</div>
 			{#if canManageProfile}
+				<div class="add-field">
+					<input bind:value={newFieldKey} placeholder="nuovo campo (es. partita_iva)" autocomplete="off"
+						on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomField(); } }} />
+					<button class="edit-btn" type="button" on:click={addCustomField} disabled={!newFieldKey.trim()}>+ aggiungi campo</button>
+				</div>
 				<div class="prof-actions">
 					<button class="edit-btn" on:click={saveProfile} disabled={pfBusy}>{pfBusy ? 'Salvo…' : 'Salva dati personali'}</button>
 				</div>
@@ -936,7 +963,13 @@
 						<p class="dim">Nessun accesso concesso.</p>
 					{/if}
 					<div class="grant-add">
-						<input bind:value={granteeInput} placeholder="nome agent" autocomplete="off" />
+						<input bind:value={granteeInput} placeholder="nome agent" autocomplete="off" list="agent-suggestions"
+							on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addGrant(); } }} />
+						<datalist id="agent-suggestions">
+							{#each agentNames.filter((a) => a !== name && !(profile?.grants ?? []).includes(a)) as a}
+								<option value={a}></option>
+							{/each}
+						</datalist>
 						<button class="edit-btn" on:click={addGrant} disabled={!granteeInput.trim()}>Concedi</button>
 					</div>
 				</div>
@@ -1502,6 +1535,8 @@
 	.grant-list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 	.grant-list li { display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
 	.link-danger { background: transparent; border: none; color: #e85d75; cursor: pointer; font-size: 12px; }
+	.add-field { display: flex; gap: 8px; margin: 14px 0; }
+	.add-field input { flex: 1 1 auto; background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 7px; }
 	.grant-add { display: flex; gap: 8px; margin-top: 8px; }
 	.grant-add input { flex: 1 1 auto; background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 7px; }
 	.dim { color: var(--fg-muted); font-size: 12.5px; }
