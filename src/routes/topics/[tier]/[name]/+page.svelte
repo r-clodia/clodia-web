@@ -108,13 +108,20 @@
 		return (text || '').replace(_CH_RE, '').trim();
 	}
 	// Trasforma i path di file del topic (files/… o dump/…) citati nel testo in
-	// link markdown scaricabili, PRIMA del render → marked li rende <a>. Evita i
-	// path già dentro un link []() o in code `…`/```…```.
+	// link markdown scaricabili, PRIMA del render → renderMarkdown li rende <a>.
+	// Salta i CODE span (`…` / ```…```): un path lì dentro deve restare testo,
+	// non diventare un link grezzo dentro <code> (gli LLM citano i path tra backtick).
 	function linkifyFiles(text: string): string {
-		return (text || '').replace(
-			/(?<!\]\()(?<![\w/])((?:files|dump)\/[\w.\-/]+\.[A-Za-z0-9]{1,8})/g,
-			(_m, p) => `[${p}](${channelFileUrl(tier, name, p)})`
-		);
+		const PATH = /(?<!\]\()(?<![\w/])((?:files|dump)\/[\w.\-/]+\.[A-Za-z0-9]{1,8})/g;
+		const repl = (_m: string, p: string) => `[${p}](${channelFileUrl(tier, name, p)})`;
+		// 1) code span che contengono SOLO un path → diventano link (tolgo i backtick:
+		//    gli LLM citano i path tra `…`, ma l'utente vuole il link cliccabile).
+		let s = (text || '').replace(/`((?:files|dump)\/[\w.\-/]+\.[A-Za-z0-9]{1,8})`/g, repl);
+		// 2) path nudi, saltando i code span RIMASTI (codice vero, non solo-path).
+		return s
+			.split(/(```[\s\S]*?```|`[^`]*`)/g)
+			.map((seg, i) => (i % 2 === 0 ? seg.replace(PATH, repl) : seg))
+			.join('');
 	}
 	async function pickChoice(c: string) {
 		if (sending) return;
