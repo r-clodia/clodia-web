@@ -10,12 +10,12 @@
 
 	// Widget chat flottante (stile customer-care) verso un agente su un topic
 	// dedicato — non fa uscire dalla pagina corrente.
-	export let agent = 'clodia';
+	export let agent = 'wainston';
 	export let tier = 'SEAL-1';
-	export let name = 'clodia-help';
+	export let name = 'helpdesk';
 	export let title = 'Assistenza';
 	export let initialMessage = '';
-	export let launcherLabel = '💬 Aiuto — parla con Clodia';
+	export let launcherLabel = '💬 Aiuto — parla con Wainston';
 
 	let open = false;
 	let started = false;
@@ -35,7 +35,8 @@
 	}
 
 	async function ensureTopic() {
-		await createChannel({ name, tier, title, type: 'infra' });
+		// contact_agent = l'agent del widget → è lui a rispondere nel canale di help
+		await createChannel({ name, tier, title, type: 'infra', contact_agent: agent });
 	}
 	async function refresh() {
 		try { messages = await getChannelMessages(tier, name); } catch (e) { err = String(e); }
