@@ -12,7 +12,7 @@
 	// dedicato — non fa uscire dalla pagina corrente.
 	export let agent = 'clodia';
 	export let tier = 'SEAL-1';
-	export let name = 'clodia-settings';
+	export let name = 'clodia-help';
 	export let title = 'Assistenza';
 	export let initialMessage = '';
 	export let launcherLabel = '💬 Aiuto — parla con Clodia';
