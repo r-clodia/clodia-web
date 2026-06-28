@@ -1137,6 +1137,34 @@ export async function getTools(opts: RequestOptions = {}): Promise<{ connectors:
 	return apiGet<{ connectors: ToolConnector[] }>('/tools', opts);
 }
 
+// ── Backup gestito (ISO 27001 A.8.13) ───────────────────────────────────────
+export interface BackupStatus {
+	configured: boolean;
+	backend?: string;
+	repository?: string;
+	schedule?: string;
+	retention?: { daily: number; weekly: number; monthly: number };
+	last_snapshot?: { time: string; id: string };
+}
+export async function getBackupStatus(opts: RequestOptions = {}): Promise<BackupStatus> {
+	return apiGet<BackupStatus>('/tools/backup/status', opts);
+}
+export async function configureBackup(body: {
+	backend: string; repository: string; env: Record<string, string>;
+	passphrase: string; retention?: { daily: number; weekly: number; monthly: number }; schedule?: string;
+}, opts: RequestOptions = {}): Promise<{ configured: boolean; backend?: string }> {
+	return apiPost('/tools/backup/config', body, opts);
+}
+export async function runBackup(opts: RequestOptions = {}): Promise<{ ok: boolean; check_rc?: number }> {
+	return apiPost('/tools/backup/run', {}, opts);
+}
+export async function backupSnapshots(opts: RequestOptions = {}): Promise<{ snapshots: Array<{ id: string; time: string }> }> {
+	return apiGet('/tools/backup/snapshots', opts);
+}
+export async function restoreTest(opts: RequestOptions = {}): Promise<{ ok: boolean; restored_topics: number }> {
+	return apiPost('/tools/backup/restore-test', {}, opts);
+}
+
 /** GET `/tools/google/app` — l'app OAuth Google (client_id/secret) è configurata? */
 export async function getGoogleAppStatus(
 	opts: RequestOptions = {}

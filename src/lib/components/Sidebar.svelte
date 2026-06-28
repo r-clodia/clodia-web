@@ -14,7 +14,8 @@
 		{ href: '/topics', label: 'TOPICS' },
 		{ href: '/kanban', label: 'KANBAN', disabled: true },
 		{ href: '/tools', label: 'INTEGRATIONS' },
-		{ href: '/providers', label: 'PROVIDERS' }
+		{ href: '/providers', label: 'PROVIDERS' },
+		{ href: '/settings', label: 'SETTINGS' }
 	];
 
 	function isActive(href: string, pathname: string): boolean {
