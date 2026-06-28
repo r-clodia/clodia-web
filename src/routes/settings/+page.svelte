@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
+	import ChatWidget from '$lib/components/ChatWidget.svelte';
 	import {
 		getBackupStatus, configureBackup, runBackup, backupSnapshots, restoreTest,
-		createChannel, postChannelMessage, ApiError, type BackupStatus
+		ApiError, type BackupStatus
 	} from '$lib/api/client';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 
@@ -73,20 +73,6 @@
 		finally { testing = false; }
 	}
 
-	let opening = false;
-	async function askClodia() {
-		opening = true;
-		try {
-			// topic ad-hoc condiviso con Clodia per configurare i settings a voce
-			const r = await createChannel({ name: 'clodia-settings', tier: 'SEAL-1',
-				title: 'Impostazioni — assistenza Clodia', type: 'infra' });
-			// messaggio preparato: la chat parte già con la richiesta dell'utente
-			await postChannelMessage(r.tier, r.name,
-				'Aiuto, sono bloccato con il setup del backup. Cosa devo fare?');
-			await goto(`/topics/${r.tier}/${r.name}`);
-		} catch (e) { toastError('Apertura chat fallita', e instanceof ApiError ? e.message : String(e)); opening = false; }
-	}
-
 	onMount(load);
 </script>
 
@@ -147,10 +133,16 @@
 			<button class="btn primary" on:click={save} disabled={saving}>{saving ? 'Salvo…' : 'Salva configurazione'}</button>
 			<button class="btn" on:click={doRun} disabled={running || !status?.configured}>{running ? 'Backup in corso…' : 'Backup ora'}</button>
 			<button class="btn" on:click={doTest} disabled={testing || !status?.configured}>{testing ? 'Test…' : 'Restore-test'}</button>
-			<button class="btn help" on:click={askClodia} disabled={opening} title="Configura il backup parlando con Clodia">{opening ? 'Apro…' : '💬 Aiuto — parla con Clodia'}</button>
 		</div>
 	{/if}
 </section>
+
+<ChatWidget
+	agent="clodia"
+	tier="SEAL-1"
+	name="clodia-settings"
+	title="Impostazioni — Clodia"
+	initialMessage="Aiuto, sono bloccato con il setup del backup. Cosa devo fare?" />
 
 <style>
 	.head { padding: 4px 0 14px; }
@@ -159,7 +151,6 @@
 	.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 18px; max-width: 720px; }
 	.card-h { display: flex; align-items: baseline; justify-content: space-between; }
 	.card-h h2 { margin: 0; font-size: 16px; }
-	.btn.help { background: rgba(255,107,61,.12); border-color: rgba(255,107,61,.4); color: var(--accent); }
 	.iso { font-size: 11px; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
 	.note { font-size: 12.5px; color: var(--fg-muted); line-height: 1.5; margin: 10px 0 14px; }
 	.muted { color: var(--fg-muted); font-size: 13px; }
