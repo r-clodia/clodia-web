@@ -4,7 +4,7 @@
 		getBackupStatus, configureBackup, runBackup, backupSnapshots, restoreTest,
 		ApiError, type BackupStatus
 	} from '$lib/api/client';
-	import { toastSuccess, toastError } from '$lib/stores/toast';
+	import { toastSuccess, toastError } from '$lib/stores/toasts';
 
 	let status: BackupStatus | null = null;
 	let loading = true;
