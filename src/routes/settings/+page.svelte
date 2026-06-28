@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import {
 		getBackupStatus, configureBackup, runBackup, backupSnapshots, restoreTest,
-		ApiError, type BackupStatus
+		createChannel, ApiError, type BackupStatus
 	} from '$lib/api/client';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 
@@ -72,6 +73,17 @@
 		finally { testing = false; }
 	}
 
+	let opening = false;
+	async function askClodia() {
+		opening = true;
+		try {
+			// topic ad-hoc condiviso con Clodia per configurare i settings a voce
+			const r = await createChannel({ name: 'clodia-settings', tier: 'SEAL-1',
+				title: 'Impostazioni — assistenza Clodia', type: 'infra' });
+			await goto(`/topics/${r.tier}/${r.name}`);
+		} catch (e) { toastError('Apertura chat fallita', e instanceof ApiError ? e.message : String(e)); opening = false; }
+	}
+
 	onMount(load);
 </script>
 
@@ -83,7 +95,12 @@
 <section class="card">
 	<div class="card-h">
 		<h2>Backup &amp; restore</h2>
-		<span class="iso">ISO 27001 · A.8.13</span>
+		<div class="h-actions">
+			<button class="btn help" on:click={askClodia} disabled={opening} title="Configura il backup parlando con Clodia">
+				{opening ? 'Apro…' : '💬 Aiuto — parla con Clodia'}
+			</button>
+			<span class="iso">ISO 27001 · A.8.13</span>
+		</div>
 	</div>
 	<p class="note">
 		La datadir (vault, topic, DB, PKI) viene salvata su storage <strong>off-site</strong>,
@@ -143,6 +160,8 @@
 	.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 18px; max-width: 720px; }
 	.card-h { display: flex; align-items: baseline; justify-content: space-between; }
 	.card-h h2 { margin: 0; font-size: 16px; }
+	.h-actions { display: flex; align-items: center; gap: 10px; }
+	.btn.help { background: rgba(255,107,61,.12); border: 1px solid rgba(255,107,61,.4); color: var(--accent); border-radius: 8px; padding: 6px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 	.iso { font-size: 11px; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
 	.note { font-size: 12.5px; color: var(--fg-muted); line-height: 1.5; margin: 10px 0 14px; }
 	.muted { color: var(--fg-muted); font-size: 13px; }
