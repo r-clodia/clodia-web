@@ -554,7 +554,12 @@ export async function getChannelMessages(tier: string, name: string, opts: Reque
 		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/messages`, opts);
 	return d.messages ?? [];
 }
-export async function postChannelMessage(tier: string, name: string, content: string, opts: RequestOptions = {}): Promise<{ responder: string | null; reply?: string }> {
+export async function postChannelMessage(
+	tier: string,
+	name: string,
+	content: string,
+	opts: RequestOptions = {}
+): Promise<{ responder: string | null; reply?: string; queued?: boolean; error?: string }> {
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/post`, { content }, opts);
 }
 export async function setChannelParticipant(tier: string, name: string, agent: string, add: boolean): Promise<{ participants: string[] }> {
