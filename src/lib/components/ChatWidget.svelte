@@ -15,7 +15,7 @@
 	export let name = 'clodia-help';
 	export let title = 'Assistenza';
 	export let initialMessage = '';
-	export let launcherLabel = '💬 Aiuto — parla con Clodia';
+	export let launcherLabel = '💬 Aiuto';
 
 	let open = false;
 	let started = false;
@@ -35,7 +35,7 @@
 	}
 
 	async function ensureTopic() {
-		await createChannel({ name, tier, title, type: 'infra' });
+		await createChannel({ name, tier, title, type: 'infra', contact_agent: agent });
 	}
 	async function refresh() {
 		try { messages = await getChannelMessages(tier, name); } catch (e) { err = String(e); }

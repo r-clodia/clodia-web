@@ -113,11 +113,11 @@
 			<slot />
 		</main>
 		<ChatWidget
-			agent="clodia"
+			agent="helpdesk"
 			tier="SEAL-1"
 			name="clodia-help"
-			title="Assistenza — Clodia"
-			initialMessage="Ciao Clodia, ho bisogno di aiuto con questa sezione."
+			title="Assistenza — Helpdesk"
+			initialMessage="Ciao Helpdesk, ho bisogno di aiuto con questa sezione."
 		/>
 	</div>
 {/if}
