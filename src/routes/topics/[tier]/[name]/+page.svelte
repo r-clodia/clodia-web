@@ -70,12 +70,32 @@
 			typingTimers[agent] = setTimeout(() => (typing = typing.filter((a) => a !== agent)), 90000);
 		} else {
 			typing = typing.filter((a) => a !== agent);
+			// turno finito: la risposta finale arriva nello stream → ripulisci il live
+			if (typing.length === 0) resetLive();
 		}
 	}
 	$: typingLabel =
 		typing.length === 0
 			? ''
 			: `${typing.join(' e ')} ${typing.length === 1 ? 'sta scrivendo' : 'stanno scrivendo'}…`;
+
+	// --- Ragionamento / attività live del turno del risponditore -----------
+	// Il backend emette thinking_chunk / message_chunk / tool_use sul bus, con
+	// chat_id = `chan:{tier}:{name}:{agent}`. Li accumuliamo in un pannello
+	// "Ragionamento" comprimibile (di default aperto): sui task lunghi mostra
+	// che l'agente sta effettivamente lavorando, invece di sembrare bloccato.
+	let liveThink = '';
+	let liveReply = '';
+	let liveTools: string[] = [];
+	let thinkOpen = true;
+	const chatBelongs = (cid: unknown) =>
+		typeof cid === 'string' && cid.startsWith(`chan:${tier}:${name}:`);
+	function resetLive() {
+		liveThink = '';
+		liveReply = '';
+		liveTools = [];
+	}
+	$: hasLive = !!(liveThink || liveReply || liveTools.length);
 
 	/** Reply: cita il messaggio (anteprima in corsivo) e tagga l'autore. */
 	let replyingTo: { author: string; snippet: string } | null = null;
@@ -368,10 +388,23 @@
 			.catch(() => (allAgents = []));
 		stopStream = startEventStream();
 		offEvt = onEventStream((ev) => {
-			if (ev.type !== 'channel_typing' || !ev.payload) return;
-			const p = ev.payload as Record<string, unknown>;
-			if (p.tier !== tier || p.name !== name) return;
-			setTyping(String(p.agent), p.state === 'start');
+			const p = (ev.payload ?? {}) as Record<string, unknown>;
+			if (ev.type === 'channel_typing') {
+				if (p.tier !== tier || p.name !== name) return;
+				setTyping(String(p.agent), p.state === 'start');
+				return;
+			}
+			// eventi del turno del risponditore di QUESTO canale
+			if (!chatBelongs(p.chat_id)) return;
+			if (ev.type === 'thinking_chunk') {
+				liveThink += String(p.delta ?? '');
+			} else if (ev.type === 'message_chunk') {
+				if (p.role === 'assistant') liveReply += String(p.delta ?? '');
+			} else if (ev.type === 'tool_use') {
+				const tool = String(p.tool ?? '');
+				const inp = p.input_summary ? `: ${String(p.input_summary)}` : '';
+				liveTools = [...liveTools, `🔧 ${tool}${inp}`].slice(-8);
+			}
 		});
 	});
 	onDestroy(() => {
@@ -453,6 +486,30 @@
 				<div class="typing" aria-live="polite">
 					<span class="typing-dots"><span></span><span></span><span></span></span>
 					{typingLabel || 'in attesa di risposta…'}
+				</div>
+			{/if}
+			{#if hasLive}
+				<div class="think" class:open={thinkOpen}>
+					<button type="button" class="think-head" on:click={() => (thinkOpen = !thinkOpen)}
+						aria-expanded={thinkOpen}>
+						<span class="caret" class:open={thinkOpen}>▸</span>
+						<span class="think-title">Ragionamento</span>
+						{#if typingLabel}<span class="think-live">● live</span>{/if}
+						<span class="think-hint">{thinkOpen ? 'comprimi' : 'espandi'}</span>
+					</button>
+					{#if thinkOpen}
+						<div class="think-body">
+							{#if liveThink}<pre class="think-text">{liveThink}</pre>{/if}
+							{#if liveTools.length}
+								<ul class="think-tools">
+									{#each liveTools as t}<li>{t}</li>{/each}
+								</ul>
+							{/if}
+							{#if liveReply}
+								<div class="think-reply md">{@html renderMarkdown(stripChoices(liveReply))}</div>
+							{/if}
+						</div>
+					{/if}
 				</div>
 			{/if}
 			<div class="composer" class:drag={dragOver}
@@ -597,6 +654,22 @@
 	.typing-dots span:nth-child(2) { animation-delay: .2s; }
 	.typing-dots span:nth-child(3) { animation-delay: .4s; }
 	@keyframes td { 0%,60%,100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
+
+	/* Pannello "Ragionamento" live (comprimibile, di default aperto) */
+	.think { margin: 2px 8px 8px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(255,255,255,.02); }
+	.think.open { border-style: solid; }
+	.think-head { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font: inherit; font-size: 11.5px; padding: 7px 10px; }
+	.think-head:hover { color: var(--fg); }
+	.think-head .caret { font-size: 10px; transition: transform .12s ease; }
+	.think-head .caret.open { transform: rotate(90deg); }
+	.think-title { font-weight: 700; letter-spacing: .03em; text-transform: uppercase; font-size: 10px; }
+	.think-live { color: var(--accent); font-size: 10px; font-weight: 700; }
+	.think-hint { margin-left: auto; font-size: 10px; opacity: .7; }
+	.think-body { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+	.think-text { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--fg-muted); }
+	.think-tools { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+	.think-tools li { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.think-reply { font-size: 13px; border-top: 1px solid var(--border); padding-top: 8px; }
 	.ts { font-size: 10.5px; color: var(--fg-muted); }
 	.text { font-size: 13.5px; margin-top: 2px; }
 	/* markdown renderizzato nei messaggi */
