@@ -449,10 +449,10 @@
 					<p class="empty">Nessun messaggio. Scrivi qualcosa per iniziare.</p>
 				{/each}
 			</div>
-			{#if typingLabel}
+			{#if typingLabel || sending}
 				<div class="typing" aria-live="polite">
 					<span class="typing-dots"><span></span><span></span><span></span></span>
-					{typingLabel}
+					{typingLabel || 'in attesa di risposta…'}
 				</div>
 			{/if}
 			<div class="composer" class:drag={dragOver}
