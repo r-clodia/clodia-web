@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, type Connector, type AgentProfile } from '$lib/api/client';
+	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, type ProfileFile, type Connector, type AgentProfile } from '$lib/api/client';
 	import { session } from '$lib/auth/session';
 	import Modal from '$lib/components/Modal.svelte';
 	import type {
@@ -235,6 +235,37 @@
 	async function loadAgentNames() {
 		try { agentNames = (await getAgents()).map((a) => a.name); } catch { agentNames = []; }
 	}
+	// --- allegati del profilo ---
+	let pFiles: ProfileFile[] = [];
+	let pfUploading = false;
+	let pfFileInput: HTMLInputElement;
+	async function loadProfileFiles() {
+		try { pFiles = await listProfileFiles(name); } catch { pFiles = []; }
+	}
+	async function onProfileUpload(e: Event) {
+		const f = (e.target as HTMLInputElement).files?.[0];
+		if (!f) return;
+		pfUploading = true;
+		try {
+			const b64 = await new Promise<string>((res, rej) => {
+				const r = new FileReader();
+				r.onload = () => res((r.result as string).split(',')[1] ?? '');
+				r.onerror = rej; r.readAsDataURL(f);
+			});
+			await uploadProfileFile(name, f.name, b64);
+			toastSuccess('File allegato', f.name);
+			await loadProfileFiles();
+		} catch (err) { toastError('Upload fallito', err instanceof ApiError ? err.message : String(err)); }
+		finally { pfUploading = false; if (pfFileInput) pfFileInput.value = ''; }
+	}
+	async function removeProfileFile(fn: string) {
+		try { await deleteProfileFile(name, fn); await loadProfileFiles(); }
+		catch (err) { toastError('Eliminazione fallita', err instanceof ApiError ? err.message : String(err)); }
+	}
+	async function dlProfileFile(fn: string) {
+		try { await downloadProfileFile(name, fn); }
+		catch (err) { toastError('Download fallito', err instanceof ApiError ? err.message : String(err)); }
+	}
 	async function loadProfile() {
 		profileErr = '';
 		try {
@@ -267,7 +298,7 @@
 		try { profile = await grantAgentProfile(name, g, false); toastSuccess('Accesso revocato', g); }
 		catch (e) { toastError('Revoca fallita', e instanceof ApiError ? e.message : String(e)); }
 	}
-	$: if (tab === 'profile' && profile === null && name) { void loadProfile(); void loadAgentNames(); }
+	$: if (tab === 'profile' && profile === null && name) { void loadProfile(); void loadAgentNames(); void loadProfileFiles(); }
 	(async () => {
 		try {
 			const st = await getAdminState();
@@ -974,6 +1005,31 @@
 					</div>
 				</div>
 			{/if}
+
+			<div class="prof-grants">
+				<h3>Allegati</h3>
+				<p class="prof-note">File del profilo, consultabili dagli agent autorizzati.</p>
+				{#if pFiles.length}
+					<ul class="grant-list">
+						{#each pFiles as f}
+							<li>
+								<button class="file-link" type="button" on:click={() => dlProfileFile(f.name)}>📎 {f.name}</button>
+								<span class="dim">{(f.size / 1024).toFixed(0)} KB
+									{#if canManageProfile}<button class="link-danger" on:click={() => removeProfileFile(f.name)}>elimina</button>{/if}
+								</span>
+							</li>
+						{/each}
+					</ul>
+				{:else}
+					<p class="dim">Nessun allegato.</p>
+				{/if}
+				{#if canManageProfile}
+					<div class="grant-add">
+						<input type="file" bind:this={pfFileInput} on:change={onProfileUpload} disabled={pfUploading} />
+						{#if pfUploading}<span class="dim">Carico…</span>{/if}
+					</div>
+				{/if}
+			</div>
 		{/if}
 	</section>
 {/if}
@@ -1540,5 +1596,6 @@
 	.grant-add { display: flex; gap: 8px; margin-top: 8px; }
 	.grant-add input { flex: 1 1 auto; background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 7px; }
 	.dim { color: var(--fg-muted); font-size: 12.5px; }
+	.file-link { background: transparent; border: none; color: var(--accent); cursor: pointer; font: inherit; font-size: 13px; padding: 0; }
 
 </style>

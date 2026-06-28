@@ -1378,3 +1378,28 @@ export async function setAgentProfile(name: string, fields: Record<string, strin
 export async function grantAgentProfile(name: string, grantee: string, granted: boolean, opts: RequestOptions = {}): Promise<AgentProfile> {
 	return apiPost<AgentProfile>(`/clodia/agents/${encodeURIComponent(name)}/profile/grant`, { grantee, granted }, opts);
 }
+
+// ── Allegati del profilo (ACL self/admin/grant) ────────────────────────────
+export interface ProfileFile { name: string; size: number; mtime_iso: string; }
+export async function listProfileFiles(name: string, opts: RequestOptions = {}): Promise<ProfileFile[]> {
+	const d = await apiGet<{ files: ProfileFile[] }>(`/clodia/agents/${encodeURIComponent(name)}/profile/files`, opts);
+	return d.files ?? [];
+}
+export async function uploadProfileFile(name: string, filename: string, dataB64: string, opts: RequestOptions = {}): Promise<{ name: string }> {
+	return apiPost(`/clodia/agents/${encodeURIComponent(name)}/profile/files`, { filename, data_b64: dataB64 }, opts);
+}
+export async function deleteProfileFile(name: string, filename: string, opts: RequestOptions = {}): Promise<void> {
+	await apiDelete(`/clodia/agents/${encodeURIComponent(name)}/profile/files/${encodeURIComponent(filename)}`, opts);
+}
+/** Scarica un allegato con l'header Authorization (un <a href> non lo manderebbe). */
+export async function downloadProfileFile(name: string, filename: string): Promise<void> {
+	const res = await fetch(joinUrl(`/clodia/agents/${encodeURIComponent(name)}/profile/files/${encodeURIComponent(filename)}`), {
+		headers: { ...authHeaders() }
+	});
+	if (!res.ok) throw await parseError(res);
+	const blob = await res.blob();
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url; a.download = filename; a.click();
+	URL.revokeObjectURL(url);
+}
