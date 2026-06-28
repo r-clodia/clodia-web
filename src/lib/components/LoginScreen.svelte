@@ -7,6 +7,7 @@
 
 	// --- login (masterkey) ---
 	let recovery = '';
+	let remember = true;
 	let busy = false;
 	let error = '';
 
@@ -18,7 +19,7 @@
 		}
 		busy = true;
 		try {
-			await login(recovery);
+			await login(recovery, remember);
 			recovery = '';
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -127,6 +128,7 @@
 					placeholder="incolla la masterkey/recovery (anche l'intero file va bene)"
 					disabled={busy}></textarea>
 			</label>
+			<label class="remember"><input type="checkbox" bind:checked={remember} disabled={busy} /> Ricordami su questo dispositivo</label>
 			{#if error}<div class="err">{error}</div>{/if}
 			<button type="button" class="btn" on:click={submitLogin} disabled={busy}>
 				{busy ? 'Accesso…' : 'Accedi'}
@@ -205,6 +207,7 @@
 	.field textarea, .rec { font-family: var(--mono); font-size: 12px; }
 	.rec { background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); padding: 9px 11px; border-radius: 7px; resize: vertical; }
 	.err { color: var(--danger); font-size: 12px; }
+	.remember { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--fg-muted); }
 	.btn { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font: inherit; font-weight: 700; font-size: 14px; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
 	.btn:disabled { opacity: .6; cursor: not-allowed; }
 	.btn-sec { background: transparent; border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 9px 13px; border-radius: 8px; cursor: pointer; }

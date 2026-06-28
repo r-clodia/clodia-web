@@ -121,7 +121,9 @@ async function whoami(token: string): Promise<{ principal: string }> {
  * dal cert, non digitati), poi si firma il token di sessione vero col nome.
  * Una chiave non corrispondente a nessun cert viene rifiutata dal server.
  */
-export async function login(recoveryB64: string): Promise<void> {
+const LS_REMEMBER = 'clodia.remember'; // { principal, mk } se "ricordami" attivo
+
+export async function login(recoveryB64: string, remember = false): Promise<void> {
 	if (!recoveryB64.trim()) throw new Error('Incolla la tua masterkey (recovery key)');
 	// 1) probe a breve scadenza per farsi identificare (nome ignoto = '')
 	const probe = await signToken('', recoveryB64, 600);
@@ -130,11 +132,36 @@ export async function login(recoveryB64: string): Promise<void> {
 	const { token, exp } = await signToken(principal, recoveryB64);
 	const s: Session = { principal, token, exp };
 	localStorage.setItem(LS_KEY, JSON.stringify(s));
+	// "Ricordami su questo dispositivo": salva la masterkey per ri-firmare il token
+	// alla scadenza senza richiederla (resta nel localStorage di questo browser).
+	if (remember) localStorage.setItem(LS_REMEMBER, JSON.stringify({ principal, mk: recoveryB64 }));
 	_store.set(s);
 }
 
+/** Al boot: se la sessione è scaduta/assente ma "ricordami" è attivo, ri-firma un
+ *  token dalla masterkey salvata — così non viene richiesta a ogni apertura. */
+export async function restoreSession(): Promise<boolean> {
+	if (load()) return true;
+	if (typeof localStorage === 'undefined') return false;
+	let r: { principal?: string; mk?: string } | null = null;
+	try { r = JSON.parse(localStorage.getItem(LS_REMEMBER) || 'null'); } catch { r = null; }
+	if (!r?.mk || !r?.principal) return false;
+	try {
+		const { token, exp } = await signToken(r.principal, r.mk);
+		const s: Session = { principal: r.principal, token, exp };
+		localStorage.setItem(LS_KEY, JSON.stringify(s));
+		_store.set(s);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export function logout(): void {
-	if (typeof localStorage !== 'undefined') localStorage.removeItem(LS_KEY);
+	if (typeof localStorage !== 'undefined') {
+		localStorage.removeItem(LS_KEY);
+		localStorage.removeItem(LS_REMEMBER);
+	}
 	_store.set(null);
 }
 

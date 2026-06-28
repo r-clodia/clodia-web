@@ -29,7 +29,7 @@
 	} from '$lib/stores/events-stream';
 	import { bumpJobs } from '$lib/stores/jobs';
 	import { AUTH_DISABLED } from '$lib/stores/auth';
-	import { session, validateSession } from '$lib/auth/session';
+	import { session, validateSession, restoreSession } from '$lib/auth/session';
 	import { initPrefs } from '$lib/stores/prefs';
 	import { getAdminState } from '$lib/api/client';
 
@@ -54,9 +54,12 @@
 			instanceInitialized = true;
 		}
 		bootstrapChecked = true;
-		// Valida la sessione salvata lato server: un token stale/non più valido
-		// (cert riemesso, scaduto) non deve far sembrare l'utente loggato.
-		if (!AUTH_DISABLED) await validateSession();
+		// "Ricordami": se il token è scaduto/assente ma la masterkey è salvata,
+		// ri-firma prima di validare → niente re-login a ogni apertura.
+		if (!AUTH_DISABLED) {
+			await restoreSession();
+			await validateSession();
+		}
 	});
 
 	// --- SSE lease (only while authenticated) --------------------------------
