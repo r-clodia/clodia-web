@@ -186,6 +186,18 @@
 	/** Toggle "Mostra archiviati": di default gli archived sono nascosti. */
 	let showArchived = false;
 
+	/** Ricerca rapida: filtra per titolo, code-name e TLDR (case-insensitive). */
+	let query = '';
+	function matchesQuery(t: Topic): boolean {
+		const q = query.trim().toLowerCase();
+		if (!q) return true;
+		return (
+			(t.title ?? '').toLowerCase().includes(q) ||
+			(t.name ?? '').toLowerCase().includes(q) ||
+			(t.tldr ?? '').toLowerCase().includes(q)
+		);
+	}
+
 	const isArchived = (t: Topic) => (t.status ?? 'active') === 'archived';
 
 	// Card collassabili: di default collassate (solo intestazione). Espanse
@@ -200,14 +212,18 @@
 	/** Topic ordinati per ultimo commit (più recente prima), poi per titolo,
 	 *  filtrando gli archived se il toggle è off. */
 	function sortTopics(topics: ReadonlyArray<Topic>): Topic[] {
+		const ts = (t: Topic) => {
+			const v = t.last_accessed || t.last_commit;
+			return v ? new Date(v).getTime() : 0;
+		};
 		return [...topics]
-			.filter((t) => !isDm(t) && (showArchived || !isArchived(t)))
+			.filter((t) => !isDm(t) && (showArchived || !isArchived(t)) && matchesQuery(t))
 			.sort((a, b) => {
-				// Ordina per ISTANTE reale del commit, non per stringa: gli offset
-				// di fuso sono misti (+00:00 dal container UTC, +02:00 dal Mac) e
-				// il confronto lessicografico sbaglia quando gli offset differiscono.
-				const ta = a.last_commit ? new Date(a.last_commit).getTime() : 0;
-				const tb = b.last_commit ? new Date(b.last_commit).getTime() : 0;
+				// Ordina per ISTANTE reale (ultimo accesso, fallback ultimo commit),
+				// non per stringa: gli offset di fuso sono misti (+00:00 container
+				// UTC, +02:00 Mac) e il confronto lessicografico sbaglia.
+				const ta = ts(a);
+				const tb = ts(b);
 				if (ta !== tb) return tb - ta;
 				return (a.title || a.name).toLowerCase().localeCompare((b.title || b.name).toLowerCase());
 			});
@@ -276,6 +292,21 @@
 		</button>
 	</div>
 </header>
+
+<div class="search-bar">
+	<span class="search-ico" aria-hidden="true">🔎</span>
+	<input
+		type="search"
+		class="search-input"
+		placeholder="Cerca un topic per titolo, nome o TLDR…"
+		bind:value={query}
+		autocomplete="off"
+		aria-label="Cerca topic"
+	/>
+	{#if query}
+		<button type="button" class="search-clear" title="Pulisci" on:click={() => (query = '')}>✕</button>
+	{/if}
+</div>
 
 {#if showNew}
 	<div class="nt-overlay" role="button" tabindex="0"
@@ -379,8 +410,15 @@
 		<p class="hint">The server responded with an empty list.</p>
 	</div>
 {:else}
+	{@const shown = sortTopics(listState.topics)}
+	{#if shown.length === 0}
+		<div class="status">
+			<strong>Nessun topic corrisponde a «{query}».</strong>
+			<p class="hint">Prova un altro termine o pulisci la ricerca.</p>
+		</div>
+	{:else}
 	<div class="grid">
-		{#each sortTopics(listState.topics) as t (`${t.tier}/${t.name}`)}
+		{#each shown as t (`${t.tier}/${t.name}`)}
 			<article class="topic-card" class:expanded={expanded[keyOf(t)]}>
 				<!-- Intestazione sempre visibile (collassata) — click per espandere -->
 				<button
@@ -472,9 +510,45 @@
 			</article>
 		{/each}
 	</div>
+	{/if}
 {/if}
 
 <style>
+	/* Barra di ricerca rapida in cima alla lista Topics */
+	.search-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 16px;
+		padding: 8px 12px;
+		background: var(--card-bg);
+		border: 1px solid var(--border);
+		border-radius: 9px;
+	}
+	.search-bar:focus-within { border-color: var(--accent); }
+	.search-ico { font-size: 13px; opacity: 0.7; flex-shrink: 0; }
+	.search-input {
+		flex: 1;
+		background: transparent;
+		border: none;
+		color: var(--fg);
+		font: inherit;
+		font-size: 13.5px;
+		outline: none;
+		min-width: 0;
+	}
+	.search-input::placeholder { color: var(--fg-muted); }
+	.search-clear {
+		background: transparent;
+		border: none;
+		color: var(--fg-muted);
+		cursor: pointer;
+		font-size: 13px;
+		padding: 2px 6px;
+		border-radius: 5px;
+		flex-shrink: 0;
+	}
+	.search-clear:hover { color: var(--fg); background: rgba(255, 255, 255, 0.06); }
 	.head {
 		display: flex;
 		align-items: flex-end;

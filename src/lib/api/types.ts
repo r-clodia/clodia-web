@@ -362,6 +362,8 @@ export interface Topic {
 	readonly last_commit?: string | null;
 	readonly last_commit_hash?: string | null;
 	readonly last_commit_subject?: string | null;
+	/** Ultimo accesso dalla UI (apertura/scrittura del canale): ordina la lista. */
+	readonly last_accessed?: string | null;
 	readonly summary_url?: string;
 	readonly tldr?: string;
 	readonly action_points?: ReadonlyArray<string>;
