@@ -107,6 +107,15 @@
 	function stripChoices(text: string): string {
 		return (text || '').replace(_CH_RE, '').trim();
 	}
+	// Trasforma i path di file del topic (files/… o dump/…) citati nel testo in
+	// link markdown scaricabili, PRIMA del render → marked li rende <a>. Evita i
+	// path già dentro un link []() o in code `…`/```…```.
+	function linkifyFiles(text: string): string {
+		return (text || '').replace(
+			/(?<!\]\()(?<![\w/])((?:files|dump)\/[\w.\-/]+\.[A-Za-z0-9]{1,8})/g,
+			(_m, p) => `[${p}](${channelFileUrl(tier, name, p)})`
+		);
+	}
 	async function pickChoice(c: string) {
 		if (sending) return;
 		draft = c;
@@ -401,7 +410,7 @@
 						{#if splitQuote(m.text).quote}
 							<blockquote class="quote">{splitQuote(m.text).quote}</blockquote>
 						{/if}
-						<div class="text md">{@html renderMarkdown(stripChoices(splitQuote(m.text).body))}</div>
+						<div class="text md">{@html renderMarkdown(linkifyFiles(stripChoices(splitQuote(m.text).body)))}</div>
 						{#if i === messages.length - 1}
 							{@const ch = msgChoices(m.text)}
 							{#if ch}
