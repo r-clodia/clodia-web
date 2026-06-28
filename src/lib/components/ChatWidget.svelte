@@ -114,14 +114,14 @@
 
 <style>
 	.cw-launcher {
-		position: fixed; left: 20px; bottom: 20px; z-index: 60;
+		position: fixed; right: 20px; bottom: 20px; z-index: 60;
 		background: var(--accent); color: #1a1208; border: none; border-radius: 999px;
 		padding: 11px 18px; font-weight: 700; font-size: 13px; cursor: pointer;
 		box-shadow: 0 8px 24px rgba(0,0,0,.35);
 	}
 	.cw-launcher.open { background: var(--card-bg); color: var(--fg); border: 1px solid var(--border); }
 	.cw-panel {
-		position: fixed; left: 20px; bottom: 74px; z-index: 60;
+		position: fixed; right: 20px; bottom: 74px; z-index: 60;
 		width: min(380px, calc(100vw - 40px)); height: min(540px, calc(100vh - 120px));
 		display: flex; flex-direction: column; background: var(--bg);
 		border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
