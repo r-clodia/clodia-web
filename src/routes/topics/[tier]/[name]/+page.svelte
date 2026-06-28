@@ -112,7 +112,7 @@
 	// Salta i CODE span (`…` / ```…```): un path lì dentro deve restare testo,
 	// non diventare un link grezzo dentro <code> (gli LLM citano i path tra backtick).
 	function linkifyFiles(text: string): string {
-		const PATH = /(?<!\]\()(?<![\w/])((?:files|dump)\/[\w.\-/]+\.[A-Za-z0-9]{1,8})/g;
+		const PATH = /(?<!\]\()(?<!\[)(?<![\w/])((?:files|dump)\/[\w.\-/]+\.[A-Za-z0-9]{1,8})/g;
 		const repl = (_m: string, p: string) => `[${p}](${channelFileUrl(tier, name, p)})`;
 		// 1) code span che contengono SOLO un path → diventano link (tolgo i backtick:
 		//    gli LLM citano i path tra `…`, ma l'utente vuole il link cliccabile).
