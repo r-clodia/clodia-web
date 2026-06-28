@@ -85,7 +85,8 @@
 		display: flex;
 		flex-direction: column;
 		width: var(--sidebar-width);
-		height: 100vh;
+		height: 100%;
+		min-height: 0;
 		background: var(--sidebar-bg);
 		color: var(--sidebar-fg);
 		padding: 18px 12px;
@@ -121,6 +122,9 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow-y: auto;
 	}
 
 	.nav-item {
@@ -163,7 +167,7 @@
 		opacity: 0.8;
 	}
 	.spacer {
-		flex: 1 1 auto;
+		display: none;
 	}
 
 	.prefs {
