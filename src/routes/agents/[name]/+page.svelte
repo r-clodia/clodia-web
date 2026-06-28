@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, type Connector } from '$lib/api/client';
+	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentProfile, setAgentProfile, grantAgentProfile, type Connector, type AgentProfile } from '$lib/api/client';
 	import { session } from '$lib/auth/session';
 	import Modal from '$lib/components/Modal.svelte';
 	import type {
@@ -16,7 +16,7 @@
 
 	$: name = $page.params.name ?? '';
 
-	type Tab = 'definition' | 'logs' | 'system-prompt';
+	type Tab = 'definition' | 'logs' | 'system-prompt' | 'profile';
 	let tab: Tab = 'definition';
 
 	/** Formatta una data ISO in gg/mm/aaaa (per validità certificato PKI). */
@@ -210,6 +210,48 @@
 
 	// --- Impostazioni agent (solo admin): meta + contatti + model/sdk ---
 	let isAdmin = false;
+	// --- Profilo dati personali (PII) ---
+	$: isSelf = !!$session && $session.principal === name;
+	$: canManageProfile = isAdmin || isSelf;
+	let profile: AgentProfile | null = null;
+	let profileErr = '';
+	const PROFILE_FIELDS = ['email', 'pec', 'telefono', 'iban', 'codice_fiscale', 'domicilio'];
+	let pf: Record<string, string> = {};
+	let pfBusy = false;
+	let granteeInput = '';
+	async function loadProfile() {
+		profileErr = '';
+		try {
+			profile = await getAgentProfile(name);
+			pf = { ...profile.fields };
+			for (const k of PROFILE_FIELDS) if (!(k in pf)) pf[k] = '';
+		} catch (e) {
+			profile = null;
+			profileErr = e instanceof ApiError ? e.message : String(e);
+		}
+	}
+	async function saveProfile() {
+		pfBusy = true;
+		try {
+			const fields: Record<string, string | null> = {};
+			for (const k of Object.keys(pf)) fields[k] = pf[k]?.trim() ? pf[k].trim() : null;
+			profile = await setAgentProfile(name, fields);
+			pf = { ...profile.fields };
+			for (const k of PROFILE_FIELDS) if (!(k in pf)) pf[k] = '';
+			toastSuccess('Profilo salvato', 'dati personali aggiornati nel vault');
+		} catch (e) { toastError('Salvataggio fallito', e instanceof ApiError ? e.message : String(e)); }
+		finally { pfBusy = false; }
+	}
+	async function addGrant() {
+		if (!granteeInput.trim()) return;
+		try { profile = await grantAgentProfile(name, granteeInput.trim(), true); granteeInput = ''; toastSuccess('Accesso concesso', ''); }
+		catch (e) { toastError('Grant fallito', e instanceof ApiError ? e.message : String(e)); }
+	}
+	async function removeGrant(g: string) {
+		try { profile = await grantAgentProfile(name, g, false); toastSuccess('Accesso revocato', g); }
+		catch (e) { toastError('Revoca fallita', e instanceof ApiError ? e.message : String(e)); }
+	}
+	$: if (tab === 'profile' && profile === null && name) void loadProfile();
 	(async () => {
 		try {
 			const st = await getAdminState();
@@ -476,6 +518,15 @@
 			System Prompt
 		</button>
 	{/if}
+	<button
+		role="tab"
+		aria-selected={tab === 'profile'}
+		class:active={tab === 'profile'}
+		on:click={() => (tab = 'profile')}
+		type="button"
+	>
+		Dati personali
+	</button>
 </div>
 
 <!-- DEFINITION ----------------------------------------------------------- -->
@@ -844,6 +895,51 @@
 				</div>
 			{:else}
 				<pre class="mono prompt-body">{promptBody}</pre>
+			{/if}
+		{/if}
+	</section>
+{/if}
+
+<!-- DATI PERSONALI (PII) ------------------------------------------------- -->
+{#if tab === 'profile'}
+	<section class="panel">
+		{#if profileErr}
+			<div class="status"><strong>Non disponibile</strong><div class="error-hint">{profileErr}</div></div>
+		{:else}
+			<p class="prof-note">
+				Dati personali custoditi nel <strong>vault</strong> (mai nel registry pubblico).
+				Visibili solo a te, agli admin e a chi concedi l'accesso.
+				{#if !canManageProfile}<br/>Hai accesso in <strong>sola lettura</strong> a questo profilo.{/if}
+			</p>
+			<div class="prof-grid">
+				{#each PROFILE_FIELDS as f}
+					<label class="prof-field">
+						<span>{f}</span>
+						<input bind:value={pf[f]} disabled={!canManageProfile} autocomplete="off" placeholder={canManageProfile ? '' : '—'} />
+					</label>
+				{/each}
+			</div>
+			{#if canManageProfile}
+				<div class="prof-actions">
+					<button class="edit-btn" on:click={saveProfile} disabled={pfBusy}>{pfBusy ? 'Salvo…' : 'Salva dati personali'}</button>
+				</div>
+				<div class="prof-grants">
+					<h3>Chi può vedere questo profilo</h3>
+					<p class="prof-note">Tu e gli admin sempre. Concedi l'accesso ad altri agent (tutto o niente).</p>
+					{#if profile?.grants?.length}
+						<ul class="grant-list">
+							{#each profile.grants as g}
+								<li><span>{g}</span><button class="link-danger" on:click={() => removeGrant(g)}>revoca</button></li>
+							{/each}
+						</ul>
+					{:else}
+						<p class="dim">Nessun accesso concesso.</p>
+					{/if}
+					<div class="grant-add">
+						<input bind:value={granteeInput} placeholder="nome agent" autocomplete="off" />
+						<button class="edit-btn" on:click={addGrant} disabled={!granteeInput.trim()}>Concedi</button>
+					</div>
+				</div>
 			{/if}
 		{/if}
 	</section>
@@ -1394,4 +1490,20 @@
 			gap: 4px;
 		}
 	}
+
+	.prof-note { font-size: 12.5px; color: var(--fg-muted); line-height: 1.5; margin: 0 0 14px; }
+	.prof-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+	@media (max-width: 560px) { .prof-grid { grid-template-columns: 1fr; } }
+	.prof-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--fg-muted); }
+	.prof-field input { background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 7px; }
+	.prof-actions { margin-top: 14px; }
+	.prof-grants { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 16px; }
+	.prof-grants h3 { margin: 0 0 4px; font-size: 14px; }
+	.grant-list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+	.grant-list li { display: flex; justify-content: space-between; align-items: center; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+	.link-danger { background: transparent; border: none; color: #e85d75; cursor: pointer; font-size: 12px; }
+	.grant-add { display: flex; gap: 8px; margin-top: 8px; }
+	.grant-add input { flex: 1 1 auto; background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 7px; }
+	.dim { color: var(--fg-muted); font-size: 12.5px; }
+
 </style>

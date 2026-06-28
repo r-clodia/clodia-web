@@ -122,6 +122,29 @@ export async function apiPost<T = unknown>(
  * error handling, the only differences are the HTTP verb and that a 204
  * (No Content) response resolves to `undefined`.
  */
+export async function apiPut<T = unknown>(
+	path: string,
+	body: unknown,
+	opts: RequestOptions = {}
+): Promise<T> {
+	const res = await fetch(joinUrl(path), {
+		method: 'PUT',
+		headers: {
+			'Content-Type': 'application/json',
+			Accept: 'application/json',
+			...authHeaders(),
+			...(opts.headers || {})
+		},
+		body: body === undefined ? undefined : JSON.stringify(body),
+		signal: opts.signal
+	});
+	if (!res.ok) throw await parseError(res);
+	if (res.status === 204) return undefined as unknown as T;
+	const ct = res.headers.get('content-type') || '';
+	if (!ct) return undefined as unknown as T;
+	return parseJsonOrText<T>(res);
+}
+
 export async function apiPatch<T = unknown>(
 	path: string,
 	body: unknown,
@@ -1337,4 +1360,21 @@ export async function providerLoginComplete(
 /** DELETE `/api/providers/{id}` — disconnetti. */
 export async function disconnectProvider(id: string, opts: RequestOptions = {}): Promise<{ connected: boolean }> {
 	return apiDelete(`/api/providers/${encodeURIComponent(id)}`, opts);
+}
+
+// ── Profilo dati personali (PII) per-agent — ACL self/admin/grant ───────────
+export interface AgentProfile {
+	agent: string;
+	fields: Record<string, string>;
+	grants: string[];
+	exists: boolean;
+}
+export async function getAgentProfile(name: string, opts: RequestOptions = {}): Promise<AgentProfile> {
+	return apiGet<AgentProfile>(`/clodia/agents/${encodeURIComponent(name)}/profile`, opts);
+}
+export async function setAgentProfile(name: string, fields: Record<string, string | null>, opts: RequestOptions = {}): Promise<AgentProfile> {
+	return apiPut<AgentProfile>(`/clodia/agents/${encodeURIComponent(name)}/profile`, { fields }, opts);
+}
+export async function grantAgentProfile(name: string, grantee: string, granted: boolean, opts: RequestOptions = {}): Promise<AgentProfile> {
+	return apiPost<AgentProfile>(`/clodia/agents/${encodeURIComponent(name)}/profile/grant`, { grantee, granted }, opts);
 }
