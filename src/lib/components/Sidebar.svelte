@@ -10,7 +10,6 @@
 		{ href: '/activity', label: 'ACTIVITY' },
 		{ href: '/jobs', label: 'JOBS' },
 		{ href: '/skills', label: 'SKILLS' },
-		{ href: '/rules', label: 'RULES' },
 		{ href: '/topics', label: 'TOPICS' },
 		{ href: '/kanban', label: 'KANBAN', disabled: true },
 		{ href: '/tools', label: 'INTEGRATIONS' },
