@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import ChatWidget from '$lib/components/ChatWidget.svelte';
 	import {
 		getBackupStatus, configureBackup, runBackup, backupSnapshots, restoreTest,
 		ApiError, type BackupStatus
@@ -136,13 +135,6 @@
 		</div>
 	{/if}
 </section>
-
-<ChatWidget
-	agent="clodia"
-	tier="SEAL-1"
-	name="clodia-settings"
-	title="Impostazioni — Clodia"
-	initialMessage="Aiuto, sono bloccato con il setup del backup. Cosa devo fare?" />
 
 <style>
 	.head { padding: 4px 0 14px; }

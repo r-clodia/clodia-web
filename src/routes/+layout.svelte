@@ -23,6 +23,7 @@
 	import Toaster from '$lib/components/Toaster.svelte';
 	import LoginScreen from '$lib/components/LoginScreen.svelte';
 	import SetupScreen from '$lib/components/SetupScreen.svelte';
+	import ChatWidget from '$lib/components/ChatWidget.svelte';
 	import {
 		onEventStream,
 		startEventStream
@@ -111,6 +112,13 @@
 		<main class="main">
 			<slot />
 		</main>
+		<ChatWidget
+			agent="clodia"
+			tier="SEAL-1"
+			name="clodia-help"
+			title="Assistenza — Clodia"
+			initialMessage="Ciao Clodia, ho bisogno di aiuto con questa sezione."
+		/>
 	</div>
 {/if}
 
