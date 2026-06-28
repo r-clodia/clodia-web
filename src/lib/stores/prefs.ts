@@ -41,6 +41,11 @@ function applyScale(s: number): void {
 	if (!browser) return;
 	// `zoom` scala l'intera UI (font in px inclusi); supportato da Chromium/Safari/FF recenti.
 	(document.documentElement.style as unknown as { zoom: string }).zoom = String(s);
+	// `zoom` scala anche le altezze viewport (100dvh): senza compensazione la shell
+	// a height:100dvh diventa più alta della finestra e con overflow:hidden taglia
+	// gli elementi in fondo. Esponiamo lo scale come var CSS per dividere le altezze
+	// viewport (vedi .app in +layout.svelte). (issue #2)
+	document.documentElement.style.setProperty('--ui-zoom', String(s));
 	try {
 		localStorage.setItem(FONT_KEY, String(s));
 	} catch {

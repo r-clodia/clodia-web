@@ -119,8 +119,10 @@
 		/* Shell ad altezza fissa: la viewport non scrolla mai come pagina intera;
 		   sidebar e header/input restano fissi, scrolla solo il contenuto interno.
 		   Robusto al cambio di font-size. */
-		height: 100vh;
-		height: 100dvh;
+		/* --ui-zoom compensa lo `zoom` su <html> (Aa+): senza, 100dvh viene scalato
+		   dallo zoom e la shell sfora la viewport tagliando il fondo. (issue #2) */
+		height: calc(100vh / var(--ui-zoom, 1));
+		height: calc(100dvh / var(--ui-zoom, 1));
 		overflow: hidden;
 	}
 
