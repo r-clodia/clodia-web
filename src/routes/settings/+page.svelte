@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import QRCode from 'qrcode';
 	import {
 		getBackupStatus, configureBackup, runBackup, backupSnapshots, restoreTest,
 		ApiError, type BackupStatus
 	} from '$lib/api/client';
+	import { currentSession } from '$lib/auth/session';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 
 	let status: BackupStatus | null = null;
@@ -19,6 +21,9 @@
 	let keepDaily = 7, keepWeekly = 4, keepMonthly = 6;
 	let schedule = '0 3 * * *';
 	let saving = false, running = false, testing = false;
+	let pairingQr = '';
+	let pairingPayload = '';
+	let pairingError = '';
 
 	// env per backend: S3-compatible (B2/S3/MinIO) → AWS_*; B2 nativo → B2_*
 	$: repoPlaceholder =
@@ -70,6 +75,43 @@
 		try { const r = await restoreTest(); r.ok ? toastSuccess('Restore-test OK', `${r.restored_topics} topic ripristinati e verificati`) : toastError('Restore-test fallito', 'nessun file ripristinato'); }
 		catch (e) { toastError('Restore-test fallito', e instanceof ApiError ? e.message : String(e)); }
 		finally { testing = false; }
+	}
+
+	function b64url(str: string): string {
+		const bytes = new TextEncoder().encode(str);
+		let raw = '';
+		for (let i = 0; i < bytes.length; i++) raw += String.fromCharCode(bytes[i]);
+		return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+	}
+
+	async function createPairing() {
+		pairingError = '';
+		const s = currentSession();
+		if (!s?.token || !s.principal) {
+			pairingError = 'Sessione web non disponibile. Esegui di nuovo il login.';
+			return;
+		}
+		const payload = {
+			type: 'clodia.pwa.pairing',
+			version: 1,
+			principal: s.principal,
+			token: s.token,
+			exp: s.exp,
+			issued_at: Math.floor(Date.now() / 1000)
+		};
+		pairingPayload = `clodia-pairing:${b64url(JSON.stringify(payload))}`;
+		pairingQr = await QRCode.toDataURL(pairingPayload, {
+			errorCorrectionLevel: 'M',
+			margin: 1,
+			width: 248,
+			color: { dark: '#0b0f14', light: '#ffffff' }
+		});
+	}
+
+	async function copyPairing() {
+		if (!pairingPayload) return;
+		await navigator.clipboard?.writeText(pairingPayload);
+		toastSuccess('Pairing copiato', 'incollalo nella PWA sul dispositivo da collegare');
 	}
 
 	onMount(load);
@@ -136,11 +178,34 @@
 	{/if}
 </section>
 
+<section class="card pairing">
+	<div class="card-h">
+		<h2>Dispositivo PWA</h2>
+		<span class="iso">session pairing</span>
+	</div>
+	<p class="note">
+		Collega la PWA scansionando un QR da questo browser già autenticato. La PWA riceve
+		solo il token di sessione temporaneo, non la masterkey.
+	</p>
+	{#if pairingError}<div class="err">{pairingError}</div>{/if}
+	<div class="actions">
+		<button class="btn primary" on:click={createPairing}>Genera QR</button>
+		<button class="btn" on:click={copyPairing} disabled={!pairingPayload}>Copia pairing</button>
+	</div>
+	{#if pairingQr}
+		<div class="qr-wrap">
+			<img src={pairingQr} alt="QR pairing PWA Clodia" />
+			<p class="muted">Scansiona dalla PWA. Scade insieme alla sessione web corrente.</p>
+		</div>
+	{/if}
+</section>
+
 <style>
 	.head { padding: 4px 0 14px; }
 	h1 { margin: 0; font-size: 22px; }
 	.hint { margin: 4px 0 0; color: var(--fg-muted); font-size: 13px; }
 	.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 18px; max-width: 720px; }
+	.card + .card { margin-top: 14px; }
 	.card-h { display: flex; align-items: baseline; justify-content: space-between; }
 	.card-h h2 { margin: 0; font-size: 16px; }
 	.iso { font-size: 11px; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
@@ -161,4 +226,6 @@
 	.btn { background: rgba(0,0,0,.2); border: 1px solid var(--border); color: var(--fg); border-radius: 8px; padding: 9px 14px; font: inherit; font-size: 13px; cursor: pointer; }
 	.btn.primary { background: var(--accent); color: #1a1208; font-weight: 700; border-color: transparent; }
 	.btn:disabled { opacity: .5; }
+	.qr-wrap { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+	.qr-wrap img { width: 248px; height: 248px; border-radius: 8px; background: #fff; padding: 8px; }
 </style>
