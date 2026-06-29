@@ -1408,3 +1408,8 @@ export async function downloadProfileFile(name: string, filename: string): Promi
 	a.href = url; a.download = filename; a.click();
 	URL.revokeObjectURL(url);
 }
+
+/** POST `/api/topics/{tier}/{name}/archive` — imposta status=archived. */
+export async function archiveTopic(tier: string, name: string, opts: RequestOptions = {}): Promise<{ archived: boolean }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/archive`, {}, opts);
+}

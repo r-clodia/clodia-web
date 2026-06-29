@@ -24,6 +24,8 @@
 	} from '$lib/api/client';
 	import type { Topic } from '$lib/api/types';
 	import { session } from '$lib/auth/session';
+	import Modal from '$lib/components/Modal.svelte';
+	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
@@ -240,6 +242,24 @@
 		if (next[key]) delete next[key];
 		else next[key] = true;
 		savePinnedTopics(next);
+	}
+
+	// --- archiviazione con conferma ---
+	let archiveTarget: Topic | null = null;
+	let archiving = false;
+	async function confirmArchive() {
+		if (!archiveTarget) return;
+		archiving = true;
+		try {
+			await archiveTopic(archiveTarget.tier, archiveTarget.name);
+			toastSuccess('Topic archiviato', archiveTarget.title || archiveTarget.name);
+			archiveTarget = null;
+			await loadList();
+		} catch (e) {
+			toastError('Archiviazione fallita', e instanceof Error ? e.message : String(e));
+		} finally {
+			archiving = false;
+		}
 	}
 
 	/** Topic ordinati per ultimo commit (più recente prima), poi per titolo,
@@ -471,6 +491,15 @@
 				>
 					{isPinned(t) ? '★' : '☆'}
 				</button>
+				{#if !isArchived(t)}
+					<button
+						type="button"
+						class="archive-btn"
+						title="Archivia topic"
+						aria-label={`Archivia ${t.title || t.name}`}
+						on:click|stopPropagation={() => (archiveTarget = t)}
+					>🗄</button>
+				{/if}
 				<!-- Intestazione sempre visibile (collassata) — click per espandere -->
 				<button
 					type="button"
@@ -563,6 +592,17 @@
 	</div>
 	{/if}
 {/if}
+
+<Modal open={!!archiveTarget} dismissable={!archiving} maxWidth={420} on:close={() => (archiveTarget = null)}>
+	<div class="confirm">
+		<h3>Archiviare il topic?</h3>
+		<p>«{archiveTarget?.title || archiveTarget?.name}» verrà spostato tra gli archiviati (nascosto di default, ripristinabile col toggle «Mostra archived»).</p>
+		<div class="confirm-actions">
+			<button type="button" class="btn" on:click={() => (archiveTarget = null)} disabled={archiving}>Annulla</button>
+			<button type="button" class="btn danger" on:click={confirmArchive} disabled={archiving}>{archiving ? 'Archivio…' : 'Archivia'}</button>
+		</div>
+	</div>
+</Modal>
 
 <style>
 	/* Barra di ricerca rapida in cima alla lista Topics */
@@ -694,6 +734,30 @@
 		padding: 14px 16px;
 		gap: 8px;
 	}
+		.archive-btn {
+		position: absolute;
+		top: 10px;
+		right: 48px;
+		z-index: 2;
+		display: inline-grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: color-mix(in srgb, var(--card-bg) 92%, #000);
+		color: var(--fg-muted);
+		font-size: 14px;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.archive-btn:hover { border-color: var(--danger); color: var(--danger); }
+	.confirm { display: flex; flex-direction: column; gap: 12px; }
+	.confirm h3 { margin: 0; font-size: 16px; }
+	.confirm p { margin: 0; font-size: 13px; color: var(--fg-muted); line-height: 1.5; }
+	.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+	.confirm-actions .btn { background: rgba(0,0,0,.2); border: 1px solid var(--border); color: var(--fg); border-radius: 8px; padding: 8px 14px; font: inherit; font-size: 13px; cursor: pointer; }
+	.confirm-actions .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 700; }
 	.pin-btn {
 		position: absolute;
 		top: 10px;
@@ -727,7 +791,7 @@
 		gap: 8px;
 		text-align: left;
 		width: 100%;
-		padding: 14px 52px 14px 16px;
+		padding: 14px 88px 14px 16px;
 		background: transparent;
 		border: none;
 		color: inherit;
