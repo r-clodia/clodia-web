@@ -33,17 +33,28 @@ function htmlBypass(req: IncomingMessage): string | undefined {
 	// undefined → request is proxied to `target`.
 }
 
+// La webui è servita SEMPRE dietro un reverse proxy / `tailscale serve` (accesso
+// già ristretto al tailnet o al proxy). L'host-check di `vite preview` (difesa
+// anti DNS-rebinding) è qui ridondante e bloccherebbe ogni host non-localhost —
+// es. `*.ts.net` → "This host is not allowed". Default permissivo; restringibile
+// per-istanza con CLODIA_ALLOWED_HOSTS (lista comma-separated di hostname).
+const _allowed = (process.env.CLODIA_ALLOWED_HOSTS || '')
+	.split(',').map((s) => s.trim()).filter(Boolean);
+const ALLOWED_HOSTS = _allowed.length ? _allowed : true;
+
 export default defineConfig({
 	envPrefix: ['VITE_', 'PUBLIC_'],
 	plugins: [sveltekit()],
 	server: {
 		port: 7843,
-		strictPort: true
+		strictPort: true,
+		allowedHosts: ALLOWED_HOSTS
 	},
 	preview: {
 		port: 7843,
 		strictPort: true,
 		host: true,
+		allowedHosts: ALLOWED_HOSTS,
 		proxy: {
 			'/api': { target: API, changeOrigin: true },
 			'/clodia': { target: API, changeOrigin: true },
