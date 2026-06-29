@@ -91,12 +91,11 @@
 	let liveThink = '';
 	let liveReply = '';
 	let liveTools: string[] = [];
-	// Box "Ragionamento": default APERTO (mostra che l'agente lavora); la scelta
-	// dell'utente (comprimi/espandi) è persistita in localStorage.
-	let thinkOpen = true;
+	// Box "Ragionamento": default CHIUSO, ma l'header resta SEMPRE visibile mentre
+	// l'agente lavora (turno attivo) → l'utente sa che c'è e può espanderlo.
+	let thinkOpen = false;
 	function toggleThink() {
 		thinkOpen = !thinkOpen;
-		try { localStorage.setItem('clodia.thinkOpen', String(thinkOpen)); } catch { /* ignore */ }
 	}
 	const chatBelongs = (cid: unknown) =>
 		typeof cid === 'string' && cid.startsWith(`chan:${tier}:${name}:`);
@@ -422,7 +421,6 @@
 	let stopStream: (() => void) | null = null;
 	let offEvt: (() => void) | null = null;
 	onMount(() => {
-		try { const v = localStorage.getItem('clodia.thinkOpen'); if (v !== null) thinkOpen = v === 'true'; } catch { /* ignore */ }
 		poll = setInterval(refreshLive, 5000);
 		getAgents()
 			.then((as) => (allAgents = as.map((a) => a.name)))
@@ -538,9 +536,10 @@
 					{typingLabel || 'in attesa di risposta…'}
 				</div>
 			{/if}
-			{#if hasLive}
-				<!-- Ragionamento: collassabile, contiene SOLO il testo del thinking -->
-				{#if liveThink}
+			{#if hasLive || typingLabel || sending}
+				<!-- Ragionamento: collassabile (default chiuso), header SEMPRE visibile
+				     mentre l'agente lavora — anche prima che arrivi il primo thinking. -->
+				{#if liveThink || typingLabel || sending}
 					<div class="think" class:open={thinkOpen}>
 						<button type="button" class="think-head" on:click={toggleThink}
 							aria-expanded={thinkOpen}>
@@ -550,7 +549,7 @@
 							<span class="think-hint">{thinkOpen ? 'comprimi' : 'espandi'}</span>
 						</button>
 						{#if thinkOpen}
-							<div class="think-body"><pre class="think-text">{liveThink}</pre></div>
+							<div class="think-body"><pre class="think-text">{liveThink || '…'}</pre></div>
 						{/if}
 					</div>
 				{/if}
