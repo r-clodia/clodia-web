@@ -138,6 +138,7 @@
 	}
 
 	onMount(() => {
+		pinnedTopics = loadPinnedTopics();
 		void loadList();
 		void refreshAdmin();
 	});
@@ -209,6 +210,38 @@
 		expanded = { ...expanded, [k]: !expanded[k] };
 	}
 
+	const PINNED_TOPICS_KEY = 'clodia.topicPins';
+	let pinnedTopics: Record<string, boolean> = {};
+
+	function loadPinnedTopics(): Record<string, boolean> {
+		if (typeof localStorage === 'undefined') return {};
+		try {
+			const raw = localStorage.getItem(PINNED_TOPICS_KEY);
+			const parsed = raw ? JSON.parse(raw) : {};
+			return parsed && typeof parsed === 'object' ? parsed : {};
+		} catch {
+			return {};
+		}
+	}
+
+	function savePinnedTopics(next: Record<string, boolean>) {
+		pinnedTopics = next;
+		if (typeof localStorage === 'undefined') return;
+		localStorage.setItem(PINNED_TOPICS_KEY, JSON.stringify(next));
+	}
+
+	function isPinned(t: Topic): boolean {
+		return !!pinnedTopics[keyOf(t)];
+	}
+
+	function togglePinned(t: Topic) {
+		const key = keyOf(t);
+		const next = { ...pinnedTopics };
+		if (next[key]) delete next[key];
+		else next[key] = true;
+		savePinnedTopics(next);
+	}
+
 	/** Topic ordinati per ultimo commit (più recente prima), poi per titolo,
 	 *  filtrando gli archived se il toggle è off. */
 	function sortTopics(topics: ReadonlyArray<Topic>): Topic[] {
@@ -219,6 +252,9 @@
 		return [...topics]
 			.filter((t) => !isDm(t) && (showArchived || !isArchived(t)) && matchesQuery(t))
 			.sort((a, b) => {
+				const pa = isPinned(a);
+				const pb = isPinned(b);
+				if (pa !== pb) return pa ? -1 : 1;
 				// Ordina per ISTANTE reale (ultimo accesso, fallback ultimo commit),
 				// non per stringa: gli offset di fuso sono misti (+00:00 container
 				// UTC, +02:00 Mac) e il confronto lessicografico sbaglia.
@@ -419,7 +455,18 @@
 	{:else}
 	<div class="grid">
 		{#each shown as t (`${t.tier}/${t.name}`)}
-			<article class="topic-card" class:expanded={expanded[keyOf(t)]}>
+			<article class="topic-card" class:expanded={expanded[keyOf(t)]} class:pinned={isPinned(t)}>
+				<button
+					type="button"
+					class="pin-btn"
+					class:on={isPinned(t)}
+					title={isPinned(t) ? 'Rimuovi pin' : 'Pinna topic'}
+					aria-label={isPinned(t) ? `Rimuovi pin da ${t.title || t.name}` : `Pinna ${t.title || t.name}`}
+					aria-pressed={isPinned(t) ? 'true' : 'false'}
+					on:click|stopPropagation={() => togglePinned(t)}
+				>
+					{isPinned(t) ? '★' : '☆'}
+				</button>
 				<!-- Intestazione sempre visibile (collassata) — click per espandere -->
 				<button
 					type="button"
@@ -621,6 +668,7 @@
 	}
 
 	.topic-card {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: stretch;
@@ -634,10 +682,37 @@
 	.topic-card.expanded {
 		border-color: var(--accent);
 	}
+	.topic-card.pinned {
+		border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+	}
 	.topic-card.skel {
 		pointer-events: none;
 		padding: 14px 16px;
 		gap: 8px;
+	}
+	.pin-btn {
+		position: absolute;
+		top: 10px;
+		right: 12px;
+		z-index: 2;
+		display: inline-grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		background: color-mix(in srgb, var(--card-bg) 92%, #000);
+		color: var(--fg-muted);
+		font: inherit;
+		font-size: 16px;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.pin-btn:hover,
+	.pin-btn.on {
+		border-color: color-mix(in srgb, var(--accent) 65%, var(--border));
+		color: var(--accent);
+		background: rgba(255, 107, 61, 0.08);
 	}
 
 	/* Intestazione cliccabile (collassata) */
@@ -648,7 +723,7 @@
 		gap: 8px;
 		text-align: left;
 		width: 100%;
-		padding: 14px 16px;
+		padding: 14px 52px 14px 16px;
 		background: transparent;
 		border: none;
 		color: inherit;
