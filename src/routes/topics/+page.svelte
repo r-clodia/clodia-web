@@ -25,7 +25,6 @@
 	import type { Topic } from '$lib/api/types';
 	import { session } from '$lib/auth/session';
 	import Modal from '$lib/components/Modal.svelte';
-	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
