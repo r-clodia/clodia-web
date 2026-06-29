@@ -170,6 +170,10 @@ export function authToken(): string | null {
 	return load()?.token ?? null;
 }
 
+export function currentSession(): Session | null {
+	return load();
+}
+
 /**
  * Valida la sessione lato SERVER: il token in localStorage potrebbe essere
  * scaduto o firmato con una chiave non più corrispondente al cert (es. cert
