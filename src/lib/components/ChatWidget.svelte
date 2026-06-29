@@ -2,7 +2,7 @@
 	import { onDestroy, tick } from 'svelte';
 	import { renderMarkdown } from '$lib/markdown';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
-	import { session } from '$lib/auth/session';
+	import { authToken, restoreSession, session, validateSession } from '$lib/auth/session';
 	import { helpdeskRequest } from '$lib/stores/helpdesk';
 	import {
 		createChannel, getChannelMessages, postChannelMessage,
@@ -34,13 +34,24 @@
 		const m = (t || '').match(_CH_RE);
 		return m ? m[2].split(/[,;|]/).map((s) => s.trim()).filter(Boolean) : [];
 	}
+	function errText(e: unknown): string {
+		return e instanceof Error ? e.message : String(e);
+	}
+
+	async function ensureLoggedIn() {
+		if (!authToken()) await restoreSession();
+		if (!authToken() || !(await validateSession())) {
+			throw new Error('Login richiesto: accedi di nuovo per parlare con Wainston.');
+		}
+	}
 
 	async function ensureTopic() {
+		await ensureLoggedIn();
 		// contact_agent = l'agent del widget → è lui a rispondere nel canale di help
 		await createChannel({ name, tier, title, type: 'infra', contact_agent: agent });
 	}
 	async function refresh() {
-		try { messages = await getChannelMessages(tier, name); } catch (e) { err = String(e); }
+		try { messages = await getChannelMessages(tier, name); } catch (e) { err = errText(e); }
 	}
 	async function scrollDown() { await tick(); if (streamEl) streamEl.scrollTop = streamEl.scrollHeight; }
 
@@ -54,7 +65,7 @@
 					await refresh();
 				}
 				await scrollDown();
-			} catch (e) { err = String(e); }
+			} catch (e) { err = errText(e); }
 		}
 	}
 
@@ -78,7 +89,7 @@
 				await refresh();
 			}
 			await scrollDown();
-		} catch (e) { err = String(e); }
+		} catch (e) { err = errText(e); }
 	}
 
 	const _unsub = helpdeskRequest.subscribe((req) => {
@@ -90,9 +101,10 @@
 		if (!body || sending) return;
 		sending = true; draft = '';
 		try {
+			await ensureLoggedIn();
 			await postChannelMessage(tier, name, body);
 			await refresh(); await scrollDown();
-		} catch (e) { err = String(e); draft = body; }
+		} catch (e) { err = errText(e); draft = body; }
 		finally { sending = false; }
 	}
 
