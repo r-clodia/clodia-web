@@ -11,6 +11,7 @@
 		getChannel,
 		getChannelMessages,
 		postChannelMessage,
+		resetChannelContext,
 		setChannelParticipant,
 		getChannelFiles,
 		uploadChannelFile,
@@ -49,6 +50,7 @@
 	let loadErr = '';
 	let draft = '';
 	let sending = false;
+	let resetting = false;
 	let newParticipant = '';
 	let stream: HTMLElement;
 	let poll: ReturnType<typeof setInterval> | null = null;
@@ -96,6 +98,11 @@
 		liveTools = [];
 	}
 	$: hasLive = !!(liveThink || liveReply || liveTools.length);
+	function visibleMessages(items: ChannelMessage[]): ChannelMessage[] {
+		const resetIdx = items.findLastIndex((m) => m.kind === 'system' && m.text === '__CLODIA_CONTEXT_RESET__');
+		return resetIdx >= 0 ? items.slice(resetIdx + 1) : items.filter((m) => m.kind !== 'system');
+	}
+	$: shownMessages = visibleMessages(messages);
 
 	/** Reply: cita il messaggio (anteprima in corsivo) e tagga l'autore. */
 	let replyingTo: { author: string; snippet: string } | null = null;
@@ -303,6 +310,26 @@
 		}
 	}
 
+	async function resetContext() {
+		if (resetting || sending) return;
+		if (!confirm('Cancellare il contesto di questa chat e ripartire pristine?')) return;
+		resetting = true;
+		loadErr = '';
+		try {
+			await resetChannelContext(tier, name);
+			resetLive();
+			replyingTo = null;
+			draft = '';
+			await refreshMessages();
+			await tick();
+			scrollDown();
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			resetting = false;
+		}
+	}
+
 	// Autocomplete invito: solo agent/utenti registrati (no partecipanti inesistenti).
 	let allAgents: string[] = [];
 	$: inviteMatches = newParticipant.trim()
@@ -435,6 +462,9 @@
 		<div class="title-row">
 			<h1>#{info?.meta?.title || name}</h1>
 			<span class="tier">{info?.tier || tier}</span>
+			<button type="button" class="reset-context" on:click={resetContext} disabled={resetting || sending}>
+				{resetting ? 'Reset…' : 'Reset contesto'}
+			</button>
 		</div>
 		{#if info?.tldr}<p class="tldr">{info.tldr}</p>{/if}
 	</header>
@@ -444,7 +474,7 @@
 	<div class="body">
 		<main class="stream-wrap">
 			<div class="stream" bind:this={stream}>
-				{#each messages as m, i (m.id)}
+				{#each shownMessages as m, i (m.id)}
 					<div class="msg" class:ai={m.kind === 'ai'} class:mine={m.author === me}>
 						<div class="msg-head">
 							<AgentAvatar name={m.author} size={22} />
@@ -457,7 +487,7 @@
 							<blockquote class="quote">{splitQuote(m.text).quote}</blockquote>
 						{/if}
 						<div class="text md">{@html renderMarkdown(linkifyFiles(stripChoices(splitQuote(m.text).body)))}</div>
-						{#if i === messages.length - 1}
+						{#if i === shownMessages.length - 1}
 							{@const ch = msgChoices(m.text)}
 							{#if ch}
 								<div class="pills">
@@ -640,6 +670,9 @@
 	.title-row { display: flex; align-items: baseline; gap: 10px; }
 	h1 { margin: 4px 0 0; font-size: 22px; }
 	.tier { font-size: 11px; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+	.reset-context { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--fg-muted); border-radius: 7px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+	.reset-context:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(255,107,61,.08); }
+	.reset-context:disabled { opacity: .5; cursor: default; }
 	.tldr { margin: 4px 0 0; color: var(--fg-muted); font-size: 12.5px; }
 	.err { color: var(--danger); font-size: 12px; margin: 8px 0; }
 	.body { display: flex; gap: 16px; flex: 1 1 auto; min-height: 0; margin-top: 12px; }
