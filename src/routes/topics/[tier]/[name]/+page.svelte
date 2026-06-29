@@ -86,12 +86,12 @@
 	// --- Ragionamento / attività live del turno del risponditore -----------
 	// Il backend emette thinking_chunk / message_chunk / tool_use sul bus, con
 	// chat_id = `chan:{tier}:{name}:{agent}`. Li accumuliamo in un pannello
-	// "Ragionamento" comprimibile (di default aperto): sui task lunghi mostra
+	// "Ragionamento" comprimibile (di default chiuso): sui task lunghi mostra
 	// che l'agente sta effettivamente lavorando, invece di sembrare bloccato.
 	let liveThink = '';
 	let liveReply = '';
 	let liveTools: string[] = [];
-	let thinkOpen = true;
+	let thinkOpen = false;
 	const chatBelongs = (cid: unknown) =>
 		typeof cid === 'string' && cid.startsWith(`chan:${tier}:${name}:`);
 	function resetLive() {
@@ -704,7 +704,7 @@
 	.typing-dots span:nth-child(3) { animation-delay: .4s; }
 	@keyframes td { 0%,60%,100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 
-	/* Pannello "Ragionamento" live (comprimibile, di default aperto) */
+	/* Pannello "Ragionamento" live (comprimibile, di default chiuso) */
 	.think { margin: 2px 8px 8px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(255,255,255,.02); }
 	.think.open { border-style: solid; }
 	.think-head { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font: inherit; font-size: 11.5px; padding: 7px 10px; }
