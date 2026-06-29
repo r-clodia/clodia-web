@@ -72,8 +72,10 @@
 			typingTimers[agent] = setTimeout(() => (typing = typing.filter((a) => a !== agent)), 90000);
 		} else {
 			typing = typing.filter((a) => a !== agent);
-			// turno finito: la risposta finale arriva nello stream → ripulisci il live
-			if (typing.length === 0) resetLive();
+			// NON azzerare qui il live: "typing off" scatta anche quando il main
+			// agent è idle / in ATTESA dei subagent (che stanno ancora lavorando) →
+			// azzerare farebbe sparire la barra task/tools mentre i subagent girano.
+			// Il reset avviene all'arrivo del messaggio finale (refreshMessages).
 		}
 	}
 	$: typingLabel =
@@ -262,6 +264,10 @@
 			if (last && last.id !== _lastMsgId) {
 				_lastMsgId = last.id;
 				multiSel = new Set();
+				// turno concluso: il messaggio finale dell'agente è arrivato →
+				// solo ORA ripulisci il live (thinking + barra task/tools). Durante
+				// l'attesa dei subagent il live resta visibile.
+				if (last.kind === 'ai') resetLive();
 			}
 		} catch {
 			/* ignore poll errors */
@@ -276,6 +282,7 @@
 		const body = draft.trim();
 		if (!body || sending) return;
 		sending = true;
+		resetLive(); // nuovo turno: pulisci il live del turno precedente
 		// Se sto rispondendo a un messaggio, antepongo la citazione (riga `> …`)
 		// così resta nel messaggio inviato e viene mostrata in corsivo.
 		const text = replyingTo
