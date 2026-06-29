@@ -91,7 +91,13 @@
 	let liveThink = '';
 	let liveReply = '';
 	let liveTools: string[] = [];
-	let thinkOpen = false;
+	// Box "Ragionamento": default APERTO (mostra che l'agente lavora); la scelta
+	// dell'utente (comprimi/espandi) è persistita in localStorage.
+	let thinkOpen = true;
+	function toggleThink() {
+		thinkOpen = !thinkOpen;
+		try { localStorage.setItem('clodia.thinkOpen', String(thinkOpen)); } catch { /* ignore */ }
+	}
 	const chatBelongs = (cid: unknown) =>
 		typeof cid === 'string' && cid.startsWith(`chan:${tier}:${name}:`);
 	function resetLive() {
@@ -416,6 +422,7 @@
 	let stopStream: (() => void) | null = null;
 	let offEvt: (() => void) | null = null;
 	onMount(() => {
+		try { const v = localStorage.getItem('clodia.thinkOpen'); if (v !== null) thinkOpen = v === 'true'; } catch { /* ignore */ }
 		poll = setInterval(refreshLive, 5000);
 		getAgents()
 			.then((as) => (allAgents = as.map((a) => a.name)))
@@ -535,7 +542,7 @@
 				<!-- Ragionamento: collassabile, contiene SOLO il testo del thinking -->
 				{#if liveThink}
 					<div class="think" class:open={thinkOpen}>
-						<button type="button" class="think-head" on:click={() => (thinkOpen = !thinkOpen)}
+						<button type="button" class="think-head" on:click={toggleThink}
 							aria-expanded={thinkOpen}>
 							<span class="caret" class:open={thinkOpen}>▸</span>
 							<span class="think-title">Ragionamento</span>
