@@ -518,7 +518,7 @@ export async function getTopics(opts: RequestOptions = {}): Promise<ReadonlyArra
 export interface ChannelMessage {
 	id: string;
 	author: string;
-	kind: 'human' | 'ai';
+	kind: 'human' | 'ai' | 'system';
 	text: string;
 	attachments: string[];
 	ts: string;
@@ -561,6 +561,13 @@ export async function postChannelMessage(
 	opts: RequestOptions = {}
 ): Promise<{ responder: string | null; reply?: string; queued?: boolean; error?: string }> {
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/post`, { content }, opts);
+}
+export async function resetChannelContext(
+	tier: string,
+	name: string,
+	opts: RequestOptions = {}
+): Promise<{ reset: boolean; sessions_deleted?: string[] }> {
+	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/reset-context`, {}, opts);
 }
 export async function setChannelParticipant(tier: string, name: string, agent: string, add: boolean): Promise<{ participants: string[] }> {
 	const res = await fetch(
