@@ -20,6 +20,7 @@
 		getTopicsCatalog,
 		exportTopicsBundle,
 		importTopicsBundle,
+		archiveTopic,
 		type TopicCatalogItem
 	} from '$lib/api/client';
 	import type { Topic } from '$lib/api/types';
