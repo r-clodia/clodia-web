@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, connectOpenAI, connectTrello, connectGithub, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, ApiError } from '$lib/api/client';
+	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, connectOpenAI, connectTrello, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, ApiError } from '$lib/api/client';
+	import { askWainston } from '$lib/stores/helpdesk';
 	import { toastSuccess, toastError, toastInfo } from '$lib/stores/toasts';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
 
@@ -21,7 +22,8 @@
 		connected: boolean;
 		accounts: string[];
 		provider?: string; // etichetta provider (google, openai, storage, …)
-		kind?: 'gmail' | 'gworkspace' | 'openai' | 'trello' | 'mailbox' | 'github'; // flusso di connessione da usare
+		kind?: 'gmail' | 'gworkspace' | 'openai' | 'trello' | 'mailbox' | 'github' | 'telegram'; // flusso di connessione da usare
+		bot_username?: string; // Telegram: @username del bot connesso
 		mcp?: boolean; // backend MCP montato (Add-MCP)
 		builtin?: boolean; // integrazione interna (es. storage topic local-fs)
 		transport?: string;
@@ -53,7 +55,11 @@
 		{ id: 'mailboxes', name: 'Caselle email (IMAP/SMTP)', wired: true, connected: false, accounts: [],
 		  provider: 'email', kind: 'mailbox',
 		  blurb: 'Connettore multi-casella: aggiungi/togli mailbox IMAP/SMTP (info@, IONOS, …). Delegabili per-agent.',
-		  scope: 'IMAP/SMTP' }
+		  scope: 'IMAP/SMTP' },
+		{ id: 'telegram', name: 'Telegram', wired: true, connected: false, accounts: [],
+		  provider: 'telegram', kind: 'telegram',
+		  blurb: 'Gli agenti inviano/ricevono messaggi (tool telegram.*) con lease per-chat. Crea un bot dedicato con @BotFather e incolla il token. In dubbio? Chiedi a Wainston.',
+		  scope: 'api.telegram.org/bot' }
 	];
 
 	let cards: CardModel[] = BASE.map((c) => ({ ...c }));
@@ -92,7 +98,8 @@
 					return { ...c, connected: boxes.length > 0, accounts: boxes };
 				}
 				const live = connectors.find((x) => x.id === c.id);
-				return live ? { ...c, connected: live.connected, accounts: live.accounts } : { ...c };
+				return live ? { ...c, connected: live.connected, accounts: live.accounts,
+				                bot_username: (live as { bot_username?: string }).bot_username } : { ...c };
 			});
 			// Storage dei topic (provider === 'storage') → card "built-in".
 			const storage = connectors
@@ -306,6 +313,42 @@
 		}
 	}
 
+	// ─── Connessione Telegram — token di un bot dedicato (paste-key) ───
+	let telegramOpen = false;
+	let telegramToken = '';
+	let telegramBusy = false;
+	let telegramError = '';
+
+	function openTelegram() {
+		telegramToken = '';
+		telegramError = '';
+		telegramOpen = true;
+	}
+	function closeTelegram() {
+		telegramOpen = false;
+		telegramBusy = false;
+	}
+	async function submitTelegram() {
+		if (!telegramToken.trim()) {
+			telegramError = 'Incolla il token del bot (da @BotFather).';
+			return;
+		}
+		telegramBusy = true;
+		telegramError = '';
+		try {
+			const res = await connectTelegram(telegramToken.trim());
+			toastSuccess('Telegram connesso', res.bot_username ? `@${res.bot_username}` : 'token nel vault');
+			closeTelegram();
+			await load();
+		} catch (err) {
+			telegramError = err instanceof ApiError ? err.message : String(err);
+		} finally {
+			telegramBusy = false;
+		}
+	}
+
+	const TELEGRAM_HELP = 'Aiuto, sto configurando l’integrazione Telegram. Da dove parto?';
+
 	// ─── Caselle email (IMAP/SMTP) — connettore multi-mailbox ───
 	let mailboxes: string[] = [];
 	let mbOpen = false;
@@ -462,7 +505,7 @@
 			<div class="scopes"><code class="scope">{c.scope}</code></div>
 
 			<div class="card-foot">
-				<span class="account">{c.connected && c.accounts.length ? c.accounts.join(', ') : '—'}</span>
+				<span class="account">{c.connected && c.accounts.length ? c.accounts.join(', ') : (c.kind === 'telegram' && c.bot_username ? '@' + c.bot_username : '—')}</span>
 				{#if c.builtin}
 					<span class="builtin-note">interno · pluggable (P4: Drive/Dropbox)</span>
 				{:else if c.mcp}
@@ -472,9 +515,15 @@
 				{:else if c.kind === 'mailbox'}
 					<button type="button" class="btn primary" on:click={openMailboxes}>Gestisci caselle</button>
 				{:else if c.connected}
-					<button type="button" class="btn ghost" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : openConnect(c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Riconnetti</button>
+					{#if c.kind === 'telegram'}
+						<button type="button" class="btn ghost" on:click={() => askWainston(TELEGRAM_HELP)}>💬 Aiuto</button>
+					{/if}
+					<button type="button" class="btn ghost" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Riconnetti</button>
 				{:else}
-					<button type="button" class="btn primary" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : openConnect(c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Connetti</button>
+					{#if c.kind === 'telegram'}
+						<button type="button" class="btn ghost" on:click={() => askWainston(TELEGRAM_HELP)}>💬 Aiuto setup</button>
+					{/if}
+					<button type="button" class="btn primary" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Connetti</button>
 				{/if}
 			</div>
 		</div>
@@ -631,6 +680,36 @@
 				<button type="button" class="btn" on:click={closeGithub} disabled={githubBusy}>Annulla</button>
 				<button type="button" class="btn primary" on:click={submitGithub} disabled={githubBusy}>
 					{githubBusy ? 'Connessione…' : 'Connetti'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if telegramOpen}
+	<div class="overlay" on:click|self={closeTelegram} role="presentation">
+		<div class="modal" role="dialog" aria-modal="true" aria-label="Connetti Telegram">
+			<div class="modal-head">
+				<strong>Connetti Telegram</strong>
+				<button class="x" type="button" on:click={closeTelegram} aria-label="Chiudi">×</button>
+			</div>
+			<p class="note">
+				Crea un <strong>bot dedicato</strong> in Telegram con
+				<code>@BotFather</code> (comando <code>/newbot</code>) e incolla qui il
+				<strong>token</strong> che ti restituisce. Viene custodito nel
+				<strong>vault</strong>, mai esposto agli agent: lo usano solo i tool
+				<code>telegram.*</code>. Usa un bot nuovo, non condiviso con altri sistemi.
+				Bloccato? Premi <em>💬 Aiuto setup</em> sulla card e te lo spiega Wainston.
+			</p>
+			<label class="field">
+				<span>Bot token</span>
+				<input type="password" bind:value={telegramToken} placeholder="123456789:AA…" autocomplete="off" spellcheck="false" />
+			</label>
+			{#if telegramError}<div class="modal-err">{telegramError}</div>{/if}
+			<div class="modal-foot">
+				<button type="button" class="btn" on:click={closeTelegram} disabled={telegramBusy}>Annulla</button>
+				<button type="button" class="btn primary" on:click={submitTelegram} disabled={telegramBusy}>
+					{telegramBusy ? 'Connessione…' : 'Connetti'}
 				</button>
 			</div>
 		</div>

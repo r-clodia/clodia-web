@@ -1298,6 +1298,23 @@ export async function connectGithub(
 	return apiPost('/tools/github/connect', { pat }, opts);
 }
 
+/** POST `/tools/telegram/connect` — connette un bot Telegram dedicato. Valida il
+ *  token con getMe, lo deposita nel vault e cache @username. token vuoto → disconnette. */
+export async function connectTelegram(
+	token: string,
+	opts: RequestOptions = {}
+): Promise<{ connected: boolean; bot_username?: string }> {
+	return apiPost('/tools/telegram/connect', { token }, opts);
+}
+
+/** GET `/tools/telegram/status` — stato non sensibile (configured, @username,
+ *  chat note/attive, ultimo errore). Mai il token. */
+export async function getTelegramStatus(
+	opts: RequestOptions = {}
+): Promise<{ configured: boolean; bot_username?: string; known_chats?: number; active_chats?: number; last_error?: string }> {
+	return apiGet('/tools/telegram/status', opts);
+}
+
 /** POST `/tools/mcp` — registra uno o più MCP server da mcp.json. I valori in
  *  `secrets` (per i placeholder ${NAME}) sono depositati nel vault, non nel config. */
 export async function registerMcp(

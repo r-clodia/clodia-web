@@ -3,6 +3,7 @@
 	import { renderMarkdown } from '$lib/markdown';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import { session } from '$lib/auth/session';
+	import { helpdeskRequest } from '$lib/stores/helpdesk';
 	import {
 		createChannel, getChannelMessages, postChannelMessage,
 		type ChannelMessage
@@ -46,19 +47,43 @@
 	async function toggle() {
 		open = !open;
 		if (open && !started) {
-			started = true;
 			try {
-				await ensureTopic();
-				await refresh();
+				await ensureStarted();
 				if (initialMessage && messages.length === 0) {
 					await postChannelMessage(tier, name, initialMessage);
 					await refresh();
 				}
 				await scrollDown();
-				poll = setInterval(async () => { await refresh(); }, 4000);
 			} catch (e) { err = String(e); }
 		}
 	}
+
+	async function ensureStarted() {
+		if (started) return;
+		started = true;
+		await ensureTopic();
+		await refresh();
+		poll = setInterval(async () => { await refresh(); }, 4000);
+	}
+
+	// Apertura pilotata da una pagina (store helpdesk): apre il widget e posta il
+	// messaggio preparato come richiesta dell'utente — anche se c'è già cronologia
+	// (a differenza dell'initialMessage, che si posta solo a canale vuoto).
+	async function openWith(message: string) {
+		open = true;
+		try {
+			await ensureStarted();
+			if (message) {
+				await postChannelMessage(tier, name, message);
+				await refresh();
+			}
+			await scrollDown();
+		} catch (e) { err = String(e); }
+	}
+
+	const _unsub = helpdeskRequest.subscribe((req) => {
+		if (req) { void openWith(req.message); helpdeskRequest.set(null); }
+	});
 
 	async function send(text?: string) {
 		const body = (text ?? draft).trim();
@@ -71,7 +96,7 @@
 		finally { sending = false; }
 	}
 
-	onDestroy(() => poll && clearInterval(poll));
+	onDestroy(() => { _unsub(); if (poll) clearInterval(poll); });
 	$: lastId = messages.length ? messages[messages.length - 1].id : null;
 	$: lastId, scrollDown();
 </script>
