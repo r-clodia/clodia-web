@@ -1,5 +1,9 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { getTopics } from '$lib/api/client';
+	import type { Topic } from '$lib/api/types';
 	import { theme, fontScale, toggleTheme, incFont, decFont } from '$lib/stores/prefs';
 	import { session, logout as sessionLogout } from '$lib/auth/session';
 
@@ -10,12 +14,42 @@
 		{ href: '/activity', label: 'ACTIVITY' },
 		{ href: '/jobs', label: 'JOBS' },
 		{ href: '/skills', label: 'SKILLS' },
-		{ href: '/topics', label: 'TOPICS' },
 		{ href: '/kanban', label: 'KANBAN', disabled: true },
 		{ href: '/tools', label: 'INTEGRATIONS' },
 		{ href: '/providers', label: 'PROVIDERS' },
-		{ href: '/settings', label: 'SETTINGS' }
+		{ href: '/settings', label: 'SETTINGS' },
+		{ href: '/topics', label: 'TOPICS' }
 	];
+
+	let recentTopics: Topic[] = [];
+
+	function topicHref(t: Topic): string {
+		return `/topics/${encodeURIComponent(t.tier)}/${encodeURIComponent(t.name)}`;
+	}
+
+	function topicTime(t: Topic): number {
+		const raw = t.last_accessed || t.last_commit || '';
+		const ms = Date.parse(raw);
+		return Number.isNaN(ms) ? 0 : ms;
+	}
+
+	async function loadRecentTopics() {
+		try {
+			recentTopics = (await getTopics())
+				.filter((t) => t.kind !== 'dm')
+				.toSorted((a, b) => topicTime(b) - topicTime(a))
+				.slice(0, 5);
+		} catch {
+			recentTopics = [];
+		}
+	}
+
+	onMount(() => {
+		void loadRecentTopics();
+	});
+	afterNavigate(() => {
+		void loadRecentTopics();
+	});
 
 	function isActive(href: string, pathname: string): boolean {
 		if (href === '/') return pathname === '/';
@@ -48,6 +82,25 @@
 			{/if}
 		{/each}
 	</nav>
+
+	{#if recentTopics.length}
+		<section class="recent" aria-label="Topic recenti">
+			<div class="recent-title">RECENT TOPICS</div>
+			<div class="recent-list">
+				{#each recentTopics as t (`${t.tier}/${t.name}`)}
+					<a
+						class="recent-topic"
+						class:active={isActive(topicHref(t), $page.url.pathname)}
+						href={topicHref(t)}
+						title={t.title || t.name}
+					>
+						<span class="recent-name">{t.title || t.name}</span>
+						<span class="recent-tier">{t.tier}</span>
+					</a>
+				{/each}
+			</div>
+		</section>
+	{/if}
 
 	<div class="spacer"></div>
 
@@ -122,9 +175,8 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
-		flex: 1 1 auto;
+		flex: 0 0 auto;
 		min-height: 0;
-		overflow-y: auto;
 	}
 
 	.nav-item {
@@ -166,8 +218,61 @@
 		padding: 0 5px;
 		opacity: 0.8;
 	}
+	.recent {
+		margin: 14px 0 0;
+		padding: 12px 0 0;
+		border-top: 1px solid var(--border);
+		min-height: 0;
+	}
+	.recent-title {
+		padding: 0 10px 6px;
+		color: var(--sidebar-fg-muted);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+	}
+	.recent-list {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+		max-height: 190px;
+		overflow-y: auto;
+	}
+	.recent-topic {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 7px 9px 7px 12px;
+		border-radius: 6px;
+		color: var(--sidebar-fg);
+		font-size: 12px;
+		text-decoration: none;
+	}
+	.recent-topic:hover {
+		background: rgba(255, 255, 255, 0.04);
+		color: #fff;
+	}
+	.recent-topic.active {
+		background: rgba(255, 107, 61, 0.12);
+		color: var(--accent);
+	}
+	.recent-name {
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.recent-tier {
+		flex: 0 0 auto;
+		color: var(--sidebar-fg-muted);
+		font-size: 9px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+	}
 	.spacer {
-		display: none;
+		flex: 1 1 auto;
+		min-height: 10px;
 	}
 
 	.prefs {
