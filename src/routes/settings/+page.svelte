@@ -5,7 +5,7 @@
 		getBackupStatus, configureBackup, runBackup, backupSnapshots, restoreTest,
 		ApiError, type BackupStatus
 	} from '$lib/api/client';
-	import { currentSession } from '$lib/auth/session';
+	import { mintPairingToken } from '$lib/auth/session';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 
 	let status: BackupStatus | null = null;
@@ -86,17 +86,20 @@
 
 	async function createPairing() {
 		pairingError = '';
-		const s = currentSession();
-		if (!s?.token || !s.principal) {
-			pairingError = 'Sessione web non disponibile. Esegui di nuovo il login.';
+		// Token EFFIMERO dedicato (5 min), non la sessione 12h: il QR è bearer.
+		let minted: { principal: string; token: string; exp: number };
+		try {
+			minted = await mintPairingToken(300);
+		} catch (e) {
+			pairingError = e instanceof Error ? e.message : String(e);
 			return;
 		}
 		const payload = {
 			type: 'clodia.pwa.pairing',
 			version: 1,
-			principal: s.principal,
-			token: s.token,
-			exp: s.exp,
+			principal: minted.principal,
+			token: minted.token,
+			exp: minted.exp,
 			issued_at: Math.floor(Date.now() / 1000)
 		};
 		pairingPayload = `clodia-pairing:${b64url(JSON.stringify(payload))}`;
@@ -184,8 +187,7 @@
 		<span class="iso">session pairing</span>
 	</div>
 	<p class="note">
-		Collega la PWA scansionando un QR da questo browser già autenticato. La PWA riceve
-		solo il token di sessione temporaneo, non la masterkey.
+		Collega la PWA scansionando un QR da questo browser già autenticato. La PWA riceve un token a breve scadenza (5 min), non la masterkey: anche se il QR finisse in uno screenshot, scade in fretta.
 	</p>
 	{#if pairingError}<div class="err">{pairingError}</div>{/if}
 	<div class="actions">

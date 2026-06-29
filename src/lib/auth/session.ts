@@ -175,6 +175,22 @@ export function currentSession(): Session | null {
 }
 
 /**
+ * Conia un token EFFIMERO dedicato al pairing PWA (default 5 min), firmandolo
+ * con la masterkey salvata da "Ricordami". Un QR di pairing NON deve riusare il
+ * token di sessione (12h): è bearer e finirebbe in una foto/screenshot. Richiede
+ * "Ricordami" attivo (la masterkey è l'unico modo per firmare un nuovo token).
+ */
+export async function mintPairingToken(ttlSeconds = 300): Promise<{ principal: string; token: string; exp: number }> {
+	let r: { principal?: string; mk?: string } | null = null;
+	try { r = JSON.parse(localStorage.getItem(LS_REMEMBER) || 'null'); } catch { r = null; }
+	if (!r?.mk || !r?.principal) {
+		throw new Error('Per generare un pairing sicuro attiva "Ricordami" al login (serve la masterkey per coniare un token a breve scadenza).');
+	}
+	const { token, exp } = await signToken(r.principal, r.mk, ttlSeconds);
+	return { principal: r.principal, token, exp };
+}
+
+/**
  * Valida la sessione lato SERVER: il token in localStorage potrebbe essere
  * scaduto o firmato con una chiave non più corrispondente al cert (es. cert
  * riemesso). Il gate non deve fidarsi della sola presenza. Chiede a
