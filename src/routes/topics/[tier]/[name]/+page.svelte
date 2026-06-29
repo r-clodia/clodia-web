@@ -404,6 +404,12 @@
 				const tool = String(p.tool ?? '');
 				const inp = p.input_summary ? `: ${String(p.input_summary)}` : '';
 				liveTools = [...liveTools, `🔧 ${tool}${inp}`].slice(-8);
+			} else if (ev.type === 'task_progress') {
+				// progresso di un SUBAGENT (tool Task): senza questo la chat sembra
+				// ferma mentre il subagent lavora (es. un download).
+				const tool = p.last_tool_name ? ` · ${String(p.last_tool_name)}` : '';
+				const desc = p.description ? `: ${String(p.description)}` : '';
+				liveTools = [...liveTools, `🤖 subagent${tool}${desc}`.slice(0, 120)].slice(-8);
 			}
 		});
 	});
