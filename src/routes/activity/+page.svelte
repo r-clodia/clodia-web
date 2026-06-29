@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { API_BASE_URL, ApiError, getRuntimeSessions, type RuntimeSession } from '$lib/api/client';
+	import { ApiError, getRuntimeSessions, type RuntimeSession } from '$lib/api/client';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 
 	let sessions: RuntimeSession[] = [];
@@ -47,6 +47,14 @@
 		return String(n ?? 0);
 	}
 
+	function topicHref(s: RuntimeSession): string | null {
+		if (s.context_kind === 'dm' || !s.topic) return null;
+		const match = String(s.topic).trim().match(/^(SEAL-[0-4])\/(.+)$/i);
+		if (!match) return null;
+		const [, tier, name] = match;
+		return `/topics/${encodeURIComponent(tier.toUpperCase())}/${encodeURIComponent(name)}`;
+	}
+
 	$: running = sessions.filter((s) => s.state === 'running').length;
 	$: blocked = sessions.filter((s) => s.state === 'blocked').length;
 </script>
@@ -86,7 +94,12 @@
 					<td class="ag"><AgentAvatar name={s.agent} size={22} /><span>{s.agent}</span></td>
 					<td>
 						{#if s.topic}
-							<span class="ctx">{s.context_kind === 'dm' ? '✉︎' : '#'} {s.topic}</span>
+							{@const href = topicHref(s)}
+							{#if href}
+								<a class="ctx ctx-link" href={href}>{s.context_kind === 'dm' ? '✉︎' : '#'} {s.topic}</a>
+							{:else}
+								<span class="ctx">{s.context_kind === 'dm' ? '✉︎' : '#'} {s.topic}</span>
+							{/if}
 						{:else}
 							<span class="muted">—</span>
 						{/if}
@@ -118,6 +131,8 @@
 	.tbl td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); }
 	.ag { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 	.ctx { font-family: var(--mono); font-size: 12px; }
+	.ctx-link { color: var(--accent); text-decoration: none; }
+	.ctx-link:hover { text-decoration: underline; }
 	.rt { font-size: 11px; color: var(--fg-muted); }
 	.state { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
 	.state.running { background: rgba(76,175,106,.16); color: #4caf6a; }
