@@ -495,28 +495,31 @@
 				</div>
 			{/if}
 			{#if hasLive}
-				<div class="think" class:open={thinkOpen}>
-					<button type="button" class="think-head" on:click={() => (thinkOpen = !thinkOpen)}
-						aria-expanded={thinkOpen}>
-						<span class="caret" class:open={thinkOpen}>▸</span>
-						<span class="think-title">Ragionamento</span>
-						{#if typingLabel}<span class="think-live">● live</span>{/if}
-						<span class="think-hint">{thinkOpen ? 'comprimi' : 'espandi'}</span>
-					</button>
-					{#if thinkOpen}
-						<div class="think-body">
-							{#if liveThink}<pre class="think-text">{liveThink}</pre>{/if}
-							{#if liveTools.length}
-								<ul class="think-tools">
-									{#each liveTools as t}<li>{t}</li>{/each}
-								</ul>
-							{/if}
-							{#if liveReply}
-								<div class="think-reply md">{@html renderMarkdown(stripChoices(liveReply))}</div>
-							{/if}
-						</div>
-					{/if}
-				</div>
+				<!-- Ragionamento: collassabile, contiene SOLO il testo del thinking -->
+				{#if liveThink}
+					<div class="think" class:open={thinkOpen}>
+						<button type="button" class="think-head" on:click={() => (thinkOpen = !thinkOpen)}
+							aria-expanded={thinkOpen}>
+							<span class="caret" class:open={thinkOpen}>▸</span>
+							<span class="think-title">Ragionamento</span>
+							{#if typingLabel}<span class="think-live">● live</span>{/if}
+							<span class="think-hint">{thinkOpen ? 'comprimi' : 'espandi'}</span>
+						</button>
+						{#if thinkOpen}
+							<div class="think-body"><pre class="think-text">{liveThink}</pre></div>
+						{/if}
+					</div>
+				{/if}
+				<!-- Tool e subagent in uso: SEMPRE visibili (anche col thinking collassato) -->
+				{#if liveTools.length}
+					<ul class="live-tools">
+						{#each liveTools as t}<li>{t}</li>{/each}
+					</ul>
+				{/if}
+				<!-- Risposta in streaming: sempre visibile -->
+				{#if liveReply}
+					<div class="think-reply md">{@html renderMarkdown(stripChoices(liveReply))}</div>
+				{/if}
 			{/if}
 			<div class="composer" class:drag={dragOver}
 				role="group"
@@ -675,6 +678,9 @@
 	.think-text { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--fg-muted); }
 	.think-tools { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
 	.think-tools li { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	/* Barra tool/subagent sempre visibile (indipendente dal collapse del ragionamento) */
+	.live-tools { margin: 6px 0 0; padding: 6px 10px; list-style: none; display: flex; flex-direction: column; gap: 2px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; }
+	.live-tools li { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.think-reply { font-size: 13px; border-top: 1px solid var(--border); padding-top: 8px; }
 	.ts { font-size: 10.5px; color: var(--fg-muted); }
 	.text { font-size: 13.5px; margin-top: 2px; }
