@@ -244,7 +244,11 @@
 
 	/** Topic ordinati per ultimo commit (più recente prima), poi per titolo,
 	 *  filtrando gli archived se il toggle è off. */
-	function sortTopics(topics: ReadonlyArray<Topic>): Topic[] {
+	// `pins` è passato esplicitamente così il {@const shown} lo traccia come
+	// dipendenza reattiva → la lista si riordina al toggle del pin (altrimenti il
+	// @const dipenderebbe solo da listState.topics e non si ricalcolerebbe).
+	function sortTopics(topics: ReadonlyArray<Topic>, pins: Record<string, boolean> = pinnedTopics): Topic[] {
+		const pinned = (t: Topic) => !!pins[keyOf(t)];
 		const ts = (t: Topic) => {
 			const v = t.last_accessed || t.last_commit;
 			return v ? new Date(v).getTime() : 0;
@@ -252,8 +256,8 @@
 		return [...topics]
 			.filter((t) => !isDm(t) && (showArchived || !isArchived(t)) && matchesQuery(t))
 			.sort((a, b) => {
-				const pa = isPinned(a);
-				const pb = isPinned(b);
+				const pa = pinned(a);
+				const pb = pinned(b);
 				if (pa !== pb) return pa ? -1 : 1;
 				// Ordina per ISTANTE reale (ultimo accesso, fallback ultimo commit),
 				// non per stringa: gli offset di fuso sono misti (+00:00 container
@@ -446,7 +450,7 @@
 		<p class="hint">The server responded with an empty list.</p>
 	</div>
 {:else}
-	{@const shown = sortTopics(listState.topics)}
+	{@const shown = sortTopics(listState.topics, pinnedTopics)}
 	{#if shown.length === 0}
 		<div class="status">
 			<strong>Nessun topic corrisponde a «{query}».</strong>
