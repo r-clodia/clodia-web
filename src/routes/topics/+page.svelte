@@ -191,8 +191,8 @@
 
 	/** Ricerca rapida: filtra per titolo, code-name e TLDR (case-insensitive). */
 	let query = '';
-	function matchesQuery(t: Topic): boolean {
-		const q = query.trim().toLowerCase();
+	function matchesQuery(t: Topic, search = query): boolean {
+		const q = search.trim().toLowerCase();
 		if (!q) return true;
 		return (
 			(t.title ?? '').toLowerCase().includes(q) ||
@@ -267,14 +267,19 @@
 	// `pins` è passato esplicitamente così il {@const shown} lo traccia come
 	// dipendenza reattiva → la lista si riordina al toggle del pin (altrimenti il
 	// @const dipenderebbe solo da listState.topics e non si ricalcolerebbe).
-	function sortTopics(topics: ReadonlyArray<Topic>, pins: Record<string, boolean> = pinnedTopics): Topic[] {
+	function sortTopics(
+		topics: ReadonlyArray<Topic>,
+		pins: Record<string, boolean> = pinnedTopics,
+		search = query,
+		includeArchived = showArchived
+	): Topic[] {
 		const pinned = (t: Topic) => !!pins[keyOf(t)];
 		const ts = (t: Topic) => {
 			const v = t.last_accessed || t.last_commit;
 			return v ? new Date(v).getTime() : 0;
 		};
 		return [...topics]
-			.filter((t) => !isDm(t) && (showArchived || !isArchived(t)) && matchesQuery(t))
+			.filter((t) => !isDm(t) && (includeArchived || !isArchived(t)) && matchesQuery(t, search))
 			.sort((a, b) => {
 				const pa = pinned(a);
 				const pb = pinned(b);
@@ -470,7 +475,7 @@
 		<p class="hint">The server responded with an empty list.</p>
 	</div>
 {:else}
-	{@const shown = sortTopics(listState.topics, pinnedTopics)}
+	{@const shown = sortTopics(listState.topics, pinnedTopics, query, showArchived)}
 	{#if shown.length === 0}
 		<div class="status">
 			<strong>Nessun topic corrisponde a «{query}».</strong>
