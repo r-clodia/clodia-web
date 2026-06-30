@@ -540,7 +540,12 @@ export interface ChannelFile {
 }
 
 export async function createChannel(
-	input: { name: string; tier: string; title?: string; type?: string; contact_agent?: string },
+	input: {
+		name: string; tier: string; title?: string; type?: string; contact_agent?: string;
+		/** Storage dei file del topic: assente/local = default; drive = Google Drive
+		 *  (folder = link/id di una cartella esistente, oppure vuoto per crearne una). */
+		storage_config?: { type: 'drive'; folder?: string; account?: string };
+	},
 	opts: RequestOptions = {}
 ): Promise<{ tier: string; name: string }> {
 	return apiPost('/clodia/channels', input, opts);

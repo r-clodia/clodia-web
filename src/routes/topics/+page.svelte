@@ -151,6 +151,8 @@
 	let nTitle = '';
 	let nTier: 'SEAL-0' | 'SEAL-1' | 'SEAL-2' | 'SEAL-3' | 'SEAL-4' = 'SEAL-1';
 	let nType = 'progetto';
+	let nStorage: 'local' | 'drive' = 'local';
+	let nDriveFolder = ''; // link/id cartella Drive (vuoto = crea nuova)
 	let creating = false;
 	let createErr = '';
 
@@ -159,6 +161,8 @@
 		nTitle = '';
 		nTier = 'SEAL-1';
 		nType = 'progetto';
+		nStorage = 'local';
+		nDriveFolder = '';
 		createErr = '';
 		showNew = true;
 	}
@@ -172,7 +176,12 @@
 		creating = true;
 		createErr = '';
 		try {
-			const r = await createChannel({ name, tier: nTier, title: nTitle.trim() || name, type: nType });
+			const r = await createChannel({
+				name, tier: nTier, title: nTitle.trim() || name, type: nType,
+				...(nStorage === 'drive'
+					? { storage_config: { type: 'drive' as const, folder: nDriveFolder.trim() || undefined } }
+					: {})
+			});
 			showNew = false;
 			await goto(`/topics/${r.tier}/${r.name}`);
 		} catch (e) {
@@ -406,6 +415,20 @@
 						<option value="evento">evento</option>
 					</select>
 				</label>
+			</div>
+			<div class="nt-row">
+				<label class="nt-field"><span>Storage dei file</span>
+					<select bind:value={nStorage}>
+						<option value="local">Local (gateway)</option>
+						<option value="drive">Google Drive</option>
+					</select>
+				</label>
+				{#if nStorage === 'drive'}
+					<label class="nt-field"><span>Cartella Drive</span>
+						<input type="text" bind:value={nDriveFolder} placeholder="link/id cartella — vuoto = creane una nuova" autocomplete="off" />
+						<span class="nt-hint">i file del topic vivranno su Drive (EU → cap SEAL-2)</span>
+					</label>
+				{/if}
 			</div>
 			{#if createErr}<div class="nt-err">{createErr}</div>{/if}
 			<div class="nt-actions">
