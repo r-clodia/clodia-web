@@ -51,6 +51,9 @@ export interface Agent {
 	/** Provider EFFETTIVO (primo compatibile collegato), o null se nessuno dei
 	 *  provider compatibili è collegato. Risolto dal backend. */
 	readonly provider?: string | null;
+	/** Livello SEAL del provider a cui l'agent è ATTUALMENTE attribuito (es. 'SEAL-2'),
+	 *  null se nessun provider attivo. */
+	readonly provider_seal?: string | null;
 	/** Provider compatibili dell'agent, in ordine di preferenza (lista esplicita
 	 *  nell'agent.yaml o default dell'SDK). La UI mostra il preferito quando
 	 *  l'effettivo è null. */

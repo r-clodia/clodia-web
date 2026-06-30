@@ -81,6 +81,9 @@
 			{#if providerLabel}
 				<div class="provider" class:off={disconnected} title="provider">
 					{providerLabel}{#if disconnected} · non collegato{/if}
+					{#if agent.provider_seal && !disconnected}
+						<span class="seal-chip" title="SEAL del provider effettivo">{agent.provider_seal}</span>
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -246,6 +249,16 @@
 	.provider.off {
 		color: #d6a85a;
 		opacity: 1;
+	}
+	.seal-chip {
+		display: inline-block;
+		margin-left: 5px;
+		padding: 0 5px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--accent) 18%, transparent);
+		color: var(--accent);
+		font-weight: 700;
+		letter-spacing: 0;
 	}
 
 	.desc {

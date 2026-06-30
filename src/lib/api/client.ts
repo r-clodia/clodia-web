@@ -1355,6 +1355,8 @@ export interface ProviderStatus {
 	seal?: string | null;
 	/** Dettaglio sovranità: SEAL + breakdown SOV-2/3/7 + dimensioni (DPA, residency…). */
 	sovereignty?: ProviderSovereignty | null;
+	/** In pausa: connesso ma escluso dalla selezione (gli agent ripiegano altrove). */
+	paused?: boolean;
 }
 
 export interface ProviderSovereignty {
@@ -1409,6 +1411,16 @@ export async function providerLoginComplete(
 /** DELETE `/api/providers/{id}` — disconnetti. */
 export async function disconnectProvider(id: string, opts: RequestOptions = {}): Promise<{ connected: boolean }> {
 	return apiDelete(`/api/providers/${encodeURIComponent(id)}`, opts);
+}
+
+/** POST `/api/providers/{id}/pause` — connesso ma escluso dalla selezione. */
+export async function pauseProvider(id: string, opts: RequestOptions = {}): Promise<{ paused: boolean }> {
+	return apiPost(`/api/providers/${encodeURIComponent(id)}/pause`, {}, opts);
+}
+
+/** POST `/api/providers/{id}/resume` — riattiva un provider in pausa. */
+export async function resumeProvider(id: string, opts: RequestOptions = {}): Promise<{ paused: boolean }> {
+	return apiPost(`/api/providers/${encodeURIComponent(id)}/resume`, {}, opts);
 }
 
 // ── Profilo dati personali (PII) per-agent — ACL self/admin/grant ───────────

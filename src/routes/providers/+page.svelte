@@ -6,6 +6,8 @@
 		setProviderKey,
 		providerLoginStart,
 		providerLoginComplete,
+		pauseProvider,
+		resumeProvider,
 		type ProviderSovereignty
 	} from '$lib/api/client';
 	import { toastSuccess } from '$lib/stores/toasts';
@@ -44,6 +46,7 @@
 		via?: Mechanism; // come è connesso
 		seal?: string | null; // livello SEAL effettivo
 		sovereignty?: ProviderSovereignty | null; // breakdown SOV + dimensioni + dpa_url
+		paused?: boolean; // connesso ma escluso dalla selezione
 	}
 
 	// Metadati di presentazione per id (engine + blurb + DPA). Lo stato (connesso,
@@ -103,6 +106,24 @@
 		return s ? s.replace('SEAL-', '') : '–';
 	}
 
+	// Pausa/riattiva un provider: connesso ma escluso dalla selezione (gli agent
+	// ripiegano sul prossimo attivo con SEAL più alto).
+	async function togglePause(p: Provider) {
+		try {
+			if (p.paused) {
+				await resumeProvider(p.id);
+				toastSuccess(`${p.name} riattivato`);
+			} else {
+				await pauseProvider(p.id);
+				toastSuccess(`${p.name} in pausa`, 'escluso dalla selezione');
+			}
+			await load();
+		} catch (err) {
+			// non bloccante: ricarica lo stato reale
+			await load();
+		}
+	}
+
 	let providers: Provider[] = ORDER.map(staticCard);
 	let loading = false;
 
@@ -124,7 +145,8 @@
 					connected: l.connected,
 					via: l.via ?? undefined,
 					seal: l.seal ?? l.sovereignty?.seal ?? null,
-					sovereignty: l.sovereignty ?? null
+					sovereignty: l.sovereignty ?? null,
+					paused: l.paused ?? false
 				};
 			});
 		} catch {
@@ -233,15 +255,15 @@
 
 <div class="grid">
 	{#each providers as p (p.id)}
-		<div class="card" class:on={p.connected}>
+		<div class="card" class:on={p.connected && !p.paused} class:paused={p.paused}>
 			<div class="card-head">
 				<span class="glyph" aria-hidden="true">{p.name.charAt(0)}</span>
 				<div class="title">
 					<div class="name">{p.name}</div>
 					<div class="engine">{p.engine}</div>
 				</div>
-				<span class="pill" class:pill-on={p.connected}>
-					{p.connected ? `Connesso · ${p.via === 'apikey' ? 'API key' : 'abbonamento'}` : 'Da connettere'}
+				<span class="pill" class:pill-on={p.connected && !p.paused} class:pill-paused={p.paused}>
+					{p.paused ? '⏸ In pausa' : p.connected ? `Connesso · ${p.via === 'apikey' ? 'API key' : 'abbonamento'}` : 'Da connettere'}
 				</span>
 			</div>
 
@@ -273,6 +295,7 @@
 
 			<div class="card-foot">
 				{#if p.connected}
+					<button type="button" class="btn ghost" on:click={() => togglePause(p)}>{p.paused ? '▶ Riattiva' : '⏸ Pausa'}</button>
 					<button type="button" class="btn ghost" on:click={() => openConnect(p)}>Riconnetti</button>
 				{:else}
 					<button type="button" class="btn primary" on:click={() => openConnect(p)}>Connetti</button>
@@ -347,6 +370,7 @@
 	.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 	.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 	.card.on { border-color: color-mix(in srgb, var(--success) 55%, var(--border)); }
+	.card.paused { opacity: 0.62; border-style: dashed; }
 	.card-head { display: flex; align-items: center; gap: 10px; }
 	.glyph { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: var(--accent); color: var(--accent-fg); font-weight: 800; font-size: 16px; flex: none; }
 	.title { min-width: 0; flex: 1 1 auto; }
@@ -354,6 +378,7 @@
 	.engine { color: var(--fg-muted); font-size: 11px; }
 	.pill { flex: none; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; border: 1px solid var(--border); color: var(--fg-muted); }
 	.pill-on { color: var(--success); border-color: color-mix(in srgb, var(--success) 55%, var(--border)); background: color-mix(in srgb, var(--success) 12%, transparent); }
+	.pill-paused { color: #e3b341; border-color: color-mix(in srgb, #e3b341 55%, var(--border)); background: color-mix(in srgb, #e3b341 12%, transparent); }
 	.blurb { margin: 0; color: var(--fg-muted); font-size: 12.5px; line-height: 1.45; }
 	.tags { display: flex; flex-wrap: wrap; gap: 6px; }
 	.tag { font-size: 11px; color: var(--fg-muted); background: color-mix(in srgb, var(--fg-muted) 10%, transparent); border-radius: 5px; padding: 2px 7px; }
