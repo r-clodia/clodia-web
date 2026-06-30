@@ -1351,6 +1351,26 @@ export interface ProviderStatus {
 	/** Capacità: 'oauth' se il provider supporta il login-abbonamento OAuth-paste,
 	 *  null se offre solo API key (l'abbonamento, se c'è, passa da altro canale). */
 	subscription?: 'oauth' | null;
+	/** Livello SEAL effettivo (EC Cloud Sovereignty Framework) — es. 'SEAL-2'. */
+	seal?: string | null;
+	/** Dettaglio sovranità: SEAL + breakdown SOV-2/3/7 + dimensioni (DPA, residency…). */
+	sovereignty?: ProviderSovereignty | null;
+}
+
+export interface ProviderSovereignty {
+	seal?: string;
+	/** { "SOV-2": "SEAL-2", "SOV-3": "SEAL-3", "SOV-7": "SEAL-3" } */
+	assessment?: Record<string, string>;
+	dimensions?: {
+		jurisdiction?: string;
+		dpa?: boolean;
+		dpa_url?: string;
+		no_training?: boolean | string;
+		data_residency?: string;
+		retention?: string;
+		cloud_act_exposed?: boolean;
+	};
+	note?: string;
 }
 
 /** GET `/api/providers` — stato dei provider (mai i valori). */

@@ -5,7 +5,8 @@
 		getProviders,
 		setProviderKey,
 		providerLoginStart,
-		providerLoginComplete
+		providerLoginComplete,
+		type ProviderSovereignty
 	} from '$lib/api/client';
 	import { toastSuccess } from '$lib/stores/toasts';
 
@@ -41,6 +42,8 @@
 		dpa: string; // etichetta DPA (commerciale | consumer)
 		connected: boolean;
 		via?: Mechanism; // come è connesso
+		seal?: string | null; // livello SEAL effettivo
+		sovereignty?: ProviderSovereignty | null; // breakdown SOV + dimensioni + dpa_url
 	}
 
 	// Metadati di presentazione per id (engine + blurb + DPA). Lo stato (connesso,
@@ -65,11 +68,16 @@
 			engine: 'Codex (codex exec)',
 			blurb: 'Abbonamento ChatGPT (codex login): costo fisso. DPA consumer — non adatto di default ai dati confidenziali.',
 			dpa: 'DPA consumer'
+		},
+		'aws-region-eu': {
+			engine: 'Claude via AWS Bedrock',
+			blurb: 'Claude via Amazon Bedrock, region EU (eu-west-1, Irlanda). DPA+SCC, no-training, no-retention, data residency EU: il miglior profilo tra i provider a controllo US.',
+			dpa: 'DPA commerciale · EU'
 		}
 	};
 
-	// Fallback statico (4 provider) se il backend non risponde: ordine API→abbonamento.
-	const ORDER = ['anthropic-api', 'claude-pro-max', 'openai-api', 'codex'];
+	// Fallback statico se il backend non risponde: bedrock EU (SEAL-2) prima, poi API→abbonamento.
+	const ORDER = ['aws-region-eu', 'anthropic-api', 'claude-pro-max', 'openai-api', 'codex'];
 	function staticCard(id: string): Provider {
 		const m = META[id];
 		return {
@@ -77,7 +85,7 @@
 			name: prettyName(id),
 			engine: m?.engine ?? '',
 			blurb: m?.blurb ?? '',
-			mechanism: id.endsWith('-api') || id === 'openai-api' ? 'apikey' : 'subscription',
+			mechanism: id.endsWith('-api') || id === 'aws-region-eu' ? 'apikey' : 'subscription',
 			dpa: m?.dpa ?? '',
 			connected: false
 		};
@@ -85,8 +93,14 @@
 	function prettyName(id: string): string {
 		return (
 			{ 'anthropic-api': 'Anthropic API', 'claude-pro-max': 'Claude Pro/Max',
-			  'openai-api': 'OpenAI API', codex: 'Codex / ChatGPT' }[id] ?? id
+			  'openai-api': 'OpenAI API', codex: 'Codex / ChatGPT',
+			  'aws-region-eu': 'AWS Bedrock (EU)' }[id] ?? id
 		);
+	}
+
+	// "SEAL-2" → "2" per il breakdown compatto; "–" se assente.
+	function sealN(s?: string | null): string {
+		return s ? s.replace('SEAL-', '') : '–';
 	}
 
 	let providers: Provider[] = ORDER.map(staticCard);
@@ -108,7 +122,9 @@
 					mechanism: (l.mechanism ?? (l.subscription === 'oauth' ? 'subscription' : 'apikey')) as Mechanism,
 					dpa: m?.dpa ?? '',
 					connected: l.connected,
-					via: l.via ?? undefined
+					via: l.via ?? undefined,
+					seal: l.seal ?? l.sovereignty?.seal ?? null,
+					sovereignty: l.sovereignty ?? null
 				};
 			});
 		} catch {
@@ -235,6 +251,26 @@
 				<span class="tag" class:tag-dpa={p.dpa.includes('commerciale')}>{p.dpa}</span>
 			</div>
 
+			{#if p.seal || p.sovereignty}
+				{@const a = p.sovereignty?.assessment ?? {}}
+				{@const dim = p.sovereignty?.dimensions ?? {}}
+				<div class="sov">
+					<div class="sov-top">
+						<span class="seal seal-{sealN(p.seal)}" title="SEAL effettivo = min(SOV-2, SOV-3, SOV-7)">{p.seal ?? 'n/d'}</span>
+						<span class="sov-break">SOV-2 {sealN(a['SOV-2'])} · SOV-3 {sealN(a['SOV-3'])} · SOV-7 {sealN(a['SOV-7'])}</span>
+					</div>
+					<div class="sov-dims">
+						{#if dim.data_residency}<span class="dim" title="data residency">📍 {String(dim.data_residency).toUpperCase()}</span>{/if}
+						{#if dim.no_training}<span class="dim">no-training</span>{/if}
+						{#if dim.retention}<span class="dim">retention: {dim.retention}</span>{/if}
+						{#if dim.cloud_act_exposed}<span class="dim warn" title="esposizione CLOUD Act (provider sotto controllo US)">CLOUD Act</span>{/if}
+						{#if dim.dpa_url}
+							<a class="dim link" href={dim.dpa_url} target="_blank" rel="noopener">DPA ↗</a>
+						{/if}
+					</div>
+				</div>
+			{/if}
+
 			<div class="card-foot">
 				{#if p.connected}
 					<button type="button" class="btn ghost" on:click={() => openConnect(p)}>Riconnetti</button>
@@ -322,6 +358,20 @@
 	.tags { display: flex; flex-wrap: wrap; gap: 6px; }
 	.tag { font-size: 11px; color: var(--fg-muted); background: color-mix(in srgb, var(--fg-muted) 10%, transparent); border-radius: 5px; padding: 2px 7px; }
 	.tag-dpa { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+	/* Blocco sovranità: SEAL + breakdown SOV + dimensioni (DPA link, residency…) */
+	.sov { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 2px; border-top: 1px dashed var(--border); }
+	.sov-top { display: flex; align-items: center; gap: 8px; }
+	.seal { font-size: 11px; font-weight: 800; letter-spacing: .02em; padding: 2px 8px; border-radius: 999px;
+		color: #1a1208; background: var(--fg-muted); }
+	.seal-0, .seal-1 { background: #e0795a; }      /* US/consumer: arancio */
+	.seal-2 { background: #e3b341; }                /* migliore tra US-controlled: ambra */
+	.seal-3, .seal-4 { background: #4caf6a; color: #07140c; } /* sovrano EU: verde */
+	.sov-break { font-size: 11px; color: var(--fg-muted); font-family: var(--mono, monospace); }
+	.sov-dims { display: flex; flex-wrap: wrap; gap: 5px; }
+	.dim { font-size: 10.5px; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; }
+	.dim.warn { color: #e0795a; border-color: color-mix(in srgb, #e0795a 40%, transparent); }
+	.dim.link { color: var(--accent); text-decoration: none; }
+	.dim.link:hover { text-decoration: underline; }
 	.card-foot { display: flex; justify-content: flex-end; margin-top: auto; padding-top: 4px; }
 	.btn { flex: none; padding: 8px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 700; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--fg); transition: background .12s, color .12s, border-color .12s; }
 	.btn:disabled { opacity: .55; cursor: not-allowed; }
