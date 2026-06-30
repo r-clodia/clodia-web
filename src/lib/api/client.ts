@@ -574,6 +574,19 @@ export async function resetChannelContext(
 ): Promise<{ reset: boolean; sessions_deleted?: string[] }> {
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/reset-context`, {}, opts);
 }
+export interface AgentEligibility {
+	name: string;
+	type: string;
+	eligible: boolean;
+	warn: boolean;
+}
+export async function getChannelEligibility(
+	tier: string,
+	name: string,
+	opts: RequestOptions = {}
+): Promise<{ tier: string; agents: AgentEligibility[] }> {
+	return apiGet(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/eligibility`, opts);
+}
 export async function setChannelParticipant(tier: string, name: string, agent: string, add: boolean): Promise<{ participants: string[] }> {
 	const res = await fetch(
 		joinUrl(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/participants`),

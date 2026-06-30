@@ -13,6 +13,7 @@
 		postChannelMessage,
 		resetChannelContext,
 		setChannelParticipant,
+		getChannelEligibility,
 		getChannelFiles,
 		uploadChannelFile,
 		channelFileUrl,
@@ -49,6 +50,20 @@
 		void loadFiles();
 	}
 	let loadErr = '';
+	// Idoneità degli AeI al tier del topic: name → {eligible, warn}. I non idonei
+	// (clearance/provider sotto il tier) spariscono dalla lista partecipanti e dal
+	// dropdown invito; i super sotto tier restano ma con ⚠️.
+	let eligibility: Record<string, { eligible: boolean; warn: boolean }> = {};
+	async function loadEligibility(t: string, n: string) {
+		try {
+			const r = await getChannelEligibility(t, n);
+			const m: Record<string, { eligible: boolean; warn: boolean }> = {};
+			for (const a of r.agents) m[a.name] = { eligible: a.eligible, warn: a.warn };
+			eligibility = m;
+		} catch {
+			/* ignore: in assenza di dati non filtriamo nulla */
+		}
+	}
 	let tierWarning: TierWarning | null = null;
 	let draft = '';
 	let sending = false;
@@ -195,6 +210,9 @@
 	$: me = $session?.principal ?? null;
 	$: isOwner = !!me && info?.meta?.owner === me;
 	$: participants = info?.meta?.participants ?? [];
+	// Partecipanti mostrati: nascondi i non idonei al tier (eligible=false). I super
+	// sotto tier restano (eligible=true) e li marchiamo con ⚠️ via eligibility[p].warn.
+	$: shownParticipants = participants.filter((p) => eligibility[p]?.eligible ?? true);
 
 	// --- @mention autocomplete -----------------------------------------------
 	// Estraggo il token @parziale in coda al testo (fino al cursore) e propongo
@@ -242,6 +260,7 @@
 			]);
 			await tick();
 			scrollDown();
+			void loadEligibility(t, n);
 		} catch (e) {
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		}
@@ -252,6 +271,7 @@
 	async function refreshInfo() {
 		try {
 			info = await getChannel(tier, name);
+			void loadEligibility(tier, name); // i provider possono cambiare stato
 		} catch {
 			/* ignore */
 		}
@@ -347,13 +367,16 @@
 
 	// Autocomplete invito: solo agent/utenti registrati (no partecipanti inesistenti).
 	let allAgents: string[] = [];
+	// Non proporre agent il cui tier è insufficiente per il topic (eligible=false).
+	// Gli agent senza record di idoneità (es. umani) restano proponibili.
 	$: inviteMatches = newParticipant.trim()
 		? allAgents
 				.filter(
 					(a) =>
 						a.toLowerCase().includes(newParticipant.trim().toLowerCase()) &&
 						a !== info?.meta?.owner &&
-						!participants.includes(a)
+						!participants.includes(a) &&
+						(eligibility[a]?.eligible ?? true)
 				)
 				.slice(0, 8)
 		: [];
@@ -640,11 +663,14 @@
 			<section>
 				<h3>Partecipanti</h3>
 				<ul class="parts">
-					{#each participants as p}
+					{#each shownParticipants as p}
 						<li>
 							<span class="part-id">
 								<AgentAvatar name={p} size={22} />
 								<span class="part-name">{p}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
+								{#if eligibility[p]?.warn}
+									<span class="part-warn" title="Provider sotto il tier del topic: attiva un provider con SEAL ≥ tier">⚠️</span>
+								{/if}
 							</span>
 							{#if isOwner && p !== info?.meta?.owner}
 								<button class="x" type="button" on:click={() => removeParticipant(p)} aria-label="Rimuovi">×</button>
@@ -821,6 +847,7 @@
 	.parts li { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12.5px; }
 	.part-id { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 	.part-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.part-warn { flex-shrink: 0; font-size: 12px; cursor: help; margin-left: 2px; }
 	.parts em { color: var(--fg-muted); font-style: normal; font-size: 11px; }
 	.x { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 15px; }
 	.addp { display: flex; gap: 6px; margin-top: 8px; }
