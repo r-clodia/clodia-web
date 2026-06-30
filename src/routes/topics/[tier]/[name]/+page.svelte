@@ -20,6 +20,7 @@
 		type ChannelMessage,
 		type ChannelFile
 	} from '$lib/api/client';
+	import type { TierWarning } from '$lib/api/types';
 
 	$: params = $page.params as Record<string, string>;
 	$: tier = params.tier ?? '';
@@ -48,6 +49,7 @@
 		void loadFiles();
 	}
 	let loadErr = '';
+	let tierWarning: TierWarning | null = null;
 	let draft = '';
 	let sending = false;
 	let resetting = false;
@@ -310,7 +312,8 @@
 		await tick();
 		scrollDown();
 		try {
-			await postChannelMessage(tier, name, text);
+			const res = await postChannelMessage(tier, name, text);
+			tierWarning = res?.warning ?? null;
 			await refreshMessages();
 			await tick();
 			scrollDown();
@@ -482,6 +485,30 @@
 	</header>
 
 	{#if loadErr}<div class="err">{loadErr}</div>{/if}
+
+	{#if tierWarning}
+		<div class="tier-warn-overlay" role="dialog" aria-modal="true">
+			<div class="tier-warn">
+				<div class="tw-head">
+					<span class="tw-icon">⚠️</span>
+					<strong>Provider sotto il tier del topic</strong>
+				</div>
+				<p class="tw-msg">{tierWarning.message}</p>
+				<ul class="tw-sugg">
+					{#each tierWarning.suggestions as s}<li>{s}</li>{/each}
+				</ul>
+				<div class="tw-meta">
+					tier <code>{tierWarning.tier}</code> · provider
+					<code>{tierWarning.provider ?? 'n/d'}</code>
+					({tierWarning.provider_seal ?? 'SEAL n/d'})
+				</div>
+				<div class="tw-actions">
+					<a class="tw-btn" href="/providers">Vai ai Provider</a>
+					<button class="tw-btn ghost" on:click={() => (tierWarning = null)}>Ho capito</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 
 	<div class="body">
 		<main class="stream-wrap">
@@ -688,6 +715,18 @@
 	.reset-context:disabled { opacity: .5; cursor: default; }
 	.tldr { margin: 4px 0 0; color: var(--fg-muted); font-size: 12.5px; }
 	.err { color: var(--danger); font-size: 12px; margin: 8px 0; }
+	.tier-warn-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); padding: 16px; }
+	.tier-warn { background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid var(--warn, #e0a800); border-radius: 12px; max-width: 460px; width: 100%; padding: 18px 20px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+	.tw-head { display: flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 8px; }
+	.tw-icon { font-size: 18px; }
+	.tw-msg { font-size: 13px; color: var(--fg); margin: 0 0 10px; line-height: 1.45; }
+	.tw-sugg { margin: 0 0 10px; padding-left: 18px; font-size: 13px; color: var(--fg-muted); line-height: 1.5; }
+	.tw-meta { font-size: 12px; color: var(--fg-muted); margin-bottom: 14px; }
+	.tw-meta code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+	.tw-actions { display: flex; gap: 8px; justify-content: flex-end; }
+	.tw-btn { font-size: 13px; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; text-decoration: none; }
+	.tw-btn.ghost { background: transparent; color: var(--fg-muted); border-color: var(--border); }
+	.tw-btn:hover { filter: brightness(1.08); }
 	.body { display: flex; gap: 16px; flex: 1 1 auto; min-height: 0; margin-top: 12px; }
 	.stream-wrap { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
 	.stream { flex: 1 1 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px; }

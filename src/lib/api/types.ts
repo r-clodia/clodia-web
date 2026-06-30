@@ -7,6 +7,18 @@
  * fields tolerate future-proofing on the server side.
  */
 
+/** Avviso emesso quando un super-agent risponde in un topic il cui tier supera
+ *  il SEAL del provider in uso (eccezione consentita solo ai super, con popup). */
+export interface TierWarning {
+	readonly kind: 'provider_below_tier';
+	readonly tier: string;
+	readonly responder: string;
+	readonly provider: string | null;
+	readonly provider_seal: string | null;
+	readonly message: string;
+	readonly suggestions: readonly string[];
+}
+
 export interface AgentSandbox {
 	readonly allow_read?: ReadonlyArray<string>;
 	readonly deny_read?: ReadonlyArray<string>;
