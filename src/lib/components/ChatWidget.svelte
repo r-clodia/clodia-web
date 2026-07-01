@@ -16,7 +16,7 @@
 	export let name = 'helpdesk';
 	export let title = 'Assistenza';
 	export let initialMessage = '';
-	export let launcherLabel = '💬 Aiuto — parla con Wainston';
+	export let launcherLabel = 'help - parla con wainston';
 
 	let open = false;
 	let started = false;
@@ -146,18 +146,51 @@
 	</div>
 {/if}
 
-<button class="cw-launcher" class:open on:click={toggle}>
-	{open ? '× Chiudi' : launcherLabel}
+<button
+	class="cw-launcher"
+	class:open
+	on:click={toggle}
+	aria-label={open ? 'Chiudi help Wainston' : launcherLabel}
+	aria-expanded={open}
+>
+	<span class="cw-launcher-icon" aria-hidden="true">{open ? '×' : '💬'}</span>
+	<span class="cw-launcher-text">{open ? 'Chiudi' : launcherLabel}</span>
 </button>
 
 <style>
 	.cw-launcher {
 		position: fixed; right: 20px; bottom: 20px; z-index: 60;
 		background: var(--accent); color: #1a1208; border: none; border-radius: 999px;
-		padding: 11px 18px; font-weight: 700; font-size: 13px; cursor: pointer;
+		display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+		width: 44px; height: 44px; padding: 0 13px; overflow: hidden; white-space: nowrap;
+		font-weight: 700; font-size: 13px; cursor: pointer;
 		box-shadow: 0 8px 24px rgba(0,0,0,.35);
+		transition: width .16s ease, background .12s ease, color .12s ease;
 	}
-	.cw-launcher.open { background: var(--card-bg); color: var(--fg); border: 1px solid var(--border); }
+	.cw-launcher:hover,
+	.cw-launcher:focus-visible {
+		width: 198px;
+	}
+	.cw-launcher.open {
+		width: 96px;
+		background: var(--card-bg);
+		color: var(--fg);
+		border: 1px solid var(--border);
+	}
+	.cw-launcher-icon { flex: 0 0 auto; font-size: 18px; line-height: 1; }
+	.cw-launcher-text {
+		flex: 0 0 auto;
+		opacity: 0;
+		max-width: 0;
+		overflow: hidden;
+		transition: opacity .12s ease, max-width .16s ease;
+	}
+	.cw-launcher:hover .cw-launcher-text,
+	.cw-launcher:focus-visible .cw-launcher-text,
+	.cw-launcher.open .cw-launcher-text {
+		opacity: 1;
+		max-width: 160px;
+	}
 	.cw-panel {
 		position: fixed; right: 20px; bottom: 74px; z-index: 60;
 		width: min(380px, calc(100vw - 40px)); height: min(540px, calc(100vh - 120px));
