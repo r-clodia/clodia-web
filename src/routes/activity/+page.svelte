@@ -71,6 +71,9 @@
 		const [, tier, name] = match;
 		return `/topics/${encodeURIComponent(tier.toUpperCase())}/${encodeURIComponent(name)}`;
 	}
+	function spawnLabel(s: RuntimeSession): string {
+		return s.spawn_id || s.agent;
+	}
 
 	$: running = sessions.filter((s) => s.state === 'running').length;
 	$: blocked = sessions.filter((s) => s.state === 'blocked').length;
@@ -108,7 +111,7 @@
 				<table class="tbl">
 					<thead>
 						<tr>
-							<th>Agente</th><th>Contesto</th><th>Stato</th>
+							<th>Spawn</th><th>Contesto</th><th>Stato</th>
 							<th class="num">Token in</th><th class="num">Token out</th><th class="num">Run</th>
 							<th>Ultima attività</th><th>Runtime</th>
 						</tr>
@@ -116,7 +119,7 @@
 					<tbody>
 						{#each sessions as s (s.chat_id)}
 							<tr>
-								<td class="ag"><AgentAvatar name={s.agent} size={22} /><span>{s.agent}</span></td>
+								<td class="ag"><AgentAvatar name={s.agent} size={22} /><span>{spawnLabel(s)}</span></td>
 								<td>
 									{#if s.topic}
 										{@const href = topicHref(s)}
