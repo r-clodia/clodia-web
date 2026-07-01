@@ -165,6 +165,48 @@ export function logout(): void {
 	_store.set(null);
 }
 
+/** Secondi prima della scadenza entro cui ri-firmare proattivamente il token,
+ *  così non scade mai a sessione aperta (evita richieste anonime silenziose). */
+const REFRESH_SKEW = 30 * 60; // 30 min
+
+/**
+ * Mantiene fresco il session token. Da chiamare periodicamente e quando la
+ * scheda torna in foreground:
+ * - token valido e non in scadenza → no-op;
+ * - token scaduto o in scadenza (< REFRESH_SKEW) → ri-firma da "Ricordami"
+ *   (masterkey salvata), aggiornando localStorage + store;
+ * - token scaduto e nessun "Ricordami" (o ri-firma fallita) → logout pulito
+ *   (→ schermata di login), invece di restare "loggati" mandando API anonime.
+ *
+ * Risolve il bug per cui, alla scadenza dei 12h a sessione aperta, lo store in
+ * memoria restava valorizzato ma `authToken()` tornava null → viste per-utente
+ * vuote senza avviso.
+ */
+export async function ensureFreshSession(): Promise<void> {
+	if (typeof localStorage === 'undefined') return;
+	const s = load(); // null se scaduto/assente (load() rimuove gli scaduti)
+	const now = Math.floor(Date.now() / 1000);
+	const expiringSoon = !!s && !!s.exp && s.exp - now < REFRESH_SKEW;
+	if (s && !expiringSoon) return; // ancora valido e lontano dalla scadenza
+
+	let r: { principal?: string; mk?: string } | null = null;
+	try { r = JSON.parse(localStorage.getItem(LS_REMEMBER) || 'null'); } catch { r = null; }
+	if (r?.mk && r?.principal) {
+		try {
+			const { token, exp } = await signToken(r.principal, r.mk);
+			const ns: Session = { principal: r.principal, token, exp };
+			localStorage.setItem(LS_KEY, JSON.stringify(ns));
+			_store.set(ns);
+			return;
+		} catch {
+			/* ri-firma fallita → gestita sotto */
+		}
+	}
+	// Nessun "Ricordami" o ri-firma fallita: se il token è ormai scaduto, esci
+	// pulito così l'app mostra il login invece di mandare richieste anonime.
+	if (!s) logout();
+}
+
 /** Token corrente per l'header Authorization, o null se non loggato/scaduto. */
 export function authToken(): string | null {
 	return load()?.token ?? null;

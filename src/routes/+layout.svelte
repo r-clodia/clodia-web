@@ -30,12 +30,18 @@
 	} from '$lib/stores/events-stream';
 	import { bumpJobs } from '$lib/stores/jobs';
 	import { AUTH_DISABLED } from '$lib/stores/auth';
-	import { session, validateSession, restoreSession } from '$lib/auth/session';
+	import { session, validateSession, restoreSession, ensureFreshSession } from '$lib/auth/session';
 	import { initPrefs } from '$lib/stores/prefs';
 	import { getAdminState } from '$lib/api/client';
 
 	let releaseStream: (() => void) | null = null;
 	let offHandler: (() => void) | null = null;
+	// Keep-alive del session token: ri-firma proattiva prima della scadenza (12h)
+	// così non scade mai a scheda aperta (niente più richieste anonime → viste vuote).
+	let sessionTimer: ReturnType<typeof setInterval> | null = null;
+	function onVisible() {
+		if (!AUTH_DISABLED && document.visibilityState === 'visible') void ensureFreshSession();
+	}
 
 	// Bootstrap gate (Admin Auth F1): l'istanza è stata reclamata da un admin?
 	// Sta SOPRA l'auth gate: su istanza non reclamata si mostra solo EnrollGate.
@@ -60,6 +66,10 @@
 		if (!AUTH_DISABLED) {
 			await restoreSession();
 			await validateSession();
+			// controllo periodico (ogni 5 min) + al ritorno in foreground: ri-firma
+			// il token prima che scada, o logout pulito se non ri-firmabile.
+			sessionTimer = setInterval(() => void ensureFreshSession(), 5 * 60 * 1000);
+			if (browser) document.addEventListener('visibilitychange', onVisible);
 		}
 	});
 
@@ -91,6 +101,8 @@
 
 	onDestroy(() => {
 		stopStream();
+		if (sessionTimer) clearInterval(sessionTimer);
+		if (browser) document.removeEventListener('visibilitychange', onVisible);
 	});
 </script>
 
