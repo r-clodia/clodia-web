@@ -65,6 +65,7 @@
 		void loadFiles();
 	}
 	let loadErr = '';
+	let initialLoading = true;
 	// Idoneità degli AeI al tier del topic: name → {eligible, warn}. I non idonei
 	// (clearance/provider sotto il tier) spariscono dalla lista partecipanti e dal
 	// dropdown invito; i super sotto tier restano ma con ⚠️.
@@ -279,6 +280,10 @@
 
 	async function loadAll(t: string, n: string) {
 		loadErr = '';
+		initialLoading = true;
+		info = null;
+		messages = [];
+		files = [];
 		typing = []; // reset indicatore al cambio canale
 		filePath = ''; // riparti dalla radice dei file
 		try {
@@ -292,6 +297,8 @@
 			void loadEligibility(t, n);
 		} catch (e) {
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			initialLoading = false;
 		}
 	}
 
@@ -592,6 +599,15 @@
 		</div>
 	{/if}
 
+	{#if initialLoading}
+		<div class="initial-loading" role="status" aria-live="polite" aria-busy="true">
+			<span class="initial-spinner" aria-hidden="true"></span>
+			<div>
+				<strong>Caricamento topic…</strong>
+				<span>Recupero messaggi della chat e lista file.</span>
+			</div>
+		</div>
+	{:else}
 	<div class="body">
 		<main class="stream-wrap">
 			<div class="stream" bind:this={stream}>
@@ -794,6 +810,7 @@
 			</section>
 		</aside>
 	</div>
+	{/if}
 </div>
 
 <style>
@@ -820,6 +837,11 @@
 	.tw-btn { font-size: 13px; padding: 7px 14px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; text-decoration: none; }
 	.tw-btn.ghost { background: transparent; color: var(--fg-muted); border-color: var(--border); }
 	.tw-btn:hover { filter: brightness(1.08); }
+	.initial-loading { flex: 1 1 auto; min-height: 280px; display: flex; align-items: center; justify-content: center; gap: 14px; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 12px; background: var(--card-bg); margin-top: 12px; }
+	.initial-loading strong { display: block; color: var(--fg); font-size: 14px; margin-bottom: 3px; }
+	.initial-loading div span { display: block; font-size: 12px; }
+	.initial-spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .75s linear infinite; flex: none; }
+	@keyframes spin { to { transform: rotate(360deg); } }
 	.body { display: flex; gap: 16px; flex: 1 1 auto; min-height: 0; margin-top: 12px; }
 	.stream-wrap { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
 	.stream { flex: 1 1 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px; }
