@@ -170,12 +170,26 @@
 		agent !== initialSnapshot.agent ||
 		enabled !== initialSnapshot.enabled;
 
+	// Un agent può eseguire un job solo se ha strumenti con cui agire: super
+	// (tool "*") oppure normal con almeno un tool/capability. Sono esclusi i
+	// responder confinati senza tool (es. agent Telegram "privacy shield") e gli
+	// human: un job assegnato a loro morirebbe silenziosamente (nessuno strumento
+	// per leggere posta / inviare email / notificare).
+	function canRunJob(a: Agent): boolean {
+		if (a.type === 'super') return true;
+		if (a.type === 'human') return false;
+		return (a.tool_permissions?.length ?? 0) > 0 || (a.capabilities?.length ?? 0) > 0;
+	}
+	$: eligibleAgents = agents.filter(canRunJob);
+
 	// Opzioni del selettore: oggetti {name, connected}. Mostra l'agent corrente
-	// anche se non è nella lista del registry (es. job storico, registry non caricato).
+	// anche se non è eleggibile/non è nella lista (es. job storico su un agent
+	// poi diventato non idoneo, o registry non caricato) — così la modifica non
+	// perde l'assegnazione esistente.
 	$: agentOptions = (
-		agents.some((a) => a.name === agent)
-			? agents
-			: [{ name: agent, provider_connected: true } as Agent, ...agents]
+		eligibleAgents.some((a) => a.name === agent)
+			? eligibleAgents
+			: [{ name: agent, provider_connected: true } as Agent, ...eligibleAgents]
 	).map((a) => ({ name: a.name, connected: a.provider_connected !== false }));
 
 	function buildPatchDiff(): JobUpdate {
