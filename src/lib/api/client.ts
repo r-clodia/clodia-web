@@ -537,6 +537,11 @@ export interface ChannelFile {
 	kind?: string;
 	size?: number | null;
 	mtime_iso?: string | null;
+	/** Google Doc nativo: proxy/link al documento remoto su Drive (non scaricabile
+	 *  come binario: si legge/edita direttamente su Drive). `url` = webViewLink. */
+	remote?: boolean;
+	url?: string;
+	mime?: string | null;
 }
 
 export async function createChannel(

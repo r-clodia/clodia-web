@@ -780,6 +780,8 @@
 						<li>
 							{#if f.kind === 'dir'}
 								<button type="button" class="dir" on:click={() => openDir(f)} disabled={filesLoading}>📂 {f.name}</button>
+							{:else if f.remote}
+								<a href={f.url} target="_blank" rel="noopener" class="remote" title="Documento Google — apri e modifica su Drive">📄 {f.name}</a>
 							{:else}
 								<a href={channelFileUrl(tier, name, f.path)} target="_blank" rel="noopener">📎 {f.name}</a>
 							{/if}
