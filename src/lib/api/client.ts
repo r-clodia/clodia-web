@@ -574,6 +574,14 @@ export async function resetChannelContext(
 ): Promise<{ reset: boolean; sessions_deleted?: string[] }> {
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/reset-context`, {}, opts);
 }
+/** Interrompe il turno in corso del responder del canale (bottone Stop). */
+export async function interruptChannel(
+	tier: string,
+	name: string,
+	opts: RequestOptions = {}
+): Promise<{ interrupted: string[] }> {
+	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/interrupt`, {}, opts);
+}
 export interface AgentEligibility {
 	name: string;
 	type: string;

@@ -12,6 +12,7 @@
 		getChannelMessages,
 		postChannelMessage,
 		resetChannelContext,
+		interruptChannel,
 		setChannelParticipant,
 		getChannelEligibility,
 		getChannelFiles,
@@ -67,6 +68,7 @@
 	let tierWarning: TierWarning | null = null;
 	let draft = '';
 	let sending = false;
+	let stopping = false;
 	let resetting = false;
 	let newParticipant = '';
 	let stream: HTMLElement;
@@ -309,6 +311,7 @@
 		const body = draft.trim();
 		if (!body || sending) return;
 		sending = true;
+		stopping = false;
 		resetLive(); // nuovo turno: pulisci il live del turno precedente
 		// Se sto rispondendo a un messaggio, antepongo la citazione (riga `> …`)
 		// così resta nel messaggio inviato e viene mostrata in corsivo.
@@ -338,11 +341,28 @@
 			await tick();
 			scrollDown();
 		} catch (e) {
-			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-			draft = text; // ripristina il testo se l'invio fallisce
+			// Se l'utente ha premuto Stop, la POST fallisce (turno cancellato): non è
+			// un errore da mostrare, e non ripristino il testo.
+			if (!stopping) {
+				loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+				draft = text; // ripristina il testo se l'invio fallisce
+			}
 		} finally {
 			sending = false;
+			stopping = false;
 		}
+	}
+
+	async function stopTurn() {
+		if (!sending) return;
+		stopping = true;
+		try {
+			await interruptChannel(tier, name);
+		} catch {
+			/* ignora: l'importante è riprendere il controllo dell'input */
+		}
+		sending = false; // input di nuovo disponibile subito
+		await refreshMessages();
 	}
 
 	async function resetContext() {
@@ -653,9 +673,15 @@
 						}
 						if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send();
 					}}></textarea>
-				<button type="button" on:click={send} disabled={sending || !draft.trim()}>
-					{sending ? '…' : 'Invia'}
-				</button>
+				{#if sending}
+					<button type="button" class="stop-btn" on:click={stopTurn} title="Interrompi la risposta e riprendi il controllo">
+						■ Stop
+					</button>
+				{:else}
+					<button type="button" on:click={send} disabled={!draft.trim()}>
+						Invia
+					</button>
+				{/if}
 			</div>
 		</main>
 
@@ -830,6 +856,8 @@
 	.composer textarea { flex: 1 1 auto; background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 8px; resize: none; }
 	.composer button { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font-weight: 700; padding: 0 16px; border-radius: 8px; cursor: pointer; }
 	.composer button:disabled { opacity: .5; cursor: not-allowed; }
+	.composer button.stop-btn { background: var(--danger); border-color: var(--danger); color: #fff; }
+	.composer button.stop-btn:hover { filter: brightness(1.08); }
 	.clip { background: transparent !important; border: 1px solid var(--border) !important; color: var(--fg) !important; font-size: 16px; padding: 0 12px !important; height: 38px; }
 	.mention-pop { position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 20; list-style: none; margin: 0; padding: 4px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.35); min-width: 180px; max-height: 220px; overflow-y: auto; }
 	.mention-item { display: flex; align-items: center; gap: 7px; width: 100%; background: transparent; border: none; color: var(--fg); font: inherit; font-size: 12.5px; padding: 5px 8px; border-radius: 6px; cursor: pointer; text-align: left; }
