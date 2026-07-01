@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, type ProfileFile, type Connector, type AgentProfile } from '$lib/api/client';
+	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, type ProfileFile, type Connector, type AgentProfile } from '$lib/api/client';
 	import { session } from '$lib/auth/session';
 	import Modal from '$lib/components/Modal.svelte';
 	import type {
@@ -146,8 +146,27 @@
 				prompt: pfpPrompt.trim() || undefined,
 				imageB64: pfpDataUrl || undefined
 			});
-			toastSuccess('Avatar generato', 'stile manga/ghibli via gpt-image-2');
-			location.reload(); // mostra la nuova pfp (bust cache)
+			// Generazione asincrona (10-30s): faccio polling dello stato invece di
+			// bloccare. La UI resta reattiva col suo indicatore "in corso".
+			toastSuccess('Generazione avviata', 'stile manga/ghibli via gpt-image-2 (~20s)');
+			for (let i = 0; i < 60; i++) {
+				await new Promise((r) => setTimeout(r, 2000));
+				let st;
+				try {
+					st = await getAgentPfpStatus(name);
+				} catch {
+					continue; // errore di rete transitorio: riprova
+				}
+				if (st.state === 'done') {
+					toastSuccess('Avatar generato', 'stile manga/ghibli');
+					location.reload(); // mostra la nuova pfp (bust cache)
+					return;
+				}
+				if (st.state === 'error') {
+					throw new Error(st.error || 'generazione fallita');
+				}
+			}
+			throw new Error('timeout: la generazione sta impiegando troppo');
 		} catch (err) {
 			pfpBusy = false;
 			pfpError = err instanceof ApiError || err instanceof Error ? err.message : String(err);

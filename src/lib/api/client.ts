@@ -980,11 +980,18 @@ export async function generateAgentPfp(
 	name: string,
 	body: { prompt?: string; imageB64?: string },
 	opts: RequestOptions = {}
-): Promise<{ ok: boolean; name: string; bytes: number }> {
+): Promise<{ status: string; name: string }> {
 	return apiPost(`/api/agents/${encodeURIComponent(name)}/pfp/generate`, {
 		prompt: body.prompt,
 		image_b64: body.imageB64
 	}, opts);
+}
+/** Stato della generazione PFP (async): idle | generating | done | error. */
+export async function getAgentPfpStatus(
+	name: string,
+	opts: RequestOptions = {}
+): Promise<{ name: string; state: string; error?: string; bytes?: number }> {
+	return apiGet(`/api/agents/${encodeURIComponent(name)}/pfp/status`, opts);
 }
 
 // ---------------------------------------------------------------------------
