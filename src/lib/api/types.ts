@@ -177,6 +177,9 @@ export interface AgentActivityResponse {
 export interface AgentSummaryRow {
 	readonly agent: string;
 	readonly today_runs: number;
+	readonly runs: number;
+	readonly tokens_in: number;
+	readonly tokens_out: number;
 	readonly status: 'idle' | 'running' | string;
 	readonly last_run_ts?: string | null;
 	readonly last_event_ts?: string | null;
