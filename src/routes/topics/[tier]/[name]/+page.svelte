@@ -111,9 +111,8 @@
 	// chat_id = `chan:{tier}:{name}:{agent}`. Li accumuliamo in un pannello
 	// "Ragionamento" comprimibile (di default chiuso): sui task lunghi mostra
 	// che l'agente sta effettivamente lavorando, invece di sembrare bloccato.
-	let liveThink = '';
-	let liveReply = '';
-	let liveTools: string[] = [];
+	type LiveAgentState = { think: string; reply: string; tools: string[] };
+	let liveAgents: Record<string, LiveAgentState> = {};
 	// Box "Ragionamento": default CHIUSO, ma l'header resta SEMPRE visibile mentre
 	// l'agente lavora (turno attivo) → l'utente sa che c'è e può espanderlo.
 	let thinkOpen = false;
@@ -122,12 +121,26 @@
 	}
 	const chatBelongs = (cid: unknown) =>
 		typeof cid === 'string' && cid.startsWith(`chan:${tier}:${name}:`);
-	function resetLive() {
-		liveThink = '';
-		liveReply = '';
-		liveTools = [];
+	function agentFromChatId(cid: unknown): string | null {
+		return chatBelongs(cid) ? String(cid).split(':').at(-1) ?? null : null;
 	}
-	$: hasLive = !!(liveThink || liveReply || liveTools.length);
+	function liveFor(agent: string): LiveAgentState {
+		return liveAgents[agent] ?? { think: '', reply: '', tools: [] };
+	}
+	function updateLive(agent: string, patch: Partial<LiveAgentState>) {
+		liveAgents = { ...liveAgents, [agent]: { ...liveFor(agent), ...patch } };
+	}
+	function resetLive(agent?: string) {
+		if (!agent) {
+			liveAgents = {};
+			return;
+		}
+		const next = { ...liveAgents };
+		delete next[agent];
+		liveAgents = next;
+	}
+	$: liveEntries = Object.entries(liveAgents).filter(([, l]) => l.think || l.reply || l.tools.length);
+	$: hasLive = liveEntries.length > 0;
 	function visibleMessages(items: ChannelMessage[]): ChannelMessage[] {
 		const resetIdx = items.findLastIndex((m) => m.kind === 'system' && m.text === '__CLODIA_CONTEXT_RESET__');
 		return resetIdx >= 0 ? items.slice(resetIdx + 1) : items.filter((m) => m.kind !== 'system');
@@ -300,7 +313,7 @@
 				// turno concluso: il messaggio finale dell'agente è arrivato →
 				// solo ORA ripulisci il live (thinking + barra task/tools). Durante
 				// l'attesa dei subagent il live resta visibile.
-				if (last.kind === 'ai') resetLive();
+				if (last.kind === 'ai') resetLive(last.author);
 			}
 		} catch {
 			/* ignore poll errors */
@@ -316,7 +329,6 @@
 		if (!body || sending) return;
 		sending = true;
 		stopping = false;
-		resetLive(); // nuovo turno: pulisci il live del turno precedente
 		// Se sto rispondendo a un messaggio, antepongo la citazione (riga `> …`)
 		// così resta nel messaggio inviato e viene mostrata in corsivo.
 		const text = replyingTo
@@ -358,14 +370,15 @@
 	}
 
 	async function stopTurn() {
-		if (!sending) return;
 		stopping = true;
 		try {
 			await interruptChannel(tier, name);
 		} catch {
 			/* ignora: l'importante è riprendere il controllo dell'input */
 		}
-		sending = false; // input di nuovo disponibile subito
+		sending = false;
+		typing = [];
+		resetLive();
 		await refreshMessages();
 	}
 
@@ -483,22 +496,34 @@
 				setTyping(String(p.agent), p.state === 'start');
 				return;
 			}
+			if (ev.type === 'channel_message') {
+				if (p.tier !== tier || p.name !== name) return;
+				void refreshMessages().then(() => tick().then(scrollDown));
+				return;
+			}
 			// eventi del turno del risponditore di QUESTO canale
-			if (!chatBelongs(p.chat_id)) return;
+			const liveAgent = agentFromChatId(p.chat_id);
+			if (!liveAgent) return;
 			if (ev.type === 'thinking_chunk') {
-				liveThink += String(p.delta ?? '');
+				const current = liveFor(liveAgent);
+				updateLive(liveAgent, { think: current.think + String(p.delta ?? '') });
 			} else if (ev.type === 'message_chunk') {
-				if (p.role === 'assistant') liveReply += String(p.delta ?? '');
+				if (p.role === 'assistant') {
+					const current = liveFor(liveAgent);
+					updateLive(liveAgent, { reply: current.reply + String(p.delta ?? '') });
+				}
 			} else if (ev.type === 'tool_use') {
 				const tool = String(p.tool ?? '');
 				const inp = p.input_summary ? `: ${String(p.input_summary)}` : '';
-				liveTools = [...liveTools, `🔧 ${tool}${inp}`].slice(-8);
+				const current = liveFor(liveAgent);
+				updateLive(liveAgent, { tools: [...current.tools, `🔧 ${tool}${inp}`].slice(-8) });
 			} else if (ev.type === 'task_progress') {
 				// progresso di un SUBAGENT (tool Task): senza questo la chat sembra
 				// ferma mentre il subagent lavora (es. un download).
 				const tool = p.last_tool_name ? ` · ${String(p.last_tool_name)}` : '';
 				const desc = p.description ? `: ${String(p.description)}` : '';
-				liveTools = [...liveTools, `🤖 subagent${tool}${desc}`.slice(0, 120)].slice(-8);
+				const current = liveFor(liveAgent);
+				updateLive(liveAgent, { tools: [...current.tools, `🤖 subagent${tool}${desc}`.slice(0, 120)].slice(-8) });
 			}
 		});
 	});
@@ -604,39 +629,39 @@
 					<p class="empty">Nessun messaggio. Scrivi qualcosa per iniziare.</p>
 				{/each}
 			</div>
-			{#if typingLabel || sending}
+			{#if typingLabel}
 				<div class="typing" aria-live="polite">
 					<span class="typing-dots"><span></span><span></span><span></span></span>
-					{typingLabel || 'in attesa di risposta…'}
+					{typingLabel}
 				</div>
 			{/if}
-			{#if hasLive || typingLabel || sending}
+			{#if hasLive || typingLabel}
 				<!-- Ragionamento: collassabile (default chiuso), header SEMPRE visibile
 				     mentre l'agente lavora — anche prima che arrivi il primo thinking. -->
-				{#if liveThink || typingLabel || sending}
+				{#each liveEntries as [agent, live] (agent)}
 					<div class="think" class:open={thinkOpen}>
 						<button type="button" class="think-head" on:click={toggleThink}
 							aria-expanded={thinkOpen}>
 							<span class="caret" class:open={thinkOpen}>▸</span>
-							<span class="think-title">Ragionamento</span>
-							{#if typingLabel}<span class="think-live">● live</span>{/if}
+							<span class="think-title">Ragionamento · {agent}</span>
+							<span class="think-live">● live</span>
 							<span class="think-hint">{thinkOpen ? 'comprimi' : 'espandi'}</span>
 						</button>
 						{#if thinkOpen}
-							<div class="think-body"><pre class="think-text">{liveThink || '…'}</pre></div>
+							<div class="think-body"><pre class="think-text">{live.think || '…'}</pre></div>
 						{/if}
 					</div>
-				{/if}
-				<!-- Tool e subagent in uso: SEMPRE visibili (anche col thinking collassato) -->
-				{#if liveTools.length}
-					<ul class="live-tools">
-						{#each liveTools as t}<li>{t}</li>{/each}
-					</ul>
-				{/if}
-				<!-- Risposta in streaming: sempre visibile -->
-				{#if liveReply}
-					<div class="think-reply md">{@html renderMarkdown(stripChoices(liveReply))}</div>
-				{/if}
+					<!-- Tool e subagent in uso: SEMPRE visibili (anche col thinking collassato) -->
+					{#if live.tools.length}
+						<ul class="live-tools">
+							{#each live.tools as t}<li>{t}</li>{/each}
+						</ul>
+					{/if}
+					<!-- Risposta in streaming: sempre visibile -->
+					{#if live.reply}
+						<div class="think-reply md">{@html renderMarkdown(stripChoices(live.reply))}</div>
+					{/if}
+				{/each}
 			{/if}
 			<div class="composer" class:drag={dragOver}
 				role="group"
@@ -677,15 +702,14 @@
 						}
 						if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send();
 					}}></textarea>
-				{#if sending}
-					<button type="button" class="stop-btn" on:click={stopTurn} title="Interrompi la risposta e riprendi il controllo">
+				{#if hasLive || typing.length}
+					<button type="button" class="stop-btn" on:click={stopTurn} title="Interrompi le risposte in corso">
 						■ Stop
 					</button>
-				{:else}
-					<button type="button" on:click={send} disabled={!draft.trim()}>
-						Invia
-					</button>
 				{/if}
+				<button type="button" on:click={send} disabled={!draft.trim() || sending}>
+					{sending ? 'Invio…' : 'Invia'}
+				</button>
 			</div>
 		</main>
 
