@@ -35,14 +35,24 @@
 	let filePath = '';
 	let filesLoading = false;
 	$: crumbs = filePath ? filePath.split('/') : [];
-	async function loadFiles() {
-		filesLoading = true;
+	function sameFiles(a: ChannelFile[], b: ChannelFile[]): boolean {
+		if (a.length !== b.length) return false;
+		for (let i = 0; i < a.length; i++) {
+			if (a[i].kind !== b[i].kind || a[i].name !== b[i].name || a[i].path !== b[i].path) return false;
+		}
+		return true;
+	}
+	// silent=true (poll di background): niente spinner/dim e riassegna `files`
+	// SOLO se la lista è davvero cambiata → la sidebar non flickera ad ogni giro.
+	async function loadFiles(silent = false) {
+		if (!silent) filesLoading = true;
 		try {
-			files = await getChannelFiles(tier, name, filePath);
+			const next = await getChannelFiles(tier, name, filePath);
+			if (!sameFiles(next, files)) files = next;
 		} catch {
 			/* ignore */
 		} finally {
-			filesLoading = false;
+			if (!silent) filesLoading = false;
 		}
 	}
 	function openDir(entry: ChannelFile) {
@@ -296,7 +306,7 @@
 		}
 	}
 	async function refreshLive() {
-		await Promise.all([refreshMessages(), loadFiles(), refreshInfo()]);
+		await Promise.all([refreshMessages(), loadFiles(true), refreshInfo()]);
 	}
 
 	let _lastMsgId = '';
