@@ -33,12 +33,16 @@
 	let files: ChannelFile[] = [];
 	// Browser file navigabile: subpath corrente relativo a files/ ('' = radice).
 	let filePath = '';
+	let filesLoading = false;
 	$: crumbs = filePath ? filePath.split('/') : [];
 	async function loadFiles() {
+		filesLoading = true;
 		try {
 			files = await getChannelFiles(tier, name, filePath);
 		} catch {
 			/* ignore */
+		} finally {
+			filesLoading = false;
 		}
 	}
 	function openDir(entry: ChannelFile) {
@@ -735,18 +739,19 @@
 						<span class="crumb-sep">/</span>
 						<button type="button" class="crumb" on:click={() => gotoCrumb(i)}>{seg}</button>
 					{/each}
+					{#if filesLoading}<span class="files-spinner" aria-label="Caricamento…" title="Caricamento…"></span>{/if}
 				</nav>
-				<ul class="files">
+				<ul class="files" class:loading={filesLoading} aria-busy={filesLoading}>
 					{#each files as f}
 						<li>
 							{#if f.kind === 'dir'}
-								<button type="button" class="dir" on:click={() => openDir(f)}>📂 {f.name}</button>
+								<button type="button" class="dir" on:click={() => openDir(f)} disabled={filesLoading}>📂 {f.name}</button>
 							{:else}
 								<a href={channelFileUrl(tier, name, f.path)} target="_blank" rel="noopener">📎 {f.name}</a>
 							{/if}
 						</li>
 					{:else}
-						<li class="muted">cartella vuota</li>
+						<li class="muted">{filesLoading ? 'caricamento…' : 'cartella vuota'}</li>
 					{/each}
 				</ul>
 				<p class="files-hint">Carica i file dall'input della chat con 📎 o trascinandoli.</p>
@@ -864,6 +869,9 @@
 	.mention-item.sel, .mention-item:hover { background: rgba(255, 107, 61, 0.12); }
 	.files-hint { font-size: 11px; color: var(--fg-muted); margin: 8px 0 0; line-height: 1.4; }
 	.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-bottom: 6px; font-size: 11.5px; }
+	.files-spinner { width: 12px; height: 12px; margin-left: 6px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: files-spin .7s linear infinite; flex: none; }
+	@keyframes files-spin { to { transform: rotate(360deg); } }
+	.files.loading { opacity: .55; pointer-events: none; }
 	.crumb { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; padding: 1px 3px; border-radius: 4px; font: inherit; font-size: 11.5px; }
 	.crumb:hover { color: var(--accent); }
 	.crumb-sep { color: var(--fg-muted); opacity: .6; }
