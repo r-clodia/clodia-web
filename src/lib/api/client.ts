@@ -930,6 +930,24 @@ export async function getRuntimeSessions(opts: RequestOptions = {}): Promise<Run
 	return d.sessions ?? [];
 }
 
+export interface AgentActivitySummaryRow {
+	agent: string;
+	today_runs: number;
+	runs: number;
+	tokens_in: number;
+	tokens_out: number;
+	status: 'idle' | 'running' | 'error' | string;
+	last_run_ts?: string | null;
+	last_event_ts?: string | null;
+	last_event_type?: string | null;
+}
+
+/** GET `/api/agents/activity/summary` — leaderboard cumulativa per agent seed. */
+export async function getActivitySummary(opts: RequestOptions = {}): Promise<AgentActivitySummaryRow[]> {
+	const d = await apiGet<{ agents: AgentActivitySummaryRow[] }>('/api/agents/activity/summary', opts);
+	return d.agents ?? [];
+}
+
 /** Snapshot import/export dei topic (solo admin). */
 export interface TopicsImportResult {
 	imported: string[];
