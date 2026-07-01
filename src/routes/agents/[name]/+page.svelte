@@ -99,6 +99,7 @@
 	let pfpDataUrl: string | null = null;
 	let pfpFileName = '';
 	let pfpBusy = false;
+	let pfpGenerating = false; // generazione in corso in BACKGROUND (modale chiuso)
 	let pfpError = '';
 
 	async function checkPfp(n: string) {
@@ -146,31 +147,44 @@
 				prompt: pfpPrompt.trim() || undefined,
 				imageB64: pfpDataUrl || undefined
 			});
-			// Generazione asincrona (10-30s): faccio polling dello stato invece di
-			// bloccare. La UI resta reattiva col suo indicatore "in corso".
-			toastSuccess('Generazione avviata', 'stile manga/ghibli via gpt-image-2 (~20s)');
-			for (let i = 0; i < 60; i++) {
-				await new Promise((r) => setTimeout(r, 2000));
-				let st;
-				try {
-					st = await getAgentPfpStatus(name);
-				} catch {
-					continue; // errore di rete transitorio: riprova
-				}
-				if (st.state === 'done') {
-					toastSuccess('Avatar generato', 'stile manga/ghibli');
-					location.reload(); // mostra la nuova pfp (bust cache)
-					return;
-				}
-				if (st.state === 'error') {
-					throw new Error(st.error || 'generazione fallita');
-				}
-			}
-			throw new Error('timeout: la generazione sta impiegando troppo');
 		} catch (err) {
+			// Errore già all'avvio (es. 409 OpenAI non attivo): resta nel modale.
 			pfpBusy = false;
 			pfpError = err instanceof ApiError || err instanceof Error ? err.message : String(err);
+			return;
 		}
+		// Avviata: CHIUDO subito il modale e seguo lo stato in BACKGROUND, così la
+		// UI resta pienamente utilizzabile durante i ~20s di generazione.
+		pfpBusy = false;
+		pfpModalOpen = false;
+		pfpGenerating = true;
+		toastSuccess('Generazione avatar avviata', 'puoi continuare a lavorare, ~20s');
+		void pollPfp();
+	}
+
+	async function pollPfp() {
+		for (let i = 0; i < 90; i++) {
+			await new Promise((r) => setTimeout(r, 2000));
+			let st;
+			try {
+				st = await getAgentPfpStatus(name);
+			} catch {
+				continue; // rete transitoria: riprova
+			}
+			if (st.state === 'done') {
+				pfpGenerating = false;
+				toastSuccess('Avatar pronto', 'stile manga/ghibli');
+				location.reload(); // mostra la nuova pfp (bust cache)
+				return;
+			}
+			if (st.state === 'error') {
+				pfpGenerating = false;
+				toastError('Generazione avatar fallita', st.error || 'errore');
+				return;
+			}
+		}
+		pfpGenerating = false;
+		toastError('Timeout generazione avatar', 'riprova più tardi');
 	}
 
 	async function loadDetail(n: string) {
@@ -493,7 +507,9 @@
 						color={agent.avatar_color}
 						size={80}
 					/>
-					{#if hasPfp === false}
+					{#if pfpGenerating}
+						<span class="gen-pfp busy" title="Generazione avatar in corso">✨ Genero…</span>
+					{:else if hasPfp === false}
 						<button type="button" class="gen-pfp" on:click={openPfp} title="Genera avatar">
 							✨ Genera avatar
 						</button>
