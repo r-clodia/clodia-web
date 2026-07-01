@@ -508,26 +508,30 @@
 	<div class="grid">
 		{#each shown as t (`${t.tier}/${t.name}`)}
 			<article class="topic-card" class:expanded={expanded[keyOf(t)]} class:pinned={isPinned(t)}>
-				<button
-					type="button"
-					class="pin-btn"
-					class:on={isPinned(t)}
-					title={isPinned(t) ? 'Rimuovi pin' : 'Pinna topic'}
-					aria-label={isPinned(t) ? `Rimuovi pin da ${t.title || t.name}` : `Pinna ${t.title || t.name}`}
-					aria-pressed={isPinned(t) ? 'true' : 'false'}
-					on:click|stopPropagation={() => togglePinned(t)}
-				>
-					{isPinned(t) ? '★' : '☆'}
-				</button>
-				{#if !isArchived(t)}
+				<div class="topic-actions" aria-label="Azioni topic">
+					{#if !isArchived(t)}
+						<button
+							type="button"
+							class="archive-btn topic-action"
+							title="Archivia topic"
+							aria-label={`Archivia ${t.title || t.name}`}
+							on:click|stopPropagation={() => (archiveTarget = t)}
+						>🗄</button>
+					{/if}
 					<button
 						type="button"
-						class="archive-btn"
-						title="Archivia topic"
-						aria-label={`Archivia ${t.title || t.name}`}
-						on:click|stopPropagation={() => (archiveTarget = t)}
-					>🗄</button>
-				{/if}
+						class="pin-btn topic-action"
+						class:on={isPinned(t)}
+						title={isPinned(t) ? 'Rimuovi pin' : 'Pinna topic'}
+						aria-label={isPinned(t) ? `Rimuovi pin da ${t.title || t.name}` : `Pinna ${t.title || t.name}`}
+						aria-pressed={isPinned(t) ? 'true' : 'false'}
+						on:click|stopPropagation={() => togglePinned(t)}
+					>
+						<svg viewBox="0 0 24 24" aria-hidden="true">
+							<path d="M15 4.5l4.5 4.5-3.1 3.1.3 4.4-1.4 1.4-4.1-4.1-4.9 4.9-1-1 4.9-4.9-4.1-4.1 1.4-1.4 4.4.3L15 4.5z" />
+						</svg>
+					</button>
+				</div>
 				<!-- Intestazione sempre visibile (collassata) — click per espandere -->
 				<button
 					type="button"
@@ -762,54 +766,44 @@
 		padding: 14px 16px;
 		gap: 8px;
 	}
-		.archive-btn {
+	.topic-actions {
 		position: absolute;
 		top: 10px;
-		right: 48px;
+		right: 10px;
 		z-index: 2;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.topic-action {
 		display: inline-grid;
 		place-items: center;
 		width: 28px;
 		height: 28px;
-		border: 1px solid var(--border);
+		border: none;
 		border-radius: 8px;
-		background: color-mix(in srgb, var(--card-bg) 92%, #000);
+		background: transparent;
 		color: var(--fg-muted);
-		font-size: 14px;
+		font: inherit;
 		line-height: 1;
 		cursor: pointer;
 	}
-	.archive-btn:hover { border-color: var(--danger); color: var(--danger); }
+	.topic-action:hover { background: color-mix(in srgb, var(--card-bg) 78%, #000); }
+	.archive-btn { font-size: 14px; }
+	.archive-btn:hover { color: var(--danger); }
 	.confirm { display: flex; flex-direction: column; gap: 12px; }
 	.confirm h3 { margin: 0; font-size: 16px; }
 	.confirm p { margin: 0; font-size: 13px; color: var(--fg-muted); line-height: 1.5; }
 	.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
 	.confirm-actions .btn { background: rgba(0,0,0,.2); border: 1px solid var(--border); color: var(--fg); border-radius: 8px; padding: 8px 14px; font: inherit; font-size: 13px; cursor: pointer; }
 	.confirm-actions .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 700; }
-	.pin-btn {
-		position: absolute;
-		top: 10px;
-		right: 12px;
-		z-index: 2;
-		display: inline-grid;
-		place-items: center;
-		width: 28px;
-		height: 28px;
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		background: color-mix(in srgb, var(--card-bg) 92%, #000);
-		color: var(--fg-muted);
-		font: inherit;
-		font-size: 16px;
-		line-height: 1;
-		cursor: pointer;
-	}
+	.pin-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linejoin: round; }
 	.pin-btn:hover,
 	.pin-btn.on {
-		border-color: color-mix(in srgb, var(--accent) 65%, var(--border));
 		color: var(--accent);
 		background: rgba(255, 107, 61, 0.08);
 	}
+	.pin-btn.on svg { fill: currentColor; }
 
 	/* Intestazione cliccabile (collassata) */
 	.card-head {
