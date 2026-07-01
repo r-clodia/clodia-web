@@ -912,6 +912,8 @@ export async function getAdminState(opts: RequestOptions = {}): Promise<AdminSta
 export interface RuntimeSession {
 	chat_id: string;
 	agent: string;
+	spawn_id?: string | null;
+	spawn_instance?: string | null;
 	runtime?: string | null;
 	principal?: string | null;
 	topic?: string | null;
