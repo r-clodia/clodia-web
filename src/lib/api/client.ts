@@ -529,6 +529,9 @@ export interface ChannelInfo {
 	meta: { title?: string; owner?: string; participants?: string[]; tier?: string };
 	summary?: string;
 	tldr?: string;
+	/** Responder con un turno ATTUALMENTE in corso (dal backend): la UI mostra
+	 *  l'indicatore di attività anche riaprendo il topic a metà turno. */
+	active_responders?: string[];
 }
 export interface ChannelFile {
 	name: string;

@@ -112,10 +112,15 @@
 			// Il reset avviene all'arrivo del messaggio finale (refreshMessages).
 		}
 	}
+	// Responder con turno attivo secondo il BACKEND (pollato via getChannel): così
+	// riaprendo il topic a metà turno l'indicatore c'è comunque, anche se gli eventi
+	// SSE che costruiscono il box "ragionamento" sono già passati.
+	let workingResponders: string[] = [];
+	$: activeWorking = Array.from(new Set([...typing, ...workingResponders]));
 	$: typingLabel =
-		typing.length === 0
+		activeWorking.length === 0
 			? ''
-			: `${typing.join(' e ')} ${typing.length === 1 ? 'sta scrivendo' : 'stanno scrivendo'}…`;
+			: `${activeWorking.join(' e ')} ${activeWorking.length === 1 ? 'sta scrivendo' : 'stanno scrivendo'}…`;
 
 	// --- Ragionamento / attività live del turno del risponditore -----------
 	// Il backend emette thinking_chunk / message_chunk / tool_use sul bus, con
@@ -285,6 +290,7 @@
 		messages = [];
 		files = [];
 		typing = []; // reset indicatore al cambio canale
+		workingResponders = [];
 		filePath = ''; // riparti dalla radice dei file
 		try {
 			[info, messages, files] = await Promise.all([
@@ -292,6 +298,8 @@
 				getChannelMessages(t, n),
 				getChannelFiles(t, n)
 			]);
+			// turno in corso al caricamento (re-mount a metà turno) → mostra l'indicatore
+			workingResponders = info?.active_responders ?? [];
 			// Prima si renderizza lo stream (initialLoading=false), POI si scrolla:
 			// altrimenti scrollDown gira mentre lo stream è dietro {#if initialLoading}
 			// (elemento inesistente) → la chat resta sul messaggio più vecchio.
@@ -311,6 +319,9 @@
 	async function refreshInfo() {
 		try {
 			info = await getChannel(tier, name);
+			// tiene vivo l'indicatore "sta lavorando" durante turni lunghi/silenziosi
+			// (es. tool-call senza chunk SSE) e lo spegne quando il turno finisce.
+			workingResponders = info?.active_responders ?? [];
 			void loadEligibility(tier, name); // i provider possono cambiare stato
 		} catch {
 			/* ignore */
