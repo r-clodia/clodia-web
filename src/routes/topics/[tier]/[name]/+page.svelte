@@ -292,6 +292,10 @@
 				getChannelMessages(t, n),
 				getChannelFiles(t, n)
 			]);
+			// Prima si renderizza lo stream (initialLoading=false), POI si scrolla:
+			// altrimenti scrollDown gira mentre lo stream è dietro {#if initialLoading}
+			// (elemento inesistente) → la chat resta sul messaggio più vecchio.
+			initialLoading = false;
 			await tick();
 			scrollDown();
 			void loadEligibility(t, n);
