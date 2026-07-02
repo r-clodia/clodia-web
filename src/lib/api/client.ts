@@ -851,6 +851,20 @@ export async function updateAgent(
 	return apiPatch<Agent>(`/api/agents/${encodeURIComponent(name)}`, patch, opts);
 }
 
+/**
+ * POST `/api/agents/{name}/provider` — seleziona manualmente il provider da usare
+ * per l'agent, scelto dalla sua lista dichiarata. `provider=null` azzera l'override
+ * (torna alla preferenza). È stato operativo (routing): consentito ANCHE sui super
+ * immutabili. Solo admin.
+ */
+export async function selectAgentProvider(
+	name: string,
+	provider: string | null,
+	opts: RequestOptions = {}
+): Promise<{ agent: string; provider_override: string | null; provider: string | null; provider_connected: boolean }> {
+	return apiPost(`/api/agents/${encodeURIComponent(name)}/provider`, { provider }, opts);
+}
+
 /** Connettore delegabile (account email) con lo stato di grant per un agent. */
 export interface Connector {
 	id: string;

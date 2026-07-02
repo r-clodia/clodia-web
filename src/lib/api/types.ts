@@ -31,6 +31,21 @@ export interface AgentMemory {
 	readonly dir?: string;
 }
 
+/** Opzione del selettore di provider nel profilo agent: un provider della lista
+ *  dichiarata + il suo stato corrente. */
+export interface ProviderOption {
+	readonly id: string;
+	readonly seal?: string | null;
+	readonly connected: boolean;
+	readonly paused: boolean;
+	/** È il default (primo in lista di preferenza). */
+	readonly default: boolean;
+	/** È l'override manuale attualmente selezionato. */
+	readonly selected: boolean;
+	/** È il provider realmente in uso adesso (effettivo). */
+	readonly effective: boolean;
+}
+
 /** Shape returned by `GET /api/agents/{name}` and embedded in the list. */
 export interface Agent {
 	readonly name: string;
@@ -73,6 +88,11 @@ export interface Agent {
 	/** False se ci sono provider compatibili ma NESSUNO è collegato → card
 	 *  'disconnected' e dimmed. Assente/true = collegato (o non determinabile). */
 	readonly provider_connected?: boolean;
+	/** Override manuale del provider (selezione dal profilo agent). null = segue
+	 *  la preferenza dichiarata. */
+	readonly provider_override?: string | null;
+	/** Opzioni per il selettore di provider nel profilo agent: id + stato. */
+	readonly provider_options?: ReadonlyArray<ProviderOption>;
 	/** Ruolo del principal human: superadmin | admin | member. */
 	readonly role?: string | null;
 	/** Clearance di privacy del principal human (P0–P3). */

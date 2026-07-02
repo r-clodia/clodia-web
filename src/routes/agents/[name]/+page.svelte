@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, type ProfileFile, type Connector, type AgentProfile } from '$lib/api/client';
+	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, type ProfileFile, type Connector, type AgentProfile } from '$lib/api/client';
 	import { session } from '$lib/auth/session';
 	import Modal from '$lib/components/Modal.svelte';
 	import type {
@@ -206,6 +206,22 @@
 			}
 		} catch (err) {
 			detail = toErr(err) as DetailState;
+		}
+	}
+
+	// --- Selezione manuale del provider (override operativo, anche sui super) ---
+	let providerBusy = '';
+	async function selectProvider(pid: string | null) {
+		if (!agent) return;
+		providerBusy = pid ?? '__auto__';
+		try {
+			await selectAgentProvider(agent.name, pid);
+			toastSuccess(pid ? `Provider impostato: ${pid}` : 'Override rimosso (torna alla preferenza)');
+			await loadDetail(agent.name);   // ricarica per riflettere effective/selected
+		} catch (e) {
+			toastError(e instanceof Error ? e.message : String(e));
+		} finally {
+			providerBusy = '';
 		}
 	}
 
@@ -685,6 +701,40 @@
 				{#if agent.agent_sdk !== undefined}
 					<dt>Agent SDK</dt>
 					<dd><code>{agent.agent_sdk ?? '—'}</code></dd>
+				{/if}
+
+				{#if agent.provider_options && agent.provider_options.length}
+					<dt>Provider <span class="hint-inline">(motore di inferenza)</span></dt>
+					<dd>
+						<div class="prov-picker">
+							{#each agent.provider_options as opt}
+								<button
+									type="button"
+									class="prov-opt"
+									class:effective={opt.effective}
+									class:selected={opt.selected}
+									class:off={!opt.connected || opt.paused}
+									disabled={!isAdmin || providerBusy !== '' || !opt.connected || opt.paused}
+									title={opt.paused ? 'in pausa' : (!opt.connected ? 'non collegato' : (isAdmin ? 'attiva questo provider' : ''))}
+									on:click={() => selectProvider(opt.id)}
+								>
+									<span class="prov-name">{opt.id}</span>
+									{#if opt.seal}<span class="prov-seal">{opt.seal}</span>{/if}
+									{#if opt.default}<span class="prov-tag" title="default (preferenza)">★</span>{/if}
+									{#if opt.effective}<span class="prov-tag on">in uso</span>
+									{:else if !opt.connected}<span class="prov-tag muted">off</span>
+									{:else if opt.paused}<span class="prov-tag muted">pausa</span>{/if}
+								</button>
+							{/each}
+						</div>
+						{#if isAdmin && agent.provider_override}
+							<button type="button" class="prov-auto" disabled={providerBusy !== ''} on:click={() => selectProvider(null)}>
+								↺ segui la preferenza (rimuovi override)
+							</button>
+						{:else if !agent.provider_connected}
+							<p class="muted-note">Nessun provider attivo → agent disabilitato. Collega o riattiva un provider dalla sezione Providers.</p>
+						{/if}
+					</dd>
 				{/if}
 
 				<dt>Identità PKI</dt>
@@ -1303,6 +1353,29 @@
 		font-size: 12px;
 		font-style: italic;
 	}
+	.prov-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+	.prov-opt {
+		display: inline-flex; align-items: center; gap: 6px;
+		padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+		background: transparent; color: var(--fg); font: inherit; font-size: 12px;
+		cursor: pointer; transition: border-color .12s, background .12s;
+	}
+	.prov-opt:hover:not(:disabled) { border-color: var(--accent); }
+	.prov-opt:disabled { cursor: default; }
+	.prov-opt.effective { border-color: var(--accent); background: rgba(255,107,61,0.10); }
+	.prov-opt.selected { box-shadow: inset 0 0 0 1px var(--accent); }
+	.prov-opt.off { opacity: 0.5; }
+	.prov-name { font-family: var(--mono, monospace); }
+	.prov-seal { font-size: 9.5px; letter-spacing: 0.03em; color: var(--fg-muted); }
+	.prov-tag { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--fg-muted); }
+	.prov-tag.on { color: var(--accent); font-weight: 700; }
+	.prov-tag.muted { opacity: 0.7; }
+	.prov-auto {
+		margin-top: 6px; padding: 3px 8px; border: 1px solid var(--border);
+		border-radius: 6px; background: transparent; color: var(--fg-muted);
+		font: inherit; font-size: 11px; cursor: pointer;
+	}
+	.prov-auto:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 	.dep {
 		font-size: 9.5px;
 		text-transform: uppercase;
