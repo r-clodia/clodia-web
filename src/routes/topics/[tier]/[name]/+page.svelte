@@ -152,6 +152,8 @@
 	let loadedKey = '';
 	let fileInput: HTMLInputElement;
 	let composer: HTMLTextAreaElement;
+	let expandedComposer: HTMLTextAreaElement;
+	let composerExpanded = false;
 
 	// "sta scrivendo…" — pilotato dagli eventi SSE channel_typing del backend.
 	let typing: string[] = [];
@@ -342,6 +344,51 @@
 			const c = replaced.length;
 			composer?.setSelectionRange(c, c);
 		});
+	}
+
+	async function submitFromExpanded() {
+		await send();
+		if (!draft.trim()) composerExpanded = false;
+	}
+
+	function openExpandedComposer() {
+		composerExpanded = true;
+		mentionQuery = null;
+		void tick().then(() => {
+			expandedComposer?.focus();
+			expandedComposer?.setSelectionRange(draft.length, draft.length);
+		});
+	}
+
+	function closeExpandedComposer() {
+		composerExpanded = false;
+		void tick().then(() => composer?.focus());
+	}
+
+	async function onCompactComposerKeydown(e: KeyboardEvent) {
+		if (mentionQuery !== null && mentionMatches.length) {
+			if (e.key === 'ArrowDown') { e.preventDefault(); mentionIdx = (mentionIdx + 1) % mentionMatches.length; return; }
+			if (e.key === 'ArrowUp') { e.preventDefault(); mentionIdx = (mentionIdx - 1 + mentionMatches.length) % mentionMatches.length; return; }
+			if (e.key === 'Tab') { e.preventDefault(); applyMention(mentionMatches[mentionIdx]); return; }
+			if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); applyMention(mentionMatches[mentionIdx]); return; }
+			if (e.key === 'Escape') { e.preventDefault(); mentionQuery = null; return; }
+		}
+		if (e.key === 'Enter' && !e.shiftKey) {
+			e.preventDefault();
+			await send();
+		}
+	}
+
+	async function onExpandedComposerKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			closeExpandedComposer();
+			return;
+		}
+		if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+			e.preventDefault();
+			await submitFromExpanded();
+		}
 	}
 
 	async function loadAll(t: string, n: string) {
@@ -792,19 +839,13 @@
 				{/if}
 				<input type="file" bind:this={fileInput} on:change={onUpload} hidden />
 				<button type="button" class="clip" title="Allega file" on:click={() => fileInput?.click()}>📎</button>
+				<button type="button" class="expand-input" title="Apri editor ampio" aria-label="Apri editor ampio"
+					on:click={openExpandedComposer}>↗</button>
 				<textarea bind:this={composer} bind:value={draft} rows="2"
 					placeholder="Scrivi nel canale… (@nome per rivolgerti a un partecipante)"
 					on:input={updateMention}
 					on:click={updateMention}
-					on:keydown={(e) => {
-						if (mentionQuery !== null && mentionMatches.length) {
-							if (e.key === 'ArrowDown') { e.preventDefault(); mentionIdx = (mentionIdx + 1) % mentionMatches.length; return; }
-							if (e.key === 'ArrowUp') { e.preventDefault(); mentionIdx = (mentionIdx - 1 + mentionMatches.length) % mentionMatches.length; return; }
-							if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); applyMention(mentionMatches[mentionIdx]); return; }
-							if (e.key === 'Escape') { e.preventDefault(); mentionQuery = null; return; }
-						}
-						if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send();
-					}}></textarea>
+					on:keydown={onCompactComposerKeydown}></textarea>
 				{#if hasLive || typing.length}
 					<button type="button" class="stop-btn" on:click={stopTurn} title="Interrompi le risposte in corso">
 						■ Stop
@@ -933,6 +974,29 @@
 	{/if}
 </div>
 
+{#if composerExpanded}
+	<div class="composer-modal-backdrop" role="button" tabindex="0"
+		on:click={closeExpandedComposer}
+		on:keydown={(e) => e.key === 'Escape' && closeExpandedComposer()}>
+		<div class="composer-modal" role="dialog" aria-modal="true" aria-label="Editor messaggio ampio"
+			tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+			<header class="composer-modal-head">
+				<h2>Messaggio</h2>
+				<button type="button" class="modal-close" aria-label="Chiudi editor" on:click={closeExpandedComposer}>×</button>
+			</header>
+			<textarea bind:this={expandedComposer} bind:value={draft}
+				placeholder="Scrivi un messaggio lungo…"
+				on:keydown={onExpandedComposerKeydown}></textarea>
+			<footer class="composer-modal-actions">
+				<span>Enter va a capo · Ctrl/⌘+Enter invia</span>
+				<button type="button" class="modal-send" on:click={submitFromExpanded} disabled={sending || !draft.trim()}>
+					{sending ? 'Invio…' : 'Invia'}
+				</button>
+			</footer>
+		</div>
+	</div>
+{/if}
+
 <style>
 	.channel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 	.head { flex: none; }
@@ -1042,6 +1106,18 @@
 	.composer button.stop-btn { background: var(--danger); border-color: var(--danger); color: #fff; }
 	.composer button.stop-btn:hover { filter: brightness(1.08); }
 	.clip { background: transparent !important; border: 1px solid var(--border) !important; color: var(--fg) !important; font-size: 16px; padding: 0 12px !important; height: 38px; }
+	.expand-input { background: transparent !important; border: 1px solid var(--border) !important; color: var(--fg-muted) !important; font-size: 15px; padding: 0 11px !important; height: 38px; min-width: 38px; }
+	.expand-input:hover { border-color: var(--accent) !important; color: var(--accent) !important; background: rgba(255,107,61,.08) !important; }
+	.composer-modal-backdrop { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.55); }
+	.composer-modal { width: min(760px, 100%); max-height: min(720px, calc(100vh - 40px)); display: flex; flex-direction: column; gap: 12px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: 0 18px 55px rgba(0,0,0,.45); }
+	.composer-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+	.composer-modal h2 { margin: 0; font-size: 16px; }
+	.modal-close { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--fg-muted); font: inherit; font-size: 20px; cursor: pointer; }
+	.modal-close:hover { color: var(--fg); border-color: var(--accent); }
+	.composer-modal textarea { width: 100%; min-height: 320px; flex: 1 1 auto; resize: vertical; background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 14px; line-height: 1.5; padding: 12px; border-radius: 10px; }
+	.composer-modal-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--fg-muted); font-size: 12px; }
+	.modal-send { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font-weight: 700; padding: 8px 18px; border-radius: 8px; cursor: pointer; }
+	.modal-send:disabled { opacity: .5; cursor: not-allowed; }
 	.mention-pop { position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 20; list-style: none; margin: 0; padding: 4px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.35); min-width: 180px; max-height: 220px; overflow-y: auto; }
 	.mention-item { display: flex; align-items: center; gap: 7px; width: 100%; background: transparent; border: none; color: var(--fg); font: inherit; font-size: 12.5px; padding: 5px 8px; border-radius: 6px; cursor: pointer; text-align: left; }
 	.mention-item.sel, .mention-item:hover { background: rgba(255, 107, 61, 0.12); }
