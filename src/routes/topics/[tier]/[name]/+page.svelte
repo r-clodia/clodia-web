@@ -13,6 +13,8 @@
 		postChannelMessage,
 		resetChannelContext,
 		interruptChannel,
+		topicRemote,
+		type RemoteStatus,
 		setChannelParticipant,
 		getChannelEligibility,
 		getChannelFiles,
@@ -35,6 +37,56 @@
 	let filePath = '';
 	let filesLoading = false;
 	$: crumbs = filePath ? filePath.split('/') : [];
+
+	// --- Remote (git/drive): storage sempre locale + sync opzionale ----------
+	let remoteStatus: RemoteStatus | null = null;
+	let remoteBusy = false;
+	$: remoteMeta = (info?.meta as Record<string, any> | undefined)?.remote ?? null;
+	function remoteUrl(): string | null {
+		const r = remoteMeta;
+		if (!r) return null;
+		const c = r.config || {};
+		if (r.type === 'drive' && c.folder) return `https://drive.google.com/drive/folders/${c.folder}`;
+		if (r.type === 'git' && c.url) {
+			const u = String(c.url);
+			const m = u.match(/^git@([^:]+):(.+?)(?:\.git)?$/); // ssh → https
+			if (m) return `https://${m[1]}/${m[2]}`;
+			return u.replace(/\.git$/, '');
+		}
+		return null;
+	}
+	function remoteIcon(): string {
+		const r = remoteMeta;
+		if (!r) return '🔗';
+		if (r.type === 'drive') return '☁️';
+		if (r.type === 'git') return (remoteUrl() || '').includes('github.com') ? '🐙' : '🔧';
+		return '🔗';
+	}
+	async function loadRemoteStatus() {
+		if (!remoteMeta) { remoteStatus = null; return; }
+		try { remoteStatus = (await topicRemote(tier, name, 'status')) as RemoteStatus; } catch { /* ignore */ }
+	}
+	async function doRemote(action: string, params: Record<string, unknown> = {}) {
+		remoteBusy = true; loadErr = '';
+		try {
+			await topicRemote(tier, name, action, params);
+			await refreshInfo(); // meta.remote può cambiare (enable/disable)
+			await loadRemoteStatus();
+			await loadFiles();
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			remoteBusy = false;
+		}
+	}
+	function enableGit() {
+		const url = prompt('URL del repo git remoto (opzionale, vuoto = solo commit locali):') ?? '';
+		void doRemote('enable', { type: 'git', config: url.trim() ? { url: url.trim() } : {} });
+	}
+	function enableDrive() {
+		const folder = prompt('Link/ID cartella Drive (vuoto = crea una cartella nuova):') ?? '';
+		void doRemote('enable', { type: 'drive', config: folder.trim() ? { folder: folder.trim() } : {} });
+	}
 	function sameFiles(a: ChannelFile[], b: ChannelFile[]): boolean {
 		if (a.length !== b.length) return false;
 		for (let i = 0; i < a.length; i++) {
@@ -307,6 +359,7 @@
 			await tick();
 			scrollDown();
 			void loadEligibility(t, n);
+			void loadRemoteStatus();
 		} catch (e) {
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
@@ -797,7 +850,15 @@
 				{/if}
 			</section>
 			<section>
-				<h3>File</h3>
+				<h3 class="sec-head">
+					<span>File</span>
+					{#if remoteMeta}{@const ru = remoteUrl()}
+						{#if ru}
+							<a class="remote-goto" href={ru} target="_blank" rel="noopener"
+								title={`Apri il remote (${remoteMeta.type})`}>{remoteIcon()} apri {remoteMeta.type}</a>
+						{/if}
+					{/if}
+				</h3>
 				<nav class="crumbs" aria-label="Percorso file">
 					<button type="button" class="crumb" on:click={() => gotoCrumb(-1)}>🏠 root</button>
 					{#each crumbs as seg, i}
@@ -816,12 +877,47 @@
 							{:else}
 								<a href={channelFileUrl(tier, name, f.path)} target="_blank" rel="noopener">📎 {f.name}</a>
 							{/if}
+							{#if remoteMeta?.type === 'drive' && f.kind !== 'dir'}
+								<button type="button" class="sync-add" title="Aggiungi al sync (drive)"
+									on:click={() => doRemote('add', { path: f.path.replace(/^files\//, '') })}
+									disabled={remoteBusy}>⊕</button>
+							{/if}
 						</li>
 					{:else}
 						<li class="muted">{filesLoading ? 'caricamento…' : 'cartella vuota'}</li>
 					{/each}
 				</ul>
 				<p class="files-hint">Carica i file dall'input della chat con 📎 o trascinandoli.</p>
+			</section>
+
+			<section class="remote-panel">
+				<h3>Remote</h3>
+				{#if !remoteMeta}
+					<p class="muted">Storage locale. Attiva un remote per sincronizzare i file.</p>
+					<div class="remote-actions">
+						<button type="button" on:click={enableGit} disabled={remoteBusy}>🐙 git</button>
+						<button type="button" on:click={enableDrive} disabled={remoteBusy}>☁️ Drive</button>
+					</div>
+				{:else}
+					<p class="remote-info">
+						{remoteIcon()} <strong>{remoteMeta.type}</strong>
+						{#if remoteStatus}
+							{#if remoteStatus.type === 'git'}<span class="muted"> · {remoteStatus.dirty ?? 0} da committare</span>
+							{:else}<span class="muted"> · {remoteStatus.synced ?? 0} in sync, {remoteStatus.pending ?? 0} da pushare</span>{/if}
+						{/if}
+						{#if remoteBusy}<span class="files-spinner" style="margin-left:6px"></span>{/if}
+					</p>
+					<div class="remote-actions">
+						<button type="button" on:click={() => doRemote('pull')} disabled={remoteBusy}>⬇︎ pull</button>
+						<button type="button"
+							on:click={() => remoteMeta.type === 'git' ? doRemote('commit').then(() => doRemote('push')) : doRemote('push')}
+							disabled={remoteBusy}>⬆︎ push</button>
+						<button type="button" on:click={loadRemoteStatus} disabled={remoteBusy}>↻</button>
+						<button type="button" class="danger"
+							on:click={() => confirm('Disattivare il remote? I file locali restano.') && doRemote('disable')}
+							disabled={remoteBusy}>disattiva</button>
+					</div>
+				{/if}
 			</section>
 		</aside>
 	</div>
@@ -941,6 +1037,18 @@
 	.mention-item { display: flex; align-items: center; gap: 7px; width: 100%; background: transparent; border: none; color: var(--fg); font: inherit; font-size: 12.5px; padding: 5px 8px; border-radius: 6px; cursor: pointer; text-align: left; }
 	.mention-item.sel, .mention-item:hover { background: rgba(255, 107, 61, 0.12); }
 	.files-hint { font-size: 11px; color: var(--fg-muted); margin: 8px 0 0; line-height: 1.4; }
+	.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+	.remote-goto { font-size: 11px; font-weight: 600; color: var(--accent); text-decoration: none; }
+	.remote-goto:hover { text-decoration: underline; }
+	.sync-add { margin-left: 6px; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; padding: 0 3px; border-radius: 5px; }
+	.sync-add:hover { color: var(--accent); background: rgba(255,107,61,.12); }
+	.remote-panel { margin-top: 14px; }
+	.remote-info { font-size: 12px; margin: 2px 0 8px; display: flex; align-items: center; }
+	.remote-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+	.remote-actions button { font-size: 12px; padding: 4px 9px; border: 1px solid var(--border); background: transparent; color: var(--fg); border-radius: 7px; cursor: pointer; }
+	.remote-actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+	.remote-actions button:disabled { opacity: .5; cursor: default; }
+	.remote-actions button.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 	.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-bottom: 6px; font-size: 11.5px; }
 	.files-spinner { width: 12px; height: 12px; margin-left: 6px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: files-spin .7s linear infinite; flex: none; }
 	@keyframes files-spin { to { transform: rotate(360deg); } }

@@ -590,6 +590,29 @@ export async function interruptChannel(
 ): Promise<{ interrupted: string[] }> {
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/interrupt`, {}, opts);
 }
+/** Stato del remote di un topic (git/drive). */
+export interface RemoteStatus {
+	type?: 'git' | 'drive' | string;
+	enabled?: boolean;
+	origin?: boolean;
+	dirty?: number;
+	folder?: string | null;
+	account?: string | null;
+	synced?: number;
+	pending?: number;
+}
+/** Verbi Remote (git/drive) di un topic: status|enable|disable|add|commit|push|pull. */
+export async function topicRemote(
+	tier: string,
+	name: string,
+	action: string,
+	params: Record<string, unknown> = {},
+	opts: RequestOptions = {}
+): Promise<Record<string, unknown>> {
+	return apiPost(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/remote`,
+		{ action, ...params }, opts);
+}
 export interface AgentEligibility {
 	name: string;
 	type: string;
