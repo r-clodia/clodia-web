@@ -210,7 +210,17 @@
 		);
 	}
 
-	const isArchived = (t: Topic) => (t.status ?? 'active') === 'archived';
+	function topicStatus(t: Topic): string {
+		const raw = String(t.status ?? 'active').trim().toLowerCase().replace(/[\s-]+/g, '_');
+		if (!raw) return 'active';
+		if (raw === 'attivo') return 'active';
+		if (raw === 'in_attesa' || raw === 'waiting' || raw === 'awaiting' || raw === 'pending') return 'await';
+		if (raw === 'completato' || raw === 'completed' || raw === 'done') return 'idle';
+		if (raw === 'archiviato') return 'archived';
+		return raw;
+	}
+
+	const isArchived = (t: Topic) => topicStatus(t) === 'archived';
 
 	// Card collassabili: di default collassate (solo intestazione). Espanse
 	// mostrano TLDR, top action point e l'avatar del contact agent.
@@ -507,6 +517,7 @@
 	{:else}
 	<div class="grid">
 		{#each shown as t (`${t.tier}/${t.name}`)}
+			{@const status = topicStatus(t)}
 			<article class="topic-card" class:expanded={expanded[keyOf(t)]} class:pinned={isPinned(t)}>
 				<div class="topic-actions" aria-label="Azioni topic">
 					{#if !isArchived(t)}
@@ -540,8 +551,8 @@
 					aria-expanded={expanded[keyOf(t)] ? 'true' : 'false'}
 				>
 					<div class="card-top">
-						{#if t.status && t.status !== 'active'}
-							<span class="state state-{t.status}">{t.status}</span>
+						{#if status !== 'active'}
+							<span class="state state-{status}">{status}</span>
 						{/if}
 						{#if t.storage}
 							<span class="storage" title="Storage backend del topic">⛁ {t.storage}</span>
@@ -734,6 +745,10 @@
 	.state-idle {
 		background: rgba(96, 165, 250, 0.14);
 		color: #60a5fa;
+	}
+	.state:not(.state-archived):not(.state-await):not(.state-idle) {
+		background: rgba(120, 144, 156, 0.16);
+		color: var(--fg-muted);
 	}
 
 	/* Card grid ----------------------------------------------------------- */
