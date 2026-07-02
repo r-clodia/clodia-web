@@ -55,13 +55,16 @@
 		if (href === '/') return pathname === '/';
 		return pathname === href || pathname.startsWith(href + '/');
 	}
+	// Versione di piattaforma (tag collettivo). Override a build-time via
+	// PUBLIC_APP_VERSION; fallback al tag corrente.
+	const APP_VERSION = (import.meta.env.PUBLIC_APP_VERSION as string | undefined) || 'v5.4';
 </script>
 
 <aside class="sidebar">
 	<div class="brand">
 		<span class="brand-mark">●</span>
 		<span class="brand-name">Clodia</span>
-		<span class="brand-tag">v2</span>
+		<span class="brand-tag">{APP_VERSION}</span>
 	</div>
 
 	<nav class="nav" aria-label="Primary">
