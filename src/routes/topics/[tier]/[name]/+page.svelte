@@ -55,12 +55,21 @@
 		}
 		return null;
 	}
-	function remoteIcon(): string {
+	// Icone brand inline (equivalenti Font Awesome, self-hosted → nessun CDN):
+	// GitHub (mark FA, monocromo currentColor), Google Drive (logo ufficiale
+	// multicolor), git generico (branch).
+	const SVG_GITHUB =
+		'<svg viewBox="0 0 496 512" width="13" height="13" fill="currentColor" aria-hidden="true" style="vertical-align:-2px"><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244 8C106.1 8 0 113.3 0 251.2c0 110.2 69.9 204.4 167.8 237.5 12.4 2.3 16.6-5.4 16.6-11.9 0-6.2-.3-40.4-.3-61.4 0 0-67 14.4-81.1-28.5 0 0-10.9-27.8-26.6-34.9 0 0-21.9-15 1.5-14.7 0 0 23.8 1.9 36.9 24.7 20.9 36.9 55.9 26.3 69.5 20 2.1-15.2 8.3-25.7 15.2-32-53.5-5.9-107.5-13.6-107.5-105.4 0-26.2 7.2-39.4 22.4-56.1-2.5-6.2-10.6-31.7 2.5-64.9 20-6.2 66 24.5 66 24.5 19-5.3 39.4-8 59.6-8 20.2 0 40.6 2.7 59.6 8 0 0 46-30.8 66-24.5 13.1 33.2 5 58.7 2.5 64.9 15.2 16.7 24.5 29.9 24.5 56.1 0 91.9-56.3 99.7-109.8 105.4 8.8 7.6 16.3 22 16.3 44.4 0 32-.3 71.7-.3 79.5 0 6.5 4.3 14.2 16.7 11.9C428.2 455.5 496 361.3 496 251.2 496 113.3 383.5 8 244 8z"/></svg>';
+	const SVG_DRIVE =
+		'<svg viewBox="0 0 87.3 78" width="13" height="13" aria-hidden="true" style="vertical-align:-2px"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.152 28h27.448c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>';
+	const SVG_GIT =
+		'<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true" style="vertical-align:-2px"><path d="M6 3a3 3 0 0 0-1 5.83v6.34a3 3 0 1 0 2 0v-3.38c.53.32 1.15.51 1.83.55l3.02.17a3 3 0 1 0 .1-2l-3.01-.17A2 2 0 0 1 7 8.83V8.83A3 3 0 0 0 6 3z"/></svg>';
+	function remoteIconSvg(): string {
 		const r = remoteMeta;
-		if (!r) return '🔗';
-		if (r.type === 'drive') return '☁️';
-		if (r.type === 'git') return (remoteUrl() || '').includes('github.com') ? '🐙' : '🔧';
-		return '🔗';
+		if (!r) return '';
+		if (r.type === 'drive') return SVG_DRIVE;
+		if (r.type === 'git') return (remoteUrl() || '').includes('github.com') ? SVG_GITHUB : SVG_GIT;
+		return '';
 	}
 	async function loadRemoteStatus() {
 		if (!remoteMeta) { remoteStatus = null; return; }
@@ -855,7 +864,7 @@
 					{#if remoteMeta}{@const ru = remoteUrl()}
 						{#if ru}
 							<a class="remote-goto" href={ru} target="_blank" rel="noopener"
-								title={`Apri il remote (${remoteMeta.type})`}>{remoteIcon()} apri {remoteMeta.type}</a>
+								title={`Apri il remote (${remoteMeta.type})`}>{@html remoteIconSvg()} apri {remoteMeta.type}</a>
 						{/if}
 					{/if}
 				</h3>
@@ -895,12 +904,12 @@
 				{#if !remoteMeta}
 					<p class="muted">Storage locale. Attiva un remote per sincronizzare i file.</p>
 					<div class="remote-actions">
-						<button type="button" on:click={enableGit} disabled={remoteBusy}>🐙 git</button>
-						<button type="button" on:click={enableDrive} disabled={remoteBusy}>☁️ Drive</button>
+						<button type="button" on:click={enableGit} disabled={remoteBusy}>{@html SVG_GITHUB} git</button>
+						<button type="button" on:click={enableDrive} disabled={remoteBusy}>{@html SVG_DRIVE} Drive</button>
 					</div>
 				{:else}
 					<p class="remote-info">
-						{remoteIcon()} <strong>{remoteMeta.type}</strong>
+						{@html remoteIconSvg()} <strong>{remoteMeta.type}</strong>
 						{#if remoteStatus}
 							{#if remoteStatus.type === 'git'}<span class="muted"> · {remoteStatus.dirty ?? 0} da committare</span>
 							{:else}<span class="muted"> · {remoteStatus.synced ?? 0} in sync, {remoteStatus.pending ?? 0} da pushare</span>{/if}
