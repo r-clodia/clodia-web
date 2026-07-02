@@ -228,10 +228,16 @@
 
 	/** Reply: cita il messaggio (anteprima in corsivo) e tagga l'autore. */
 	let replyingTo: { author: string; snippet: string } | null = null;
-	function replyTo(m: ChannelMessage) {
-		const flat = (m.text || '').replace(/\s+/g, ' ').trim();
+	/** Anteprima-citazione di un messaggio, dal testo PULITO (senza marcatore
+	 *  choices e senza eventuale quote già presente). */
+	function replySnippet(m: ChannelMessage): { author: string; snippet: string } {
+		const clean = stripChoices(splitQuote(m.text || '').body);
+		const flat = clean.replace(/\s+/g, ' ').trim();
 		const snippet = flat.length > 140 ? flat.slice(0, 140) + '…' : flat || '(allegato)';
-		replyingTo = { author: m.author, snippet };
+		return { author: m.author, snippet };
+	}
+	function replyTo(m: ChannelMessage) {
+		replyingTo = replySnippet(m);
 		const base = draft.trim();
 		draft = base ? `${base} @${m.author} ` : `@${m.author} `;
 		void tick().then(() => {
@@ -272,9 +278,14 @@
 			.map((seg, i) => (i % 2 === 0 ? seg.replace(PATH, repl) : seg))
 			.join('');
 	}
-	async function pickChoice(c: string) {
+	// Click su una pill → la scelta viene inviata come REPLY al messaggio che ha
+	// proposto le pill (quote in corsivo) e taggando il suo autore, così in una
+	// chat multi-agente la risposta torna all'agente che ha chiesto e il flusso
+	// della conversazione resta leggibile.
+	async function pickChoice(c: string, m: ChannelMessage) {
 		if (sending) return;
-		draft = c;
+		replyingTo = replySnippet(m);
+		draft = `@${m.author} ${c}`;
 		await send();
 	}
 	// selezione multipla (vale per l'ultimo messaggio con choices-multi)
@@ -283,9 +294,10 @@
 		multiSel.has(c) ? multiSel.delete(c) : multiSel.add(c);
 		multiSel = new Set(multiSel); // reattività
 	}
-	async function confirmMulti() {
+	async function confirmMulti(m: ChannelMessage) {
 		if (!multiSel.size || sending) return;
-		draft = Array.from(multiSel).join(', ');
+		replyingTo = replySnippet(m);
+		draft = `@${m.author} ${Array.from(multiSel).join(', ')}`;
 		multiSel = new Set();
 		await send();
 	}
@@ -757,12 +769,12 @@
 											<button type="button" class="pill" class:on={multiSel.has(c)}
 												on:click={() => toggleMulti(c)}>{c}</button>
 										{:else}
-											<button type="button" class="pill" on:click={() => pickChoice(c)}>{c}</button>
+											<button type="button" class="pill" on:click={() => pickChoice(c, m)}>{c}</button>
 										{/if}
 									{/each}
 									{#if ch.multi}
 										<button type="button" class="pill pill-confirm" disabled={multiSel.size === 0}
-											on:click={confirmMulti}>✓ Conferma</button>
+											on:click={() => confirmMulti(m)}>✓ Conferma</button>
 									{/if}
 								</div>
 							{/if}
