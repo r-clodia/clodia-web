@@ -989,10 +989,26 @@ export interface AgentActivitySummaryRow {
 	last_event_type?: string | null;
 }
 
-/** GET `/api/agents/activity/summary` — leaderboard cumulativa per agent seed. */
-export async function getActivitySummary(opts: RequestOptions = {}): Promise<AgentActivitySummaryRow[]> {
-	const d = await apiGet<{ agents: AgentActivitySummaryRow[] }>('/api/agents/activity/summary', opts);
-	return d.agents ?? [];
+/** Una riga della leaderboard per provider di inferenza. */
+export interface ProviderActivitySummaryRow {
+	provider: string;
+	runs: number;
+	tokens_in: number;
+	tokens_out: number;
+	agents: string[];
+	agents_count: number;
+	last_event_ts?: string | null;
+}
+
+export interface ActivitySummary {
+	agents: AgentActivitySummaryRow[];
+	providers: ProviderActivitySummaryRow[];
+}
+
+/** GET `/api/agents/activity/summary` — leaderboard cumulativa per agent seed e per provider. */
+export async function getActivitySummary(opts: RequestOptions = {}): Promise<ActivitySummary> {
+	const d = await apiGet<Partial<ActivitySummary>>('/api/agents/activity/summary', opts);
+	return { agents: d.agents ?? [], providers: d.providers ?? [] };
 }
 
 /** Snapshot import/export dei topic (solo admin). */
