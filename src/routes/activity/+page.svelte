@@ -5,22 +5,27 @@
 		getActivitySummary,
 		getRuntimeSessions,
 		type AgentActivitySummaryRow,
+		type ProviderActivitySummaryRow,
 		type RuntimeSession
 	} from '$lib/api/client';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 
 	let sessions: RuntimeSession[] = [];
 	let leaderboard: AgentActivitySummaryRow[] = [];
+	let providers: ProviderActivitySummaryRow[] = [];
 	let err = '';
 	let loading = true;
 	let poll: ReturnType<typeof setInterval> | null = null;
 
 	async function load() {
 		try {
-			[sessions, leaderboard] = await Promise.all([
+			const [sess, summary] = await Promise.all([
 				getRuntimeSessions(),
 				getActivitySummary()
 			]);
+			sessions = sess;
+			leaderboard = summary.agents;
+			providers = summary.providers;
 			err = '';
 		} catch (e) {
 			err = e instanceof ApiError || e instanceof Error ? e.message : String(e);
@@ -75,9 +80,24 @@
 		return s.spawn_id || s.agent;
 	}
 
+	// Nomi leggibili dei provider (id tecnico → etichetta)
+	const PROVIDER_LABEL: Record<string, string> = {
+		'anthropic-api': 'Anthropic API',
+		'claude-pro-max': 'Claude Pro/Max',
+		'aws-region-eu': 'AWS Bedrock (EU)',
+		'openai-api': 'OpenAI API',
+		'codex': 'OpenAI Codex',
+		'scaleway': 'Scaleway',
+		sconosciuto: 'Sconosciuto'
+	};
+	function providerLabel(id: string): string {
+		return PROVIDER_LABEL[id] ?? id;
+	}
+
 	$: running = sessions.filter((s) => s.state === 'running').length;
 	$: blocked = sessions.filter((s) => s.state === 'blocked').length;
 	$: totalRuns = leaderboard.reduce((sum, a) => sum + (a.runs || 0), 0);
+	$: totalProviderTokens = providers.reduce((sum, p) => sum + (p.tokens_in || 0) + (p.tokens_out || 0), 0);
 </script>
 
 <svelte:head><title>Agents Activity — Clodia</title></svelte:head>
@@ -184,6 +204,43 @@
 			</div>
 		{/if}
 	</section>
+
+		<section class="panel provider-panel">
+			<div class="panel-head">
+				<h2>Provider leaderboard</h2>
+				<span class="panel-count">{fmtTok(totalProviderTokens)} token · {providers.length} provider</span>
+			</div>
+			{#if loading}
+				<p class="muted">Caricamento…</p>
+			{:else if providers.length === 0}
+				<p class="muted">Nessun consumo registrato per provider.</p>
+			{:else}
+				<div class="table-wrap">
+					<table class="tbl">
+						<thead>
+							<tr>
+								<th>#</th><th>Provider di inferenza</th>
+								<th class="num">Token in</th><th class="num">Token out</th>
+								<th class="num">Totale</th><th class="num">Run</th><th class="num">Agent</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each providers as p, i (p.provider)}
+								<tr>
+									<td class="rank">{i + 1}</td>
+									<td class="ag"><span class="prov-dot" data-prov={p.provider}></span><span>{providerLabel(p.provider)}</span></td>
+									<td class="num">{fmtTok(p.tokens_in)}</td>
+									<td class="num">{fmtTok(p.tokens_out)}</td>
+									<td class="num tot-col">{fmtTok(p.tokens_in + p.tokens_out)}</td>
+									<td class="num">{p.runs}</td>
+									<td class="num">{p.agents_count}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+		</section>
 </div>
 
 <style>
@@ -195,7 +252,13 @@
 	.pill.blk { color: #e8a23a; border-color: rgba(232,162,58,.5); }
 	.err { color: var(--danger, #e85d75); font-size: 12px; margin-bottom: 10px; }
 	.muted { color: var(--fg-muted); font-size: 13px; }
-	.activity-grid { display: grid; grid-template-rows: minmax(240px, 1fr) minmax(240px, 1fr); gap: 18px; min-height: calc(100vh - 190px); }
+	.activity-grid { display: grid; grid-template-rows: repeat(3, minmax(200px, 1fr)); gap: 18px; min-height: calc(100vh - 190px); }
+	.tot-col { font-weight: 700; }
+	.prov-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--fg-muted); display: inline-block; flex: none; }
+	.prov-dot[data-prov="anthropic-api"], .prov-dot[data-prov="claude-pro-max"] { background: #d97757; }
+	.prov-dot[data-prov="aws-region-eu"] { background: #ff9900; }
+	.prov-dot[data-prov="openai-api"], .prov-dot[data-prov="codex"] { background: #10a37f; }
+	.prov-dot[data-prov="scaleway"] { background: #4f0599; }
 	.panel { min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--border); padding-top: 12px; }
 	.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 8px; }
 	.panel h2 { margin: 0; font-size: 14px; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.05em; }
