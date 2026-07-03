@@ -416,9 +416,12 @@ export interface Topic {
 	readonly participants?: ReadonlyArray<string>;
 	/** Tipo di canale: "dm" = messaggio diretto a 2; assente/altro = canale/topic. */
 	readonly kind?: string;
-	/** Stato del topic: active | await | idle | archived (default active).
-	 *  La vista Topics nasconde di default gli `archived` (toggle per mostrarli). */
+	/** Stato del topic (selezione unica): await | active | archived | urgent
+	 *  (default active). La vista Topics nasconde di default gli `archived`. */
 	readonly status?: string;
+	/** Scadenza più vicina fra i todo (action_points) con data, ISO YYYY-MM-DD;
+	 *  null se nessun todo ha una scadenza. Mostrata come badge sulla card. */
+	readonly next_deadline?: string | null;
 	/** Backend di storage che contiene il topic (Topic System v2): es. "local-fs". */
 	readonly storage?: string;
 }

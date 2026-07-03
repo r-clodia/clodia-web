@@ -21,6 +21,8 @@
 		exportTopicsBundle,
 		importTopicsBundle,
 		archiveTopic,
+		setTopicStatus,
+		TOPIC_STATUSES,
 		type TopicCatalogItem
 	} from '$lib/api/client';
 	import type { Topic } from '$lib/api/types';
@@ -52,6 +54,34 @@
 		} catch (err) {
 			listState = { kind: 'error', ...fmtError(err) };
 		}
+	}
+
+	// Vocabolario status (selezione unica) + scadenza todo più vicina sulla card.
+	const statusOptions = TOPIC_STATUSES;
+	let statusBusy: Record<string, boolean> = {};
+	async function changeStatus(t: Topic, status: string) {
+		if (status === (t.status ?? 'active')) return;
+		const k = keyOf(t);
+		statusBusy = { ...statusBusy, [k]: true };
+		try {
+			await setTopicStatus(t.tier, t.name, status);
+			await loadList();
+		} catch (e) {
+			toastError('Status non aggiornato', e instanceof ApiError || e instanceof Error ? e.message : String(e));
+		} finally {
+			statusBusy = { ...statusBusy, [k]: false };
+		}
+	}
+	/** Scadenza todo: formatta + segnala se scaduta/imminente (per lo stile). */
+	function deadlineInfo(iso?: string | null): { label: string; cls: string } | null {
+		if (!iso) return null;
+		const d = new Date(iso + 'T00:00:00');
+		if (Number.isNaN(d.getTime())) return null;
+		const today = new Date(); today.setHours(0, 0, 0, 0);
+		const days = Math.round((d.getTime() - today.getTime()) / 86400000);
+		const label = d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
+		const cls = days < 0 ? 'overdue' : days <= 7 ? 'soon' : 'later';
+		return { label, cls };
 	}
 
 	// --- Import/Export snapshot topic (solo admin) ---
@@ -543,6 +573,10 @@
 						{#if t.status && t.status !== 'active'}
 							<span class="state state-{t.status}">{t.status}</span>
 						{/if}
+						{#if deadlineInfo(t.next_deadline)}
+							{@const dl = deadlineInfo(t.next_deadline)}
+							<span class="deadline deadline-{dl?.cls}" title="Scadenza todo più vicina">⏰ {dl?.label}</span>
+						{/if}
 						{#if t.storage}
 							<span class="storage" title="Storage backend del topic">⛁ {t.storage}</span>
 						{/if}
@@ -563,6 +597,16 @@
 						<a class="open-channel" href={`/topics/${t.tier}/${t.name}`} on:click|stopPropagation>
 							💬 Apri canale
 						</a>
+						<div class="status-row" on:click|stopPropagation on:keydown|stopPropagation role="presentation">
+							<span class="status-label">Stato</span>
+							<select class="status-select" value={t.status ?? 'active'}
+								disabled={statusBusy[keyOf(t)]}
+								on:change={(e) => changeStatus(t, (e.currentTarget as HTMLSelectElement).value)}>
+								{#each statusOptions as s}
+									<option value={s}>{s}</option>
+								{/each}
+							</select>
+						</div>
 						{#if t.tldr}
 							<div class="topic-tldr md">{@html renderMarkdown(t.tldr)}</div>
 						{/if}
@@ -735,6 +779,30 @@
 		background: rgba(96, 165, 250, 0.14);
 		color: #60a5fa;
 	}
+	.state-urgent {
+		background: rgba(239, 68, 68, 0.18);
+		color: #ef4444;
+	}
+	/* Badge scadenza todo più vicina */
+	.deadline {
+		font-size: 9.5px;
+		letter-spacing: 0.03em;
+		font-weight: 700;
+		padding: 2px 7px;
+		border-radius: 999px;
+		background: rgba(120, 144, 156, 0.16);
+		color: var(--fg-muted);
+	}
+	.deadline-soon { background: rgba(199, 154, 46, 0.18); color: #c79a2e; }
+	.deadline-overdue { background: rgba(239, 68, 68, 0.18); color: #ef4444; }
+	/* Selettore stato nella card */
+	.status-row { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
+	.status-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); }
+	.status-select {
+		font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 6px;
+		border: 1px solid var(--border); background: var(--card-bg, transparent); color: var(--fg); cursor: pointer;
+	}
+	.status-select:disabled { opacity: 0.5; cursor: default; }
 
 	/* Card grid ----------------------------------------------------------- */
 	.grid {

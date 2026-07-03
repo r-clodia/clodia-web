@@ -1567,3 +1567,11 @@ export async function downloadProfileFile(name: string, filename: string): Promi
 export async function archiveTopic(tier: string, name: string, opts: RequestOptions = {}): Promise<{ archived: boolean }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/archive`, {}, opts);
 }
+
+/** Vocabolario unico di status del topic (selezione uguale per tutti). */
+export const TOPIC_STATUSES = ['await', 'active', 'archived', 'urgent'] as const;
+
+/** POST `/api/topics/{tier}/{name}/status` — imposta lo status (await|active|archived|urgent). */
+export async function setTopicStatus(tier: string, name: string, status: string, opts: RequestOptions = {}): Promise<{ status: string }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/status`, { status }, opts);
+}
