@@ -209,6 +209,7 @@ import type {
 	ChatHistoryResponse,
 	ChatMessage,
 	ChatsListResponse,
+	Pack,
 	Rule,
 	RuleDetail,
 	Skill,
@@ -1181,6 +1182,59 @@ export async function importSkillZip(
 /** DELETE `/clodia/skills/{name}` — elimina una skill utente. */
 export async function deleteSkill(name: string, opts: RequestOptions = {}): Promise<void> {
 	await apiDelete(`/clodia/skills/${encodeURIComponent(name)}`, opts);
+}
+
+// ---------------------------------------------------------------------------
+// PACKS — entità di primo livello del catalogo: [skills]+[rules]+[mcp_servers]
+// ---------------------------------------------------------------------------
+
+/** GET `/clodia/packs` — lista pack con skills/rules/mcp_servers annidati. */
+export async function listPacks(opts: RequestOptions = {}): Promise<ReadonlyArray<Pack>> {
+	const raw = await apiGet<unknown>('/clodia/packs', opts);
+	return Array.isArray(raw) ? (raw as ReadonlyArray<Pack>) : [];
+}
+
+/** GET `/clodia/packs/{name}` — dettaglio di un singolo pack. */
+export async function getPack(name: string, opts: RequestOptions = {}): Promise<Pack> {
+	return apiGet<Pack>(`/clodia/packs/${encodeURIComponent(name)}`, opts);
+}
+
+export interface PackImportResult {
+	pack: string;
+	skills: string[];
+	rules: string[];
+	mcp_servers: string[];
+}
+
+/** POST `/clodia/packs/import-url` — importa un pack da URL (git repo o .zip
+ *  remoto). Formati: Claude plugin, pack.yaml clodia, bare skills (→ user-pack). */
+export async function importPackUrl(
+	url: string,
+	opts: RequestOptions = {}
+): Promise<PackImportResult> {
+	return apiPost<PackImportResult>('/clodia/packs/import-url', { url }, opts);
+}
+
+/** POST `/clodia/packs/import` — importa un pack da archivio .zip (multipart). */
+export async function importPackZip(
+	file: File,
+	opts: RequestOptions = {}
+): Promise<PackImportResult> {
+	const fd = new FormData();
+	fd.append('file', file);
+	const res = await fetch(joinUrl('/clodia/packs/import'), {
+		method: 'POST',
+		headers: { ...authHeaders(), ...(opts.headers || {}) },
+		body: fd,
+		signal: opts.signal
+	});
+	if (!res.ok) throw await parseError(res);
+	return parseJsonOrText<PackImportResult>(res);
+}
+
+/** DELETE `/clodia/packs/{name}` — rimuove un pack non nativo. */
+export async function deletePack(name: string, opts: RequestOptions = {}): Promise<void> {
+	await apiDelete(`/clodia/packs/${encodeURIComponent(name)}`, opts);
 }
 
 /** GET `/clodia/rules` — deduplicated rule catalog. */

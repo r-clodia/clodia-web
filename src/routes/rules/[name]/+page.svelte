@@ -40,7 +40,7 @@
 
 <header class="head">
 	<div>
-		<a class="back" href="/rules">← Rules</a>
+		<a class="back" href="/packs">← Packs</a>
 		<div class="title-row">
 			<h1>{state.kind === 'ok' ? state.item.name : name}</h1>
 			{#if state.kind === 'ok'}

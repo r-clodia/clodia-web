@@ -374,6 +374,42 @@ export type Rule = CatalogItem;
 export type RuleDetail = CatalogDetail;
 
 /* ------------------------------------------------------------------------ */
+/*  PACKS — entità di primo livello: [skills] + [rules] + [mcp_servers]     */
+/* ------------------------------------------------------------------------ */
+
+export type PackOrigin = 'logic' | 'local' | 'external' | 'user' | 'imported';
+
+/** Voce figlia di un pack (skill o rule): nome + descrizione breve. */
+export interface PackEntry {
+	readonly name: string;
+	readonly description: string;
+}
+
+/** MCP server dichiarato da un pack (config con secret mascherati lato server). */
+export interface PackMcpServer {
+	readonly name: string;
+	readonly transport: string;
+	readonly config: Record<string, unknown>;
+}
+
+export interface Pack {
+	readonly name: string;
+	readonly description: string;
+	readonly origin: PackOrigin;
+	readonly deletable: boolean;
+	readonly version: string;
+	readonly source: string;
+	readonly skills: ReadonlyArray<PackEntry>;
+	readonly rules: ReadonlyArray<PackEntry>;
+	readonly mcp_servers: ReadonlyArray<PackMcpServer>;
+	readonly counts: {
+		readonly skills: number;
+		readonly rules: number;
+		readonly mcp_servers: number;
+	};
+}
+
+/* ------------------------------------------------------------------------ */
 /*  TOPICS — Clodia topic registry (read-only)                              */
 /* ------------------------------------------------------------------------ */
 
