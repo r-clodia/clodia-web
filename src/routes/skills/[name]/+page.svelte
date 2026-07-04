@@ -49,7 +49,7 @@
 		actionError = '';
 		try {
 			await deleteSkill(name);
-			await goto('/skills');
+			await goto('/packs');
 		} catch (err) {
 			actionError = err instanceof ApiError ? err.message : String(err);
 			deleting = false;
@@ -59,7 +59,7 @@
 
 <header class="head">
 	<div>
-		<a class="back" href="/skills">← Skills</a>
+		<a class="back" href="/packs">← Packs</a>
 		<div class="title-row">
 			<h1>{state.kind === 'ok' ? state.item.name : name}</h1>
 			{#if state.kind === 'ok'}

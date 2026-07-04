@@ -13,7 +13,7 @@
 		{ href: '/agents', label: 'AGENTS' },
 		{ href: '/activity', label: 'ACTIVITY' },
 		{ href: '/jobs', label: 'JOBS' },
-		{ href: '/skills', label: 'SKILLS' },
+		{ href: '/packs', label: 'PACKS' },
 		{ href: '/kanban', label: 'KANBAN', disabled: true },
 		{ href: '/tools', label: 'INTEGRATIONS' },
 		{ href: '/providers', label: 'PROVIDERS' },
@@ -53,6 +53,9 @@
 
 	function isActive(href: string, pathname: string): boolean {
 		if (href === '/') return pathname === '/';
+		// Le pagine dettaglio skill/rule appartengono alla sezione Packs.
+		if (href === '/packs' && (pathname.startsWith('/skills') || pathname.startsWith('/rules')))
+			return true;
 		return pathname === href || pathname.startsWith(href + '/');
 	}
 	// Versione di piattaforma (tag collettivo). Override a build-time via
