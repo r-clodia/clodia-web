@@ -210,6 +210,7 @@ import type {
 	ChatMessage,
 	ChatsListResponse,
 	Pack,
+	Plugin,
 	Rule,
 	RuleDetail,
 	Skill,
@@ -1185,10 +1186,26 @@ export async function deleteSkill(name: string, opts: RequestOptions = {}): Prom
 }
 
 // ---------------------------------------------------------------------------
-// PACKS — entità di primo livello del catalogo: [skills]+[rules]+[mcp_servers]
+// PLUGIN & PACK — pack := [agent seeds]+[plugins]; plugin := [skills]+[rules]+[mcp]
 // ---------------------------------------------------------------------------
 
-/** GET `/clodia/packs` — lista pack con skills/rules/mcp_servers annidati. */
+/** GET `/clodia/plugins` — tutti i plugin (anche sciolti, fuori dai pack). */
+export async function listPlugins(opts: RequestOptions = {}): Promise<ReadonlyArray<Plugin>> {
+	const raw = await apiGet<unknown>('/clodia/plugins', opts);
+	return Array.isArray(raw) ? (raw as ReadonlyArray<Plugin>) : [];
+}
+
+/** GET `/clodia/plugins/{name}` — dettaglio di un singolo plugin. */
+export async function getPlugin(name: string, opts: RequestOptions = {}): Promise<Plugin> {
+	return apiGet<Plugin>(`/clodia/plugins/${encodeURIComponent(name)}`, opts);
+}
+
+/** DELETE `/clodia/plugins/{name}` — rimuove un plugin non nativo. */
+export async function deletePlugin(name: string, opts: RequestOptions = {}): Promise<void> {
+	await apiDelete(`/clodia/plugins/${encodeURIComponent(name)}`, opts);
+}
+
+/** GET `/clodia/packs` — pack (aggregati di agent seeds + plugins). */
 export async function listPacks(opts: RequestOptions = {}): Promise<ReadonlyArray<Pack>> {
 	const raw = await apiGet<unknown>('/clodia/packs', opts);
 	return Array.isArray(raw) ? (raw as ReadonlyArray<Pack>) : [];
@@ -1199,15 +1216,21 @@ export async function getPack(name: string, opts: RequestOptions = {}): Promise<
 	return apiGet<Pack>(`/clodia/packs/${encodeURIComponent(name)}`, opts);
 }
 
+/** Risultato dell'import UNIFICATO: un pack (agents+plugins) o un plugin sciolto. */
 export interface PackImportResult {
-	pack: string;
-	skills: string[];
-	rules: string[];
-	mcp_servers: string[];
+	kind: 'pack' | 'plugin';
+	// kind === 'pack'
+	pack?: string;
+	agents?: Array<{ name: string; status: 'installed' | 'exists' | 'error'; detail?: string }>;
+	plugins?: Array<{ plugin: string; skills: string[]; rules: string[]; mcp_servers: string[] }>;
+	// kind === 'plugin'
+	plugin?: string;
+	skills?: string[];
+	rules?: string[];
+	mcp_servers?: string[];
 }
 
-/** POST `/clodia/packs/import-url` — importa un pack da URL (git repo o .zip
- *  remoto). Formati: Claude plugin, pack.yaml clodia, bare skills (→ user-pack). */
+/** POST `/clodia/packs/import-url` — import unificato da URL (git o .zip remoto). */
 export async function importPackUrl(
 	url: string,
 	opts: RequestOptions = {}
@@ -1215,7 +1238,7 @@ export async function importPackUrl(
 	return apiPost<PackImportResult>('/clodia/packs/import-url', { url }, opts);
 }
 
-/** POST `/clodia/packs/import` — importa un pack da archivio .zip (multipart). */
+/** POST `/clodia/packs/import` — import unificato da archivio .zip (multipart). */
 export async function importPackZip(
 	file: File,
 	opts: RequestOptions = {}
@@ -1232,7 +1255,7 @@ export async function importPackZip(
 	return parseJsonOrText<PackImportResult>(res);
 }
 
-/** DELETE `/clodia/packs/{name}` — rimuove un pack non nativo. */
+/** DELETE `/clodia/packs/{name}` — rimuove un pack (plugin + agenti + manifest). */
 export async function deletePack(name: string, opts: RequestOptions = {}): Promise<void> {
 	await apiDelete(`/clodia/packs/${encodeURIComponent(name)}`, opts);
 }

@@ -374,38 +374,73 @@ export type Rule = CatalogItem;
 export type RuleDetail = CatalogDetail;
 
 /* ------------------------------------------------------------------------ */
-/*  PACKS — entità di primo livello: [skills] + [rules] + [mcp_servers]     */
+/*  PLUGIN & PACK — pack := [agent seeds]+[plugins];                        */
+/*  plugin := [skills]+[rules]+[mcp] (standard Claude Code)                 */
 /* ------------------------------------------------------------------------ */
 
-export type PackOrigin = 'logic' | 'local' | 'external' | 'user' | 'imported';
+export type PluginOrigin = 'logic' | 'local' | 'external' | 'user' | 'imported';
 
-/** Voce figlia di un pack (skill o rule): nome + descrizione breve. */
-export interface PackEntry {
+/** Voce figlia di un plugin (skill o rule): nome + descrizione breve. */
+export interface PluginEntry {
 	readonly name: string;
 	readonly description: string;
 }
 
-/** MCP server dichiarato da un pack (config con secret mascherati lato server). */
-export interface PackMcpServer {
+/** MCP server dichiarato da un plugin (config con secret mascherati lato server). */
+export interface PluginMcpServer {
 	readonly name: string;
 	readonly transport: string;
 	readonly config: Record<string, unknown>;
 }
 
-export interface Pack {
+export interface Plugin {
 	readonly name: string;
 	readonly description: string;
-	readonly origin: PackOrigin;
+	readonly origin: PluginOrigin;
 	readonly deletable: boolean;
 	readonly version: string;
 	readonly source: string;
-	readonly skills: ReadonlyArray<PackEntry>;
-	readonly rules: ReadonlyArray<PackEntry>;
-	readonly mcp_servers: ReadonlyArray<PackMcpServer>;
+	readonly skills: ReadonlyArray<PluginEntry>;
+	readonly rules: ReadonlyArray<PluginEntry>;
+	readonly mcp_servers: ReadonlyArray<PluginMcpServer>;
 	readonly counts: {
 		readonly skills: number;
 		readonly rules: number;
 		readonly mcp_servers: number;
+	};
+}
+
+/** Prerequisito (soft) di un agent seed verso un plugin. */
+export interface PluginRequirement {
+	readonly name: string;
+	readonly hard: boolean;
+}
+
+/** Agente dichiarato da un pack, con stato dei prerequisiti plugin. */
+export interface PackAgent {
+	readonly name: string;
+	readonly installed: boolean;
+	readonly description: string;
+	readonly requires_plugins: ReadonlyArray<PluginRequirement>;
+	readonly missing_plugins: ReadonlyArray<string>;
+}
+
+/** Plugin referenziato da un pack ma non (più) installato. */
+export interface PackPluginMissing {
+	readonly name: string;
+	readonly missing: true;
+}
+
+export interface Pack {
+	readonly name: string;
+	readonly description: string;
+	readonly version: string;
+	readonly source: string;
+	readonly agents: ReadonlyArray<PackAgent>;
+	readonly plugins: ReadonlyArray<Plugin | PackPluginMissing>;
+	readonly counts: {
+		readonly agents: number;
+		readonly plugins: number;
 	};
 }
 
