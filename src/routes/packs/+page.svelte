@@ -4,25 +4,27 @@
 		API_BASE_URL,
 		ApiError,
 		listPacks,
+		listPlugins,
 		importPackUrl,
 		importPackZip,
-		deletePack
+		deletePack,
+		deletePlugin
 	} from '$lib/api/client';
-	import type { Pack, PackEntry, PackMcpServer } from '$lib/api/types';
+	import type { Pack, Plugin } from '$lib/api/types';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import PluginNode from '$lib/components/PluginNode.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 
 	type State =
 		| { kind: 'idle' }
 		| { kind: 'loading' }
-		| { kind: 'ok'; items: ReadonlyArray<Pack> }
+		| { kind: 'ok'; packs: ReadonlyArray<Pack>; plugins: ReadonlyArray<Plugin> }
 		| { kind: 'error'; message: string; status?: number };
 
 	let state: State = { kind: 'idle' };
 	let query = '';
-	let expanded = new Set<string>();
-	let expandedMcp = new Set<string>(); // "<pack>/<server>"
+	let expandedPacks = new Set<string>();
 
 	onMount(() => {
 		void load();
@@ -37,68 +39,59 @@
 	async function load() {
 		state = { kind: 'loading' };
 		try {
-			state = { kind: 'ok', items: await listPacks() };
+			const [packs, plugins] = await Promise.all([listPacks(), listPlugins()]);
+			state = { kind: 'ok', packs, plugins };
 		} catch (err) {
 			state = { kind: 'error', ...errorMessage(err) };
 		}
 	}
 
-	function toggle(name: string) {
-		if (expanded.has(name)) expanded.delete(name);
-		else expanded.add(name);
-		expanded = new Set(expanded); // trigger reattività
+	function togglePack(name: string) {
+		if (expandedPacks.has(name)) expandedPacks.delete(name);
+		else expandedPacks.add(name);
+		expandedPacks = new Set(expandedPacks);
 	}
 
-	function toggleMcp(key: string) {
-		if (expandedMcp.has(key)) expandedMcp.delete(key);
-		else expandedMcp.add(key);
-		expandedMcp = new Set(expandedMcp);
+	function isPluginResolved(p: Pack['plugins'][number]): p is Plugin {
+		return !('missing' in p && p.missing);
 	}
 
-	function entryMatches(e: PackEntry, q: string): boolean {
-		return `${e.name} ${e.description}`.toLowerCase().includes(q);
+	function pluginText(p: Plugin): string {
+		const children = [...p.skills, ...p.rules].map((e) => `${e.name} ${e.description}`);
+		const mcp = p.mcp_servers.map((s) => s.name);
+		return `${p.name} ${p.description} ${children.join(' ')} ${mcp.join(' ')}`.toLowerCase();
 	}
 
-	function mcpMatches(s: PackMcpServer, q: string): boolean {
-		return s.name.toLowerCase().includes(q);
+	function packText(p: Pack): string {
+		const agents = p.agents.map((a) => `${a.name} ${a.description}`);
+		const plugins = p.plugins.map((c) => (isPluginResolved(c) ? pluginText(c) : c.name));
+		return `${p.name} ${p.description} ${agents.join(' ')} ${plugins.join(' ')}`.toLowerCase();
 	}
 
-	// Filtro: un pack matcha se matcha il suo nome/descrizione o un figlio.
-	// Con query attiva i figli vengono filtrati e i pack matchati auto-espansi.
+	// Ricerca cross-livello: un pack/plugin matcha se il testo aggregato dei
+	// suoi discendenti contiene la query; con query attiva i nodi sono espansi.
 	$: q = query.trim().toLowerCase();
-	$: packs =
+	$: packs = state.kind === 'ok' ? state.packs.filter((p) => !q || packText(p).includes(q)) : [];
+	$: packPluginNames =
 		state.kind === 'ok'
-			? state.items
-					.map((p) => {
-						if (!q) return p;
-						const self = `${p.name} ${p.description}`.toLowerCase().includes(q);
-						const skills = p.skills.filter((e) => entryMatches(e, q));
-						const rules = p.rules.filter((e) => entryMatches(e, q));
-						const mcp = p.mcp_servers.filter((s) => mcpMatches(s, q));
-						if (!self && !skills.length && !rules.length && !mcp.length) return null;
-						return self ? p : { ...p, skills, rules, mcp_servers: mcp };
-					})
-					.filter((p): p is Pack => p !== null)
+			? new Set(state.packs.flatMap((p) => p.plugins.map((c) => c.name)))
+			: new Set<string>();
+	$: loosePlugins =
+		state.kind === 'ok'
+			? state.plugins.filter(
+					(p) => !packPluginNames.has(p.name) && (!q || pluginText(p).includes(q))
+				)
 			: [];
-	$: isOpen = (name: string) => q !== '' || expanded.has(name);
+	$: isPackOpen = (name: string) => q !== '' || expandedPacks.has(name);
 
-	function summary(p: Pack): string {
+	function packSummary(p: Pack): string {
 		const parts: string[] = [];
-		if (p.counts.skills) parts.push(`${p.counts.skills} skill`);
-		if (p.counts.rules) parts.push(`${p.counts.rules} rule`);
-		if (p.counts.mcp_servers) parts.push(`${p.counts.mcp_servers} MCP`);
+		if (p.counts.agents) parts.push(`${p.counts.agents} agent`);
+		if (p.counts.plugins) parts.push(`${p.counts.plugins} plugin`);
 		return parts.join(' · ') || 'vuoto';
 	}
 
-	const ORIGIN_LABELS: Record<string, string> = {
-		logic: 'nativo',
-		local: 'locale',
-		external: 'esterno',
-		user: 'utente',
-		imported: 'importato'
-	};
-
-	// --- Importa pack — da .zip o da URL ---
+	// --- Importa (unificato: pack o plugin sciolto) — da .zip o da URL ---
 	let showAdd = false;
 	let importTab: 'url' | 'zip' = 'url';
 	let importUrl = '';
@@ -139,13 +132,24 @@
 				res = await importPackUrl(url);
 			}
 			showAdd = false;
-			toastSuccess(
-				`Pack "${res.pack}" importato`,
-				`${res.skills.length} skill · ${res.rules.length} rule · ${res.mcp_servers.length} MCP`
-			);
+			if (res.kind === 'pack') {
+				const agents = res.agents ?? [];
+				const installed = agents.filter((a) => a.status === 'installed').length;
+				toastSuccess(
+					`Pack "${res.pack}" importato`,
+					`${installed}/${agents.length} agent installati · ${(res.plugins ?? []).length} plugin`
+				);
+				if (res.pack) {
+					expandedPacks.add(res.pack);
+					expandedPacks = new Set(expandedPacks);
+				}
+			} else {
+				toastSuccess(
+					`Plugin "${res.plugin}" importato`,
+					`${(res.skills ?? []).length} skill · ${(res.rules ?? []).length} rule · ${(res.mcp_servers ?? []).length} MCP`
+				);
+			}
 			await load();
-			expanded.add(res.pack);
-			expanded = new Set(expanded);
 		} catch (err) {
 			createError = err instanceof ApiError ? err.message : String(err);
 		} finally {
@@ -153,16 +157,21 @@
 		}
 	}
 
-	// --- Elimina pack (solo non nativi) ---
-	let pendingDelete: Pack | null = null;
+	// --- Elimina pack / plugin sciolto ---
+	let pendingDelete: { kind: 'pack'; item: Pack } | { kind: 'plugin'; item: Plugin } | null = null;
 	let deleting = false;
 
 	async function onConfirmDelete() {
 		if (!pendingDelete) return;
 		deleting = true;
 		try {
-			await deletePack(pendingDelete.name);
-			toastSuccess(`Pack "${pendingDelete.name}" rimosso`);
+			if (pendingDelete.kind === 'pack') {
+				await deletePack(pendingDelete.item.name);
+				toastSuccess(`Pack "${pendingDelete.item.name}" rimosso`);
+			} else {
+				await deletePlugin(pendingDelete.item.name);
+				toastSuccess(`Plugin "${pendingDelete.item.name}" rimosso`);
+			}
 			pendingDelete = null;
 			await load();
 		} catch (err) {
@@ -177,12 +186,12 @@
 	<div>
 		<h1>Packs</h1>
 		<p class="hint">
-			GET <code>{API_BASE_URL}/clodia/packs</code> · pack = [skills] + [rules] + [mcp] — nessuno
-			obbligatorio, compatibile con i plugin Claude
+			pack := [agent seeds] + [plugins] · plugin := [skills] + [rules] + [mcp] — GET
+			<code>{API_BASE_URL}/clodia/packs</code>
 		</p>
 	</div>
 	<div class="head-actions">
-		<button type="button" class="add-btn" on:click={openAdd}>+ Importa pack</button>
+		<button type="button" class="add-btn" on:click={openAdd}>+ Importa</button>
 		<button type="button" on:click={load} disabled={state.kind === 'loading'}>
 			{state.kind === 'loading' ? 'Loading…' : 'Reload'}
 		</button>
@@ -198,12 +207,14 @@
 		on:keydown={(e) => e.key === 'Escape' && (showAdd = false)}
 	>
 		<div class="modal" role="dialog" aria-modal="true" tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-			<h2>Importa pack</h2>
+			<h2>Importa pack o plugin</h2>
 			<p class="hint">
-				Formati riconosciuti: <strong>Claude plugin</strong> (<code>.claude-plugin/plugin.json</code>
-				+ skills + mcpServers), <strong>pack clodia</strong> (<code>pack.yaml</code> + skills +
-				rules + mcp) o <strong>skill semplici</strong> (senza manifest → pack
-				<code>user-pack</code>).
+				Import unificato: un <strong>pack</strong> (<code>pack.yaml</code> +
+				<code>agents/</code> + <code>plugins/</code> — gli agenti vengono installati e
+				registrati), un <strong>Claude plugin</strong>
+				(<code>.claude-plugin/plugin.json</code> + skills + mcpServers), un
+				<strong>plugin clodia</strong> (<code>plugin.yaml</code>) o
+				<strong>skill semplici</strong> (→ <code>user-pack</code>).
 			</p>
 			<div class="segmented import-tabs" role="tablist">
 				<button type="button" role="tab" class:active={importTab === 'url'} on:click={() => (importTab = 'url')}>Da URL</button>
@@ -219,7 +230,7 @@
 				<label>
 					Archivio .zip
 					<input type="file" accept=".zip,application/zip" on:change={onPickFile} />
-					<span class="field-hint">un pack completo o anche una singola skill (<code>SKILL.md</code>)</span>
+					<span class="field-hint">un pack completo, un plugin o anche una singola skill</span>
 				</label>
 			{/if}
 			{#if createError}
@@ -239,8 +250,10 @@
 
 <ConfirmDialog
 	open={pendingDelete !== null}
-	title={`Rimuovere il pack "${pendingDelete?.name ?? ''}"?`}
-	message="Verranno rimosse tutte le skill, rule e configurazioni MCP del pack. L'azione non è reversibile."
+	title={`Rimuovere ${pendingDelete?.kind === 'pack' ? 'il pack' : 'il plugin'} "${pendingDelete?.item.name ?? ''}"?`}
+	message={pendingDelete?.kind === 'pack'
+		? 'Verranno rimossi i plugin del pack e i suoi agenti (non nativi). L\'azione non è reversibile.'
+		: 'Verranno rimosse tutte le skill, rule e configurazioni MCP del plugin. L\'azione non è reversibile.'}
 	confirmLabel="Rimuovi"
 	destructive
 	loading={deleting}
@@ -249,7 +262,7 @@
 />
 
 <div class="toolbar">
-	<input type="search" bind:value={query} placeholder="Cerca pack, skill, rule, MCP…" aria-label="Search packs" />
+	<input type="search" bind:value={query} placeholder="Cerca pack, agent, plugin, skill, rule, MCP…" aria-label="Search packs" />
 </div>
 
 {#if state.kind === 'loading' || state.kind === 'idle'}
@@ -267,82 +280,87 @@
 		<div class="error-msg">{state.message}</div>
 		<button class="retry" type="button" on:click={load}>Retry</button>
 	</div>
-{:else if state.items.length === 0}
-	<div class="status empty">
-		<strong>Nessun pack trovato.</strong>
-		<p class="hint">Il server non ha cataloghi leggibili in logic o data.</p>
-	</div>
-{:else if packs.length === 0}
-	<div class="status empty">
-		<strong>Nessun pack matcha la ricerca.</strong>
-	</div>
 {:else}
-	<div class="tree" role="tree">
-		{#each packs as p (p.name)}
-			<div class="pack" role="treeitem" aria-expanded={isOpen(p.name)} aria-selected="false">
-				<div class="pack-head">
-					<button type="button" class="pack-toggle" on:click={() => toggle(p.name)} aria-label={isOpen(p.name) ? 'Chiudi' : 'Apri'}>
-						<span class="chevron" class:open={isOpen(p.name)}>▸</span>
-						<span class="pack-name">{p.name}</span>
-						<span class="origin-chip origin-{p.origin}">{ORIGIN_LABELS[p.origin] ?? p.origin}</span>
-						{#if p.version}<span class="version">v{p.version}</span>{/if}
-						<span class="counts">{summary(p)}</span>
-					</button>
-					{#if p.deletable}
-						<button type="button" class="danger-ghost" on:click={() => (pendingDelete = p)}>Rimuovi</button>
+	{#if packs.length}
+		<div class="section-label">Packs</div>
+		<div class="tree" role="tree">
+			{#each packs as p (p.name)}
+				<div class="pack" role="treeitem" aria-expanded={isPackOpen(p.name)} aria-selected="false">
+					<div class="pack-head">
+						<button type="button" class="pack-toggle" on:click={() => togglePack(p.name)} aria-label={isPackOpen(p.name) ? 'Chiudi' : 'Apri'}>
+							<span class="chevron" class:open={isPackOpen(p.name)}>▸</span>
+							<span class="kind-chip">pack</span>
+							<span class="pack-name">{p.name}</span>
+							{#if p.version}<span class="version">v{p.version}</span>{/if}
+							<span class="counts">{packSummary(p)}</span>
+						</button>
+						<button type="button" class="danger-ghost" on:click={() => (pendingDelete = { kind: 'pack', item: p })}>Rimuovi</button>
+					</div>
+					{#if p.description}
+						<div class="pack-desc">{p.description}</div>
+					{/if}
+					{#if isPackOpen(p.name)}
+						<div class="children" role="group">
+							{#if p.agents.length}
+								<div class="group-label">Agents</div>
+								{#each p.agents as a (a.name)}
+									<a class="child" href={a.installed ? `/agents/${encodeURIComponent(a.name)}` : undefined} class:disabled={!a.installed}>
+										<span class="child-kind kind-agent">agent</span>
+										<span class="child-name">{a.name}</span>
+										<span class="child-desc">{a.description || (a.installed ? '—' : 'non installato')}</span>
+										{#if a.missing_plugins.length}
+											<span class="warn" title={`Plugin richiesti mancanti: ${a.missing_plugins.join(', ')}`}>
+												⚠ manca: {a.missing_plugins.join(', ')}
+											</span>
+										{/if}
+									</a>
+								{/each}
+							{/if}
+							{#if p.plugins.length}
+								<div class="group-label">Plugins</div>
+								<div class="plugin-list">
+									{#each p.plugins as c (c.name)}
+										{#if isPluginResolved(c)}
+											<PluginNode plugin={c} forceOpen={q !== ''} />
+										{:else}
+											<div class="child disabled">
+												<span class="child-kind kind-plugin-missing">plugin</span>
+												<span class="child-name">{c.name}</span>
+												<span class="child-desc">non installato</span>
+											</div>
+										{/if}
+									{/each}
+								</div>
+							{/if}
+							{#if !p.agents.length && !p.plugins.length}
+								<div class="child empty-child">pack vuoto</div>
+							{/if}
+						</div>
 					{/if}
 				</div>
-				{#if p.description}
-					<div class="pack-desc">{p.description}</div>
-				{/if}
-				{#if isOpen(p.name)}
-					<div class="children" role="group">
-						{#if p.skills.length}
-							<div class="group-label">Skills</div>
-							{#each p.skills as s (s.name)}
-								<a class="child" href={`/skills/${encodeURIComponent(s.name)}`}>
-									<span class="child-kind kind-skill">skill</span>
-									<span class="child-name">{s.name}</span>
-									<span class="child-desc">{s.description || '—'}</span>
-								</a>
-							{/each}
-						{/if}
-						{#if p.rules.length}
-							<div class="group-label">Rules</div>
-							{#each p.rules as r (r.name)}
-								<a class="child" href={`/rules/${encodeURIComponent(r.name)}`}>
-									<span class="child-kind kind-rule">rule</span>
-									<span class="child-name">{r.name}</span>
-									<span class="child-desc">{r.description || '—'}</span>
-								</a>
-							{/each}
-						{/if}
-						{#if p.mcp_servers.length}
-							<div class="group-label">MCP servers</div>
-							{#each p.mcp_servers as s (s.name)}
-								<div class="child mcp">
-									<button type="button" class="mcp-row" on:click={() => toggleMcp(`${p.name}/${s.name}`)}>
-										<span class="child-kind kind-mcp">mcp</span>
-										<span class="child-name">{s.name}</span>
-										<span class="child-desc">{s.transport}</span>
-									</button>
-									{#if expandedMcp.has(`${p.name}/${s.name}`)}
-										<pre class="mcp-config">{JSON.stringify(s.config, null, 2)}</pre>
-										<div class="mcp-hint">
-											Non montato automaticamente: per attivarlo usa <a href="/tools">Integrations → Add MCP server</a>.
-										</div>
-									{/if}
-								</div>
-							{/each}
-						{/if}
-						{#if !p.skills.length && !p.rules.length && !p.mcp_servers.length}
-							<div class="child empty-child">pack vuoto</div>
-						{/if}
-					</div>
-				{/if}
-			</div>
-		{/each}
-	</div>
+			{/each}
+		</div>
+	{/if}
+
+	{#if loosePlugins.length}
+		<div class="section-label">Plugins{packs.length ? ' (fuori dai pack)' : ''}</div>
+		<div class="tree" role="tree">
+			{#each loosePlugins as p (p.name)}
+				<PluginNode
+					plugin={p}
+					deletable
+					forceOpen={q !== ''}
+					on:delete={(e) => (pendingDelete = { kind: 'plugin', item: e.detail })}
+				/>
+			{/each}
+		</div>
+	{/if}
+
+	{#if !packs.length && !loosePlugins.length}
+		<div class="status empty">
+			<strong>{q ? 'Nessun pack o plugin matcha la ricerca.' : 'Nessun pack o plugin trovato.'}</strong>
+		</div>
+	{/if}
 {/if}
 
 <style>
@@ -373,6 +391,16 @@
 		border: 1px solid var(--border);
 		background: var(--card-bg);
 		color: var(--fg);
+	}
+	.section-label {
+		margin: 18px 0 8px;
+		font-size: 11px;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--fg-muted);
+	}
+	.section-label:first-of-type {
+		margin-top: 0;
 	}
 	.tree {
 		display: flex;
@@ -412,6 +440,16 @@
 	.chevron.open {
 		transform: rotate(90deg);
 	}
+	.kind-chip {
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		padding: 1px 6px;
+		border-radius: 999px;
+		border: 1px solid rgba(97, 175, 254, 0.6);
+		color: #61affe;
+		flex-shrink: 0;
+	}
 	.pack-name {
 		font-family: var(--mono);
 		font-weight: 700;
@@ -427,28 +465,6 @@
 		font-size: 12px;
 		color: var(--fg-muted);
 		white-space: nowrap;
-	}
-	.origin-chip {
-		font-size: 10.5px;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		padding: 2px 7px;
-		border-radius: 999px;
-		border: 1px solid var(--border);
-		color: var(--fg-muted);
-	}
-	.origin-logic {
-		border-color: var(--accent);
-		color: var(--accent);
-	}
-	.origin-external {
-		border-color: rgba(97, 175, 254, 0.7);
-		color: #61affe;
-	}
-	.origin-user,
-	.origin-imported {
-		border-color: rgba(73, 204, 144, 0.7);
-		color: #49cc90;
 	}
 	.pack-desc {
 		margin: 2px 0 0 24px;
@@ -473,6 +489,12 @@
 	.group-label:first-child {
 		margin-top: 2px;
 	}
+	.plugin-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin: 4px 0;
+	}
 	.child {
 		display: flex;
 		align-items: baseline;
@@ -486,6 +508,10 @@
 	a.child:hover {
 		background: rgba(255, 107, 61, 0.06);
 	}
+	.child.disabled {
+		opacity: 0.65;
+		pointer-events: none;
+	}
 	.child-kind {
 		font-size: 10px;
 		text-transform: uppercase;
@@ -496,17 +522,13 @@
 		color: var(--fg-muted);
 		flex-shrink: 0;
 	}
-	.kind-skill {
-		border-color: rgba(255, 107, 61, 0.55);
-		color: var(--accent);
+	.kind-agent {
+		border-color: rgba(214, 143, 255, 0.6);
+		color: #d68fff;
 	}
-	.kind-rule {
-		border-color: rgba(97, 175, 254, 0.55);
-		color: #61affe;
-	}
-	.kind-mcp {
-		border-color: rgba(73, 204, 144, 0.55);
-		color: #49cc90;
+	.kind-plugin-missing {
+		border-color: rgba(232, 93, 117, 0.5);
+		color: #e85d75;
 	}
 	.child-name {
 		font-family: var(--mono);
@@ -521,42 +543,11 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.child.mcp {
-		display: block;
-		padding: 0;
-	}
-	.mcp-row {
-		display: flex;
-		align-items: baseline;
-		gap: 10px;
-		width: 100%;
-		background: transparent;
-		border: none;
-		padding: 5px 8px;
-		border-radius: 6px;
-		cursor: pointer;
-		color: inherit;
-		text-align: left;
-	}
-	.mcp-row:hover {
-		background: rgba(73, 204, 144, 0.06);
-	}
-	.mcp-config {
-		margin: 4px 8px 6px;
-		padding: 10px 12px;
-		background: rgba(0, 0, 0, 0.25);
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		font-size: 11.5px;
-		overflow: auto;
-	}
-	.mcp-hint {
-		margin: 0 8px 8px;
+	.warn {
+		margin-left: auto;
 		font-size: 11px;
-		color: var(--fg-muted);
-	}
-	.mcp-hint a {
-		color: var(--accent);
+		color: #e8a33d;
+		white-space: nowrap;
 	}
 	.empty-child {
 		color: var(--fg-muted);
