@@ -27,8 +27,15 @@
 	} from '$lib/api/client';
 	import type { Topic } from '$lib/api/types';
 	import { session } from '$lib/auth/session';
+	import { instanceProfile, ensureProfileLoaded, singleTopicHref } from '$lib/stores/instance';
 	import Modal from '$lib/components/Modal.svelte';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
+
+	// Modalità topics:single (Modular Distro F2): la lista non esiste, si va
+	// dritti al topic-workspace unico dell'edizione.
+	$: if ($instanceProfile.features.topics === 'single') {
+		void goto(singleTopicHref($instanceProfile), { replaceState: true });
+	}
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import { renderInline, renderMarkdown } from '$lib/markdown';
@@ -170,6 +177,7 @@
 	}
 
 	onMount(() => {
+		void ensureProfileLoaded();
 		pinnedTopics = loadPinnedTopics();
 		void loadList();
 		void refreshAdmin();
@@ -386,7 +394,9 @@
 				{exporting ? 'Export…' : '⬇ Esporta'}
 			</button>
 		{/if}
-		<button type="button" class="new-topic" on:click={openNew}>+ Nuovo topic</button>
+		{#if $instanceProfile.features.topics === 'full'}
+			<button type="button" class="new-topic" on:click={openNew}>+ Nuovo topic</button>
+		{/if}
 		<label class="archived-toggle" class:on={showArchived} title="Mostra/nascondi i topic archiviati">
 			<input type="checkbox" bind:checked={showArchived} />
 			<span>Mostra archiviati{archivedCount ? ` (${archivedCount})` : ''}</span>

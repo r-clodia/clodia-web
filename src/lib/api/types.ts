@@ -374,6 +374,38 @@ export type Rule = CatalogItem;
 export type RuleDetail = CatalogDetail;
 
 /* ------------------------------------------------------------------------ */
+/*  INSTANCE PROFILE — GET /profile (Modular Distro F2)                     */
+/* ------------------------------------------------------------------------ */
+
+/** Feature attive dell'edizione. Il backend è la fonte di verità. */
+export interface InstanceFeatures {
+	readonly jobs: boolean;
+	readonly topics: 'off' | 'single' | 'full';
+	readonly rag: 'off' | 'single' | 'full';
+	readonly integrations: 'off' | 'fixed' | 'full';
+	readonly channels: boolean;
+	readonly packs_ui: boolean;
+	readonly providers_ui: boolean;
+	readonly activity: boolean;
+	readonly kanban: boolean;
+	readonly colony: boolean;
+}
+
+export interface InstanceBranding {
+	readonly name: string;
+	readonly logo: string;
+	readonly accent: string;
+}
+
+export interface InstanceProfile {
+	readonly edition: string;
+	readonly features: InstanceFeatures;
+	readonly branding: InstanceBranding;
+	readonly rag: { readonly collection?: string };
+	readonly topics_single: { readonly name?: string; readonly tier?: string };
+}
+
+/* ------------------------------------------------------------------------ */
 /*  PLUGIN & PACK — pack := [agent seeds]+[plugins];                        */
 /*  plugin := [skills]+[rules]+[mcp] (standard Claude Code)                 */
 /* ------------------------------------------------------------------------ */
