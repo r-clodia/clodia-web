@@ -125,7 +125,7 @@
 
 	{#if recentTopics.length}
 		<section class="recent" aria-label="Topic recenti">
-			<div class="recent-title">{term($instanceProfile, 'topic', 'RECENT TOPICS', { plural: true, upper: true }) === 'TOPICS' ? 'RECENT TOPICS' : term($instanceProfile, 'topic', 'TOPICS', { plural: true, upper: true }) + ' RECENTI'}</div>
+			<div class="recent-title">{term($instanceProfile, 'topic', '', { plural: true, upper: true }) ? `${term($instanceProfile, 'topic', '', { plural: true, upper: true })} RECENTI` : 'RECENT TOPICS'}</div>
 			<div class="recent-list">
 				{#each recentTopics as t (`${t.tier}/${t.name}`)}
 					<a
