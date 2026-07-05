@@ -387,6 +387,7 @@ export interface InstanceFeatures {
 	readonly packs_ui: boolean;
 	readonly providers_ui: boolean;
 	readonly activity: boolean;
+	readonly pwa: boolean;
 	readonly kanban: boolean;
 	readonly colony: boolean;
 }
