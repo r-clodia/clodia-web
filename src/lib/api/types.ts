@@ -388,6 +388,7 @@ export interface InstanceFeatures {
 	readonly providers_ui: boolean;
 	readonly activity: boolean;
 	readonly pwa: boolean;
+	readonly helpdesk: boolean;
 	readonly kanban: boolean;
 	readonly colony: boolean;
 }
@@ -403,6 +404,7 @@ export interface InstanceProfile {
 	readonly features: InstanceFeatures;
 	readonly branding: InstanceBranding;
 	readonly rag: { readonly collection?: string };
+	readonly helpdesk?: { readonly agent?: string };
 	readonly integrations?: {
 		readonly allow_manual_mcp?: boolean;
 		readonly connectors?: ReadonlyArray<string> | null;

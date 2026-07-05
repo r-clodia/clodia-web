@@ -20,6 +20,7 @@
 	import { browser } from '$app/environment';
 	import '../app.css';
 	import Sidebar from '$lib/components/Sidebar.svelte';
+	import { instanceProfile } from '$lib/stores/instance';
 	import Toaster from '$lib/components/Toaster.svelte';
 	import LoginScreen from '$lib/components/LoginScreen.svelte';
 	import SetupScreen from '$lib/components/SetupScreen.svelte';
@@ -124,13 +125,17 @@
 		<main class="main">
 			<slot />
 		</main>
-		<ChatWidget
-			agent="wainston"
-			tier="SEAL-1"
-			name="helpdesk"
-			title="Assistenza — Wainston"
-			initialMessage="Ciao Wainston, ho bisogno di aiuto con questa sezione."
-		/>
+		{#if $instanceProfile.features.helpdesk}
+			{@const hdAgent = $instanceProfile.helpdesk?.agent || 'wainston'}
+			<ChatWidget
+				agent={hdAgent}
+				tier="SEAL-1"
+				name="helpdesk"
+				title={`Assistenza — ${hdAgent.charAt(0).toUpperCase() + hdAgent.slice(1)}`}
+				launcherLabel={`help - parla con ${hdAgent}`}
+				initialMessage={`Ciao ${hdAgent.charAt(0).toUpperCase() + hdAgent.slice(1)}, ho bisogno di aiuto con questa sezione.`}
+			/>
+		{/if}
 	</div>
 {/if}
 

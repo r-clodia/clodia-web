@@ -23,11 +23,13 @@ export const FULL_PROFILE: InstanceProfile = {
 		providers_ui: true,
 		activity: true,
 		pwa: true,
+		helpdesk: true,
 		kanban: false,
 		colony: false
 	},
 	branding: { name: 'Clodia Agency', logo: '', accent: '' },
 	rag: {},
+	helpdesk: { agent: 'wainston' },
 	integrations: { allow_manual_mcp: false },
 	topics_single: {}
 };

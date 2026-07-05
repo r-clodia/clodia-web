@@ -7,6 +7,7 @@
 	import { theme, fontScale, toggleTheme, incFont, decFont } from '$lib/stores/prefs';
 	import { session, logout as sessionLogout } from '$lib/auth/session';
 	import { instanceProfile, ensureProfileLoaded, singleTopicHref } from '$lib/stores/instance';
+	import { API_BASE_URL } from '$lib/api/client';
 
 	// Navigazione derivata dal profilo d'istanza (Modular Distro F2): il
 	// backend è la fonte di verità, feature spenta = voce assente. Con profilo
@@ -32,6 +33,10 @@
 	] as NavItem[];
 	// Branding: solo per le edizioni custom (full = aspetto storico invariato).
 	$: brandName = prof.edition !== 'full' && prof.branding.name ? prof.branding.name : 'Clodia';
+	$: brandLogo = prof.edition !== 'full' && prof.branding.logo ? `${API_BASE_URL}/profile/logo` : '';
+	$: if (typeof document !== 'undefined' && prof.edition !== 'full' && prof.branding.name) {
+		document.title = prof.branding.name;
+	}
 	$: if (typeof document !== 'undefined') {
 		if (prof.edition !== 'full' && prof.branding.accent) {
 			document.documentElement.style.setProperty('--accent', prof.branding.accent);
@@ -90,7 +95,11 @@
 
 <aside class="sidebar">
 	<div class="brand">
-		<span class="brand-mark">●</span>
+		{#if brandLogo}
+			<img class="brand-logo" src={brandLogo} alt={brandName} />
+		{:else}
+			<span class="brand-mark">●</span>
+		{/if}
 		<span class="brand-name">{brandName}</span>
 		<span class="brand-tag">{APP_VERSION}</span>
 	</div>
@@ -187,6 +196,7 @@
 		border-bottom: 1px solid var(--border);
 		margin-bottom: 14px;
 	}
+	.brand-logo { width: 20px; height: 20px; object-fit: contain; border-radius: 4px; }
 	.brand-mark {
 		color: var(--accent);
 		font-size: 16px;
