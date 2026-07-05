@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
+	import { API_BASE_URL as _ABU } from '$lib/api/client';
 	import { login } from '$lib/auth/session';
 	import { requestCert } from '$lib/api/client';
 
@@ -110,11 +112,22 @@
 			busy = false;
 		}
 	}
+	import { onMount } from 'svelte';
+	onMount(() => { void ensureProfileLoaded(); });
 </script>
 
 <div class="screen">
 	<div class="card">
-		<div class="brand"><span class="mark">●</span> Clodia</div>
+		<div class="brand">
+			{#if $instanceProfile.edition !== 'full' && $instanceProfile.branding.logo}
+				<img class="brand-img" src={`${_ABU}/profile/logo`} alt="" />
+			{:else}
+				<span class="mark">●</span>
+			{/if}
+			{$instanceProfile.edition !== 'full' && $instanceProfile.branding.name
+				? $instanceProfile.branding.name
+				: 'Clodia'}
+		</div>
 
 		{#if mode === 'login'}
 			<h1>Accedi</h1>
@@ -198,6 +211,7 @@
 <style>
 	.screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--bg); }
 	.card { width: min(460px, 100%); background: var(--card-bg); border: 1px solid var(--border); border-radius: 14px; padding: 26px; display: flex; flex-direction: column; gap: 12px; }
+	.brand-img { width: 18px; height: 18px; object-fit: contain; vertical-align: -3px; border-radius: 3px; }
 	.brand { font-weight: 800; font-size: 15px; color: var(--fg-muted); }
 	.brand .mark { color: var(--accent); }
 	h1 { margin: 2px 0 0; font-size: 22px; }
