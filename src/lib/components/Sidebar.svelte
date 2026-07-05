@@ -6,7 +6,7 @@
 	import type { Topic } from '$lib/api/types';
 	import { theme, fontScale, toggleTheme, incFont, decFont } from '$lib/stores/prefs';
 	import { session, logout as sessionLogout } from '$lib/auth/session';
-	import { instanceProfile, ensureProfileLoaded, singleTopicHref } from '$lib/stores/instance';
+	import { instanceProfile, ensureProfileLoaded, singleTopicHref, term } from '$lib/stores/instance';
 	import { API_BASE_URL } from '$lib/api/client';
 
 	// Navigazione derivata dal profilo d'istanza (Modular Distro F2): il
@@ -16,19 +16,19 @@
 	type NavItem = { href: string; label: string; disabled?: boolean };
 	$: prof = $instanceProfile;
 	$: items = [
-		{ href: '/agents', label: 'AGENTS' },
+		{ href: '/agents', label: term(prof, 'agent', 'AGENTS', { plural: true, upper: true }) },
 		...(prof.features.activity ? [{ href: '/activity', label: 'ACTIVITY' }] : []),
-		...(prof.features.jobs ? [{ href: '/jobs', label: 'JOBS' }] : []),
+		...(prof.features.jobs ? [{ href: '/jobs', label: term(prof, 'job', 'JOBS', { plural: true, upper: true }) }] : []),
 		...(prof.features.packs_ui ? [{ href: '/packs', label: 'PACKS' }] : []),
 		{ href: '/kanban', label: 'KANBAN', disabled: true },
-		...(prof.features.integrations !== 'off' ? [{ href: '/tools', label: 'INTEGRATIONS' }] : []),
-		...(prof.features.providers_ui ? [{ href: '/providers', label: 'PROVIDERS' }] : []),
+		...(prof.features.integrations !== 'off' ? [{ href: '/tools', label: term(prof, 'integration', 'INTEGRATIONS', { plural: true, upper: true }) }] : []),
+		...(prof.features.providers_ui ? [{ href: '/providers', label: term(prof, 'provider', 'PROVIDERS', { plural: true, upper: true }) }] : []),
 		{ href: '/settings', label: 'SETTINGS' },
 		...(prof.features.topics === 'off'
 			? []
 			: [{
 					href: prof.features.topics === 'single' ? singleTopicHref(prof) : '/topics',
-					label: 'TOPICS'
+					label: term(prof, 'topic', 'TOPICS', { plural: true, upper: true })
 				}])
 	] as NavItem[];
 	// Branding: solo per le edizioni custom (full = aspetto storico invariato).
@@ -125,7 +125,7 @@
 
 	{#if recentTopics.length}
 		<section class="recent" aria-label="Topic recenti">
-			<div class="recent-title">RECENT TOPICS</div>
+			<div class="recent-title">{term($instanceProfile, 'topic', 'RECENT TOPICS', { plural: true, upper: true }) === 'TOPICS' ? 'RECENT TOPICS' : term($instanceProfile, 'topic', 'TOPICS', { plural: true, upper: true }) + ' RECENTI'}</div>
 			<div class="recent-list">
 				{#each recentTopics as t (`${t.tier}/${t.name}`)}
 					<a

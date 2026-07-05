@@ -30,6 +30,7 @@ export const FULL_PROFILE: InstanceProfile = {
 	branding: { name: 'Clodia Agency', logo: '', accent: '' },
 	rag: {},
 	helpdesk: { agent: 'wainston' },
+	vocabulary: {},
 	integrations: { allow_manual_mcp: false },
 	topics_single: {}
 };
@@ -70,4 +71,27 @@ export function singleTopicHref(p: InstanceProfile): string {
 	const tier = p.topics_single?.tier || 'SEAL-1';
 	const name = p.topics_single?.name || 'workspace';
 	return `/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}`;
+}
+
+/**
+ * Vocabolario dell'edizione (white-label cosmetico). `term()` risolve un
+ * termine canonico nelle forme del cliente; senza mapping ritorna il
+ * default passato (= stringa storica → zero cambiamenti).
+ */
+export function term(
+	p: InstanceProfile,
+	key: string,
+	fallback: string,
+	opts: { plural?: boolean; upper?: boolean; cap?: boolean } = {}
+): string {
+	const v = p.vocabulary?.[key];
+	let out = '';
+	if (typeof v === 'string') out = v;
+	else if (v && typeof v === 'object') {
+		out = (opts.plural ? v.plurale || v.singolare : v.singolare) || '';
+	}
+	if (!out) out = fallback;
+	if (opts.upper) out = out.toUpperCase();
+	else if (opts.cap && out) out = out.charAt(0).toUpperCase() + out.slice(1);
+	return out;
 }

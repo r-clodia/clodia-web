@@ -27,7 +27,7 @@
 	} from '$lib/api/client';
 	import type { Topic } from '$lib/api/types';
 	import { session } from '$lib/auth/session';
-	import { instanceProfile, ensureProfileLoaded, singleTopicHref } from '$lib/stores/instance';
+	import { instanceProfile, ensureProfileLoaded, singleTopicHref, term } from '$lib/stores/instance';
 	import Modal from '$lib/components/Modal.svelte';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
 
@@ -375,7 +375,7 @@
 
 <header class="head">
 	<div>
-		<h1>Topics</h1>
+		<h1>{term($instanceProfile, 'topic', 'Topics', { plural: true, cap: true })}</h1>
 		<p class="hint">
 			GET <code>{API_BASE_URL}/topics</code> — clicca l’avatar dell’agent per aprire una chat sul
 			topic.
@@ -395,7 +395,7 @@
 			</button>
 		{/if}
 		{#if $instanceProfile.features.topics === 'full'}
-			<button type="button" class="new-topic" on:click={openNew}>+ Nuovo topic</button>
+			<button type="button" class="new-topic" on:click={openNew}>{$instanceProfile.vocabulary?.nuovo_topic || '+ Nuovo topic'}</button>
 		{/if}
 		<label class="archived-toggle" class:on={showArchived} title="Mostra/nascondi i topic archiviati">
 			<input type="checkbox" bind:checked={showArchived} />
@@ -427,7 +427,7 @@
 		on:click={() => (showNew = false)} on:keydown={(e) => e.key === 'Escape' && (showNew = false)}>
 		<div class="nt-modal" role="dialog" aria-modal="true" aria-label="Nuovo topic" tabindex="-1"
 			on:click|stopPropagation on:keydown|stopPropagation>
-			<h2>Nuovo topic / canale</h2>
+			<h2>{$instanceProfile.vocabulary?.nuovo_topic || 'Nuovo topic / canale'}</h2>
 			<p class="nt-note">Sei l'owner; come partecipante AI viene aggiunta <code>clodia</code>. Potrai invitarne altri nel canale.</p>
 			<label class="nt-field"><span>Nome</span>
 				<input type="text" bind:value={nName} placeholder="es. progetto-acme" autocomplete="off" />
