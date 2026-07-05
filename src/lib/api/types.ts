@@ -402,6 +402,7 @@ export interface InstanceProfile {
 	readonly features: InstanceFeatures;
 	readonly branding: InstanceBranding;
 	readonly rag: { readonly collection?: string };
+	readonly integrations?: { readonly allow_manual_mcp?: boolean };
 	readonly topics_single: { readonly name?: string; readonly tier?: string };
 }
 
