@@ -64,6 +64,12 @@
 	];
 
 	let cards: CardModel[] = BASE.map((c) => ({ ...c }));
+	// Edizione (Modular Distro): se il profilo dichiara i connettori nativi,
+	// le card fuori lista non esistono (l'enforcement vero è nel gateway).
+	$: allowedConnectors = $instanceProfile.integrations?.connectors ?? null;
+	$: visibleCards = allowedConnectors === null
+		? cards
+		: cards.filter((c) => c.mcp || c.builtin || allowedConnectors.includes(c.id));
 	let loading = true;
 	let loadError = '';
 
@@ -494,7 +500,7 @@
 {/if}
 
 <div class="grid">
-	{#each cards as c (c.id)}
+	{#each visibleCards as c (c.id)}
 		<div class="card" class:on={c.connected}>
 			<div class="card-head">
 				<span class="glyph" aria-hidden="true"><ConnectorIcon provider={c.provider} kind={c.kind} mcp={c.mcp} size={26} /></span>
