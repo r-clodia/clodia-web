@@ -6,20 +6,37 @@
 	import type { Topic } from '$lib/api/types';
 	import { theme, fontScale, toggleTheme, incFont, decFont } from '$lib/stores/prefs';
 	import { session, logout as sessionLogout } from '$lib/auth/session';
+	import { instanceProfile, ensureProfileLoaded, singleTopicHref } from '$lib/stores/instance';
 
-	// `disabled` = funzione disattivata in questa fase (kanban + colony parcheggiati):
-	// la voce resta visibile ma in grigio e non cliccabile.
-	const items = [
+	// Navigazione derivata dal profilo d'istanza (Modular Distro F2): il
+	// backend è la fonte di verità, feature spenta = voce assente. Con profilo
+	// FULL la lista è identica a quella storica. `disabled` = funzione
+	// parcheggiata (kanban): visibile in grigio, non cliccabile.
+	type NavItem = { href: string; label: string; disabled?: boolean };
+	$: prof = $instanceProfile;
+	$: items = [
 		{ href: '/agents', label: 'AGENTS' },
-		{ href: '/activity', label: 'ACTIVITY' },
-		{ href: '/jobs', label: 'JOBS' },
-		{ href: '/packs', label: 'PACKS' },
+		...(prof.features.activity ? [{ href: '/activity', label: 'ACTIVITY' }] : []),
+		...(prof.features.jobs ? [{ href: '/jobs', label: 'JOBS' }] : []),
+		...(prof.features.packs_ui ? [{ href: '/packs', label: 'PACKS' }] : []),
 		{ href: '/kanban', label: 'KANBAN', disabled: true },
-		{ href: '/tools', label: 'INTEGRATIONS' },
-		{ href: '/providers', label: 'PROVIDERS' },
+		...(prof.features.integrations !== 'off' ? [{ href: '/tools', label: 'INTEGRATIONS' }] : []),
+		...(prof.features.providers_ui ? [{ href: '/providers', label: 'PROVIDERS' }] : []),
 		{ href: '/settings', label: 'SETTINGS' },
-		{ href: '/topics', label: 'TOPICS' }
-	];
+		...(prof.features.topics === 'off'
+			? []
+			: [{
+					href: prof.features.topics === 'single' ? singleTopicHref(prof) : '/topics',
+					label: 'TOPICS'
+				}])
+	] as NavItem[];
+	// Branding: solo per le edizioni custom (full = aspetto storico invariato).
+	$: brandName = prof.edition !== 'full' && prof.branding.name ? prof.branding.name : 'Clodia';
+	$: if (typeof document !== 'undefined') {
+		if (prof.edition !== 'full' && prof.branding.accent) {
+			document.documentElement.style.setProperty('--accent', prof.branding.accent);
+		}
+	}
 
 	let recentTopics: Topic[] = [];
 
@@ -34,6 +51,10 @@
 	}
 
 	async function loadRecentTopics() {
+		if ($instanceProfile.features.topics === 'off') {
+			recentTopics = [];
+			return;
+		}
 		try {
 			recentTopics = (await getTopics())
 				.filter((t) => t.kind !== 'dm')
@@ -45,7 +66,7 @@
 	}
 
 	onMount(() => {
-		void loadRecentTopics();
+		void ensureProfileLoaded().then(loadRecentTopics);
 	});
 	afterNavigate(() => {
 		void loadRecentTopics();
@@ -66,7 +87,7 @@
 <aside class="sidebar">
 	<div class="brand">
 		<span class="brand-mark">●</span>
-		<span class="brand-name">Clodia</span>
+		<span class="brand-name">{brandName}</span>
 		<span class="brand-tag">{APP_VERSION}</span>
 	</div>
 

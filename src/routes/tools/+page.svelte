@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, connectOpenAI, connectTrello, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, ApiError } from '$lib/api/client';
 	import { askWainston } from '$lib/stores/helpdesk';
+	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
 	import { toastSuccess, toastError, toastInfo } from '$lib/stores/toasts';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
 
@@ -79,7 +80,10 @@
 	let modalError = '';
 	let showInfo = false;
 
-	onMount(load);
+	onMount(() => {
+		void ensureProfileLoaded();
+		void load();
+	});
 
 	async function load() {
 		loading = true;
@@ -475,7 +479,9 @@
 		</p>
 	</div>
 	<div class="head-actions">
-		<button type="button" class="btn primary" on:click={openMcp}>+ Add MCP server</button>
+		{#if $instanceProfile.features.integrations === 'full'}
+			<button type="button" class="btn primary" on:click={openMcp}>+ Add MCP server</button>
+		{/if}
 		<button type="button" on:click={load} disabled={loading}>{loading ? 'Loading…' : 'Reload'}</button>
 	</div>
 </header>

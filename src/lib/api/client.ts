@@ -209,6 +209,7 @@ import type {
 	ChatHistoryResponse,
 	ChatMessage,
 	ChatsListResponse,
+	InstanceProfile,
 	Pack,
 	Plugin,
 	Rule,
@@ -1183,6 +1184,15 @@ export async function importSkillZip(
 /** DELETE `/clodia/skills/{name}` — elimina una skill utente. */
 export async function deleteSkill(name: string, opts: RequestOptions = {}): Promise<void> {
 	await apiDelete(`/clodia/skills/${encodeURIComponent(name)}`, opts);
+}
+
+// ---------------------------------------------------------------------------
+// INSTANCE PROFILE — profilo dell'edizione (Modular Distro)
+// ---------------------------------------------------------------------------
+
+/** GET `/profile` — feature attive + branding dell'istanza (mai segreti). */
+export async function getInstanceProfile(opts: RequestOptions = {}): Promise<InstanceProfile> {
+	return apiGet<InstanceProfile>('/profile', opts);
 }
 
 // ---------------------------------------------------------------------------
