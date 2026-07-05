@@ -68,6 +68,10 @@
 	onMount(() => {
 		void ensureProfileLoaded().then(loadRecentTopics);
 	});
+	// Al login/claim la sessione compare senza reload di pagina: il primo
+	// fetch di /profile può essere avvenuto dietro il bootstrap gate (423,
+	// → fallback FULL). Alla comparsa della sessione si riprova.
+	$: if ($session) void ensureProfileLoaded().then(loadRecentTopics);
 	afterNavigate(() => {
 		void loadRecentTopics();
 	});
