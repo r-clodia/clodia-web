@@ -400,3 +400,8 @@ PUBLIC_AUTH_DISABLED=1 npm run dev
 | `npm run build`    | Static SPA build → `./build/`                      |
 | `npm run preview`  | Preview the built SPA locally                      |
 | `npm run check`    | `svelte-check` over the project (typecheck pass)   |
+
+## Licenza
+
+GNU AGPL v3 — con opzione di licenza commerciale: vedi [LICENSING.md](LICENSING.md).
+Le versioni fino al tag `apache2-final` restano Apache 2.0.
