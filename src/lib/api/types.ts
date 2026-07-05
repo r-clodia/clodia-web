@@ -405,6 +405,7 @@ export interface InstanceProfile {
 	readonly branding: InstanceBranding;
 	readonly rag: { readonly collection?: string };
 	readonly helpdesk?: { readonly agent?: string };
+	readonly vocabulary?: Record<string, string | { singolare?: string; plurale?: string }>;
 	readonly integrations?: {
 		readonly allow_manual_mcp?: boolean;
 		readonly connectors?: ReadonlyArray<string> | null;
