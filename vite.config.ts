@@ -61,6 +61,7 @@ export default defineConfig({
 			'/daemons': { target: API, changeOrigin: true },
 			'/topics': { target: API, changeOrigin: true, bypass: htmlBypass },
 			'/health': { target: API, changeOrigin: true },
+			'/profile': { target: API, changeOrigin: true },
 			'/auth': { target: API, changeOrigin: true },
 			// `/tools` è SIA route SPA (pagina Tools) SIA prefisso API del gateway:
 			// htmlBypass serve la SPA alle navigazioni HTML, proxa le fetch JSON.
