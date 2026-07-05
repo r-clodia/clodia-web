@@ -27,6 +27,7 @@ export const FULL_PROFILE: InstanceProfile = {
 	},
 	branding: { name: 'Clodia Agency', logo: '', accent: '' },
 	rag: {},
+	integrations: { allow_manual_mcp: false },
 	topics_single: {}
 };
 

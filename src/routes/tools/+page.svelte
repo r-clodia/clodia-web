@@ -479,7 +479,7 @@
 		</p>
 	</div>
 	<div class="head-actions">
-		{#if $instanceProfile.features.integrations === 'full'}
+		{#if $instanceProfile.features.integrations === 'full' || $instanceProfile.integrations?.allow_manual_mcp}
 			<button type="button" class="btn primary" on:click={openMcp}>+ Add MCP server</button>
 		{/if}
 		<button type="button" on:click={load} disabled={loading}>{loading ? 'Loading…' : 'Reload'}</button>
