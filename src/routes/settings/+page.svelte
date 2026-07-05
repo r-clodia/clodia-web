@@ -7,6 +7,7 @@
 	} from '$lib/api/client';
 	import { mintPairingToken } from '$lib/auth/session';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
+	import { instanceProfile } from '$lib/stores/instance';
 
 	let status: BackupStatus | null = null;
 	let loading = true;
@@ -181,6 +182,7 @@
 	{/if}
 </section>
 
+{#if $instanceProfile.features.pwa}
 <section class="card pairing">
 	<div class="card-h">
 		<h2>Dispositivo PWA</h2>
@@ -201,6 +203,7 @@
 		</div>
 	{/if}
 </section>
+{/if}
 
 <style>
 	.head { padding: 4px 0 14px; }

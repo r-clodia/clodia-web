@@ -22,6 +22,7 @@ export const FULL_PROFILE: InstanceProfile = {
 		packs_ui: true,
 		providers_ui: true,
 		activity: true,
+		pwa: true,
 		kanban: false,
 		colony: false
 	},
