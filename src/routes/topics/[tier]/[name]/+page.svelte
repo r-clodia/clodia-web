@@ -651,6 +651,12 @@
 		}
 	}
 
+	// Apre un artefatto HTML in una finestra "chromeless" (popup) con anteprima live.
+	function openArtifact(path: string) {
+		const url = `/preview/${encodeURIComponent(tier)}/${encodeURIComponent(name)}?path=${encodeURIComponent(path)}`;
+		window.open(url, `artifact-${tier}-${name}-${path}`, 'popup,width=1024,height=720');
+	}
+
 	// Drag-and-drop di file direttamente sull'input della chat.
 	let dragOver = false;
 	function onDragOver(e: DragEvent) {
@@ -1003,6 +1009,10 @@
 								<a href={f.url} target="_blank" rel="noopener" class="remote" title="Documento Google — apri e modifica su Drive">📄 {f.name}</a>
 							{:else}
 								<a href={channelFileUrl(tier, name, f.path)} target="_blank" rel="noopener">📎 {f.name}</a>
+								{#if /\.html?$/i.test(f.name)}
+									<button type="button" class="artifact-open" title="Apri anteprima live (finestra separata)"
+										on:click={() => openArtifact(f.path)}>🔎</button>
+								{/if}
 							{/if}
 							{#if remoteMeta?.type === 'drive' && f.kind !== 'dir'}
 								<button type="button" class="sync-add" title="Aggiungi al sync (drive)"
@@ -1230,6 +1240,8 @@
 	.remote-goto:hover { text-decoration: underline; }
 	.sync-add { margin-left: 6px; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; padding: 0 3px; border-radius: 5px; }
 	.sync-add:hover { color: var(--accent); background: rgba(255,107,61,.12); }
+	.artifact-open { margin-left: 4px; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; padding: 0 3px; border-radius: 5px; }
+	.artifact-open:hover { color: var(--accent); background: rgba(255,107,61,.12); }
 	.remote-panel { margin-top: 14px; }
 	.remote-info { font-size: 12px; margin: 2px 0 8px; display: flex; align-items: center; }
 	.remote-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }

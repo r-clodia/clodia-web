@@ -18,6 +18,7 @@
 	 */
 	import { onDestroy, onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { page } from '$app/stores';
 	import '../app.css';
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import { instanceProfile } from '$lib/stores/instance';
@@ -119,6 +120,10 @@
 {:else if !loggedIn}
 	<!-- Non loggato: si vede SOLO il modulo di login, nient'altro. -->
 	<LoginScreen />
+{:else if $page.url.pathname.startsWith('/preview/')}
+	<!-- Anteprima artefatto: finestra "chromeless" (aperta in popup), nessuna shell
+	     dell'app. L'artefatto vive in un iframe sandbox dentro la pagina di preview. -->
+	<slot />
 {:else}
 	<div class="app">
 		<Sidebar />
