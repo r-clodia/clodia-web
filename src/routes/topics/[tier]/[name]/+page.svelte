@@ -88,13 +88,19 @@
 			remoteBusy = false;
 		}
 	}
-	function enableGit() {
-		const url = prompt('URL del repo git remoto (opzionale, vuoto = solo commit locali):') ?? '';
-		void doRemote('enable', { type: 'git', config: url.trim() ? { url: url.trim() } : {} });
-	}
-	function enableDrive() {
-		const folder = prompt('Link/ID cartella Drive (vuoto = crea una cartella nuova):') ?? '';
-		void doRemote('enable', { type: 'drive', config: folder.trim() ? { folder: folder.trim() } : {} });
+	// Form inline nella sidebar (non un popup effimero): l'input dell'URL/cartella
+	// resta visibile e navigabile finché non si conferma o si annulla.
+	let remoteForm: 'git' | 'drive' | null = null;
+	let remoteInput = '';
+	function openRemoteForm(kind: 'git' | 'drive') { remoteForm = kind; remoteInput = ''; }
+	function cancelRemoteForm() { remoteForm = null; remoteInput = ''; }
+	function submitRemoteForm() {
+		const v = remoteInput.trim();
+		const payload = remoteForm === 'git'
+			? { type: 'git', config: v ? { url: v } : {} }
+			: { type: 'drive', config: v ? { folder: v } : {} };
+		remoteForm = null; remoteInput = '';
+		void doRemote('enable', payload);
 	}
 	function sameFiles(a: ChannelFile[], b: ChannelFile[]): boolean {
 		if (a.length !== b.length) return false;
@@ -956,10 +962,25 @@
 				<h3>Remote</h3>
 				{#if !remoteMeta}
 					<p class="muted">Storage locale. Attiva un remote per sincronizzare i file.</p>
-					<div class="remote-actions">
-						<button type="button" on:click={enableGit} disabled={remoteBusy}>{@html SVG_GITHUB} git</button>
-						<button type="button" on:click={enableDrive} disabled={remoteBusy}>{@html SVG_DRIVE} Drive</button>
-					</div>
+					{#if remoteForm}
+						<form class="remote-form" on:submit|preventDefault={submitRemoteForm}>
+							<input class="remote-url-input" type="text" bind:value={remoteInput}
+								placeholder={remoteForm === 'git'
+									? 'URL repo git (vuoto = solo commit locali)'
+									: 'Link/ID cartella Drive (vuoto = nuova)'}
+								autocomplete="off" spellcheck="false"
+								on:keydown={(e) => e.key === 'Escape' && cancelRemoteForm()} />
+							<div class="remote-actions">
+								<button type="submit" disabled={remoteBusy}>collega {remoteForm}</button>
+								<button type="button" on:click={cancelRemoteForm} disabled={remoteBusy}>annulla</button>
+							</div>
+						</form>
+					{:else}
+						<div class="remote-actions">
+							<button type="button" on:click={() => openRemoteForm('git')} disabled={remoteBusy}>{@html SVG_GITHUB} git</button>
+							<button type="button" on:click={() => openRemoteForm('drive')} disabled={remoteBusy}>{@html SVG_DRIVE} Drive</button>
+						</div>
+					{/if}
 				{:else}
 					<p class="remote-info">
 						{@html remoteIconSvg()} <strong>{remoteMeta.type}</strong>
@@ -1141,6 +1162,10 @@
 	.sync-add:hover { color: var(--accent); background: rgba(255,107,61,.12); }
 	.remote-panel { margin-top: 14px; }
 	.remote-info { font-size: 12px; margin: 2px 0 8px; display: flex; align-items: center; }
+	.remote-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
+	.remote-url-input { width: 100%; box-sizing: border-box; font-size: 12px; padding: 5px 8px;
+		border: 1px solid var(--border); background: transparent; color: var(--fg); border-radius: 7px; }
+	.remote-url-input:focus { outline: none; border-color: var(--accent); }
 	.remote-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 	.remote-actions button { font-size: 12px; padding: 4px 9px; border: 1px solid var(--border); background: transparent; color: var(--fg); border-radius: 7px; cursor: pointer; }
 	.remote-actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
