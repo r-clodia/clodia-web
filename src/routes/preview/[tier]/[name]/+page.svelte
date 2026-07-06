@@ -19,18 +19,24 @@
 
 	const CSP =
 		'<meta http-equiv="Content-Security-Policy" content="' +
-		"default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline'; " +
+		"default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; " +
 		"script-src 'unsafe-inline'; font-src data: https:; media-src data: blob: https:" +
 		'">';
 
-	// Default responsivo: immagini/media rientrano nella finestra (proporzioni
-	// preservate), così un artefatto "solo immagine" si vede INTERO senza scroll.
-	// È un default: l'artefatto può sovrascriverlo con selettori propri.
-	const DEFAULT_STYLE =
-		'<style>html,body{margin:0}' +
-		'img,svg,video,canvas{max-width:100%;max-height:100vh;height:auto}</style>';
+	// Fit-to-window: molti artefatti sono TELE a dimensione fissa (es. cover
+	// 1200×1500). Uno script misura il contenuto e applica uno `zoom` così l'intero
+	// artefatto rientra nella finestra (come la webui fa per il font-scale). Vale sia
+	// per canvas a misura fissa sia per una singola immagine grande.
+	const FIT =
+		'<style>html,body{margin:0}html{overflow:hidden}</style>' +
+		'<script>(function(){function f(){var e=document.documentElement,b=document.body;' +
+		'if(!b)return;e.style.zoom="1";' +
+		'var w=Math.max(e.scrollWidth,b.scrollWidth),h=Math.max(e.scrollHeight,b.scrollHeight);' +
+		'if(!w||!h)return;e.style.zoom=String(Math.min(innerWidth/w,innerHeight/h,1));}' +
+		'addEventListener("load",f);addEventListener("resize",f);' +
+		'setTimeout(f,0);setTimeout(f,250);setTimeout(f,800);})();<\/script>';
 
-	const HEAD_INJECT = CSP + DEFAULT_STYLE;
+	const HEAD_INJECT = CSP + FIT;
 
 	function withInject(raw: string): string {
 		if (/<head[^>]*>/i.test(raw)) return raw.replace(/<head[^>]*>/i, (m) => m + HEAD_INJECT);
