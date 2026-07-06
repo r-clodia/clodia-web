@@ -102,6 +102,13 @@
 		remoteForm = null; remoteInput = '';
 		void doRemote('enable', payload);
 	}
+	// Timeline dei recap (TLDR storici): il recap sotto al titolo è cliccabile.
+	let showRecap = false;
+	function fmtRecapDate(ts: string): string {
+		try {
+			return new Date(ts).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
+		} catch { return ts; }
+	}
 	function sameFiles(a: ChannelFile[], b: ChannelFile[]): boolean {
 		if (a.length !== b.length) return false;
 		for (let i = 0; i < a.length; i++) {
@@ -712,7 +719,26 @@
 				{resetting ? 'Reset…' : 'Reset contesto'}
 			</button>
 		</div>
-		{#if info?.tldr}<p class="tldr">{info.tldr}</p>{/if}
+		{#if info?.tldr}
+			{@const history = info?.recap_history ?? []}
+			<button type="button" class="tldr tldr-btn" on:click={() => (showRecap = !showRecap)}
+				aria-expanded={showRecap} title="Mostra la storia dei recap">
+				<span class="tldr-text">{info.tldr}</span>
+				{#if history.length > 1}<span class="tldr-count">{history.length} ▾</span>{/if}
+			</button>
+			{#if showRecap}
+				<ol class="recap-timeline">
+					{#each history as r, i}
+						<li class:current={i === 0}>
+							<time datetime={r.ts}>{fmtRecapDate(r.ts)}</time>
+							<span class="recap-text">{r.tldr}</span>
+						</li>
+					{:else}
+						<li class="muted">Nessuno storico ancora.</li>
+					{/each}
+				</ol>
+			{/if}
+		{/if}
 	</header>
 
 	{#if loadErr}<div class="err">{loadErr}</div>{/if}
@@ -1041,6 +1067,17 @@
 	.reset-context:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(255,107,61,.08); }
 	.reset-context:disabled { opacity: .5; cursor: default; }
 	.tldr { margin: 4px 0 0; color: var(--fg-muted); font-size: 12.5px; }
+	.tldr-btn { display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%;
+		background: none; border: none; padding: 0; text-align: left; cursor: pointer;
+		font: inherit; color: var(--fg-muted); }
+	.tldr-btn:hover { color: var(--accent); }
+	.tldr-count { font-size: 11px; opacity: .8; white-space: nowrap; }
+	.recap-timeline { list-style: none; margin: 8px 0 0; padding: 8px 0 4px 12px;
+		border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+	.recap-timeline li { display: flex; flex-direction: column; gap: 1px; font-size: 12px; }
+	.recap-timeline li.current .recap-text { color: var(--fg); font-weight: 600; }
+	.recap-timeline time { font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-muted); }
+	.recap-timeline .recap-text { color: var(--fg-muted); }
 	.err { color: var(--danger); font-size: 12px; margin: 8px 0; }
 	.tier-warn-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); padding: 16px; }
 	.tier-warn { background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid var(--warn, #e0a800); border-radius: 12px; max-width: 460px; width: 100%; padding: 18px 20px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }

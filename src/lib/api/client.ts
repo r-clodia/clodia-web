@@ -532,6 +532,9 @@ export interface ChannelInfo {
 	meta: { title?: string; owner?: string; participants?: string[]; tier?: string };
 	summary?: string;
 	tldr?: string;
+	/** Storia dei recap (TLDR) del topic, dal più recente. `seed` = entry corrente
+	 *  sintetica quando non c'è ancora storia registrata. */
+	recap_history?: { ts: string; tldr: string; seed?: boolean }[];
 	/** Responder con un turno ATTUALMENTE in corso (dal backend): la UI mostra
 	 *  l'indicatore di attività anche riaprendo il topic a metà turno. */
 	active_responders?: string[];
