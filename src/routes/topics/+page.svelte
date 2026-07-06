@@ -188,6 +188,13 @@
 	let nName = '';
 	let nTitle = '';
 	let nTier: 'SEAL-0' | 'SEAL-1' | 'SEAL-2' | 'SEAL-3' | 'SEAL-4' = 'SEAL-1';
+	// Tipi di topic/pratica dell'edizione (topics_defaults.types del profilo);
+	// fallback = set storico di piattaforma. Entry: stringa o {key, label}.
+	const FALLBACK_TYPES = ['progetto', 'bando', 'contratto', 'amministrativo', 'evento'];
+	$: editionTypes = (($instanceProfile.topics_defaults?.types?.length
+		? $instanceProfile.topics_defaults.types
+		: FALLBACK_TYPES) as ReadonlyArray<string | { key: string; label?: string }>)
+		.map((t) => (typeof t === 'string' ? { key: t, label: t } : { key: t.key, label: t.label || t.key }));
 	let nType = 'progetto';
 	let nStorage: 'local' | 'drive' = 'local';
 	let nDriveFolder = ''; // link/id cartella Drive (vuoto = crea nuova)
@@ -198,7 +205,7 @@
 		nName = '';
 		nTitle = '';
 		nTier = 'SEAL-1';
-		nType = 'progetto';
+		nType = editionTypes[0]?.key || 'progetto';
 		nStorage = 'local';
 		nDriveFolder = '';
 		createErr = '';
@@ -428,7 +435,7 @@
 		<div class="nt-modal" role="dialog" aria-modal="true" aria-label="Nuovo topic" tabindex="-1"
 			on:click|stopPropagation on:keydown|stopPropagation>
 			<h2>{$instanceProfile.vocabulary?.nuovo_topic || 'Nuovo topic / canale'}</h2>
-			<p class="nt-note">Sei l'owner; come partecipante AI viene aggiunta <code>clodia</code>. Potrai invitarne altri nel canale.</p>
+			<p class="nt-note">Sei l'owner; partecipanti AI iniziali: <code>{(($instanceProfile.topics_defaults?.participants?.length ? $instanceProfile.topics_defaults.participants : [$instanceProfile.topics_defaults?.contact_agent || 'clodia'])).join(', ')}</code>. Potrai invitarne altri nel canale.</p>
 			<label class="nt-field"><span>Nome</span>
 				<input type="text" bind:value={nName} placeholder="es. progetto-acme" autocomplete="off" />
 				<span class="nt-hint">minuscole, cifre, <code>-</code> e <code>_</code></span>
@@ -448,11 +455,9 @@
 				</label>
 				<label class="nt-field"><span>Tipo</span>
 					<select bind:value={nType}>
-						<option value="progetto">progetto</option>
-						<option value="bando">bando</option>
-						<option value="contratto">contratto</option>
-						<option value="amministrativo">amministrativo</option>
-						<option value="evento">evento</option>
+						{#each editionTypes as t (t.key)}
+							<option value={t.key}>{t.label}</option>
+						{/each}
 					</select>
 				</label>
 			</div>
