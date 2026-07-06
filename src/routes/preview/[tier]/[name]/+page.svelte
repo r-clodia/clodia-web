@@ -6,7 +6,7 @@
 	// Aggiornamento live: polling del contenuto ogni ~2s, ricarica solo su cambio.
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
-	import { channelFileUrl } from '$lib/api/client';
+	import { channelFileUrl, authHeaders } from '$lib/api/client';
 
 	$: tier = $page.params.tier ?? '';
 	$: name = $page.params.name ?? '';
@@ -40,7 +40,7 @@
 	async function refresh() {
 		if (!path) return;
 		try {
-			const res = await fetch(channelFileUrl(tier, name, path), { cache: 'no-store' });
+			const res = await fetch(channelFileUrl(tier, name, path), { cache: 'no-store', headers: authHeaders() });
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			const raw = await res.text();
 			// chiave veloce (hash+len) per ricaricare solo al cambio reale → niente flicker

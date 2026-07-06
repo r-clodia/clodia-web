@@ -49,7 +49,7 @@ function joinUrl(path: string): string {
  * Allegato a tutte le richieste: il backend ne ricava il principal connesso.
  * `session.ts` non importa `client.ts` → nessun ciclo.
  */
-function authHeaders(): Record<string, string> {
+export function authHeaders(): Record<string, string> {
 	const tok = authToken();
 	return tok ? { Authorization: `Bearer ${tok}` } : {};
 }
@@ -658,6 +658,16 @@ export async function uploadChannelFile(tier: string, name: string, filename: st
  *  rifiuta i tier → 404. */
 export function channelFileUrl(tier: string, name: string, path: string): string {
 	return `${API_BASE_URL}/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/download?path=${encodeURIComponent(path)}`;
+}
+
+/** URL FIRMATO a scadenza per il download (fix sicurezza 7 lug 2026): il
+ *  backend richiede login+membership per firmare; il link risultante vale
+ *  ~15 min e solo per quel file. Da usare per aprire/scaricare da <a>. */
+export async function signedChannelFileUrl(tier: string, name: string, path: string): Promise<string> {
+	const r = await apiGet<{ url: string }>(
+		`/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/download-url?path=${encodeURIComponent(path)}`
+	);
+	return `${API_BASE_URL}${r.url}`;
 }
 
 export async function getTopicSummary(
