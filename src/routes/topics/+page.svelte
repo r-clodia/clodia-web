@@ -201,16 +201,20 @@
 	let creating = false;
 	let createErr = '';
 
-	function openNew() {
+	function openNew(presetType?: string) {
 		nName = '';
 		nTitle = '';
 		nTier = 'SEAL-1';
-		nType = editionTypes[0]?.key || 'progetto';
+		nType = presetType || editionTypes[0]?.key || 'progetto';
 		nStorage = 'local';
 		nDriveFolder = '';
 		createErr = '';
 		showNew = true;
 	}
+	// Bottoni per tipo (edizioni con topics_defaults.types): "+ bilancio",
+	// "+ contenzioso", … accanto al bottone generico. Il click apre il dialog
+	// col tipo preselezionato.
+	$: typeButtons = $instanceProfile.topics_defaults?.types?.length ? editionTypes : [];
 
 	async function submitNew() {
 		const name = nName.trim().toLowerCase();
@@ -402,7 +406,7 @@
 			</button>
 		{/if}
 		{#if $instanceProfile.features.topics === 'full'}
-			<button type="button" class="new-topic" on:click={openNew}>{$instanceProfile.vocabulary?.nuovo_topic || '+ Nuovo topic'}</button>
+			<button type="button" class="new-topic" on:click={() => openNew()}>{$instanceProfile.vocabulary?.nuovo_topic || '+ Nuovo topic'}</button>
 		{/if}
 		<label class="archived-toggle" class:on={showArchived} title="Mostra/nascondi i topic archiviati">
 			<input type="checkbox" bind:checked={showArchived} />
@@ -413,6 +417,14 @@
 		</button>
 	</div>
 </header>
+
+{#if typeButtons.length && $instanceProfile.features.topics === 'full'}
+	<div class="type-chips">
+		{#each typeButtons as t (t.key)}
+			<button type="button" class="type-chip" title={t.label} on:click={() => openNew(t.key)}>+ {t.key}</button>
+		{/each}
+	</div>
+{/if}
 
 <div class="search-bar">
 	<span class="search-ico" aria-hidden="true">🔎</span>
@@ -1193,6 +1205,9 @@
 		padding: 4px 10px;
 	}
 	.new-topic { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font: inherit; font-weight: 700; font-size: 12.5px; padding: 7px 13px; border-radius: 7px; cursor: pointer; }
+	.type-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; }
+	.type-chip { background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); color: inherit; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; cursor: pointer; }
+	.type-chip:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 	.snap { background: transparent; border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 12.5px; padding: 7px 11px; border-radius: 7px; cursor: pointer; }
 	.snap:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 	.snap:disabled { opacity: .5; cursor: not-allowed; }
