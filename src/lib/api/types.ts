@@ -411,6 +411,11 @@ export interface InstanceProfile {
 		readonly connectors?: ReadonlyArray<string> | null;
 	};
 	readonly topics_single: { readonly name?: string; readonly tier?: string };
+	readonly topics_defaults?: {
+		readonly participants?: ReadonlyArray<string>;
+		readonly contact_agent?: string;
+		readonly types?: ReadonlyArray<string | { key: string; label?: string }>;
+	};
 }
 
 /* ------------------------------------------------------------------------ */

@@ -32,7 +32,8 @@ export const FULL_PROFILE: InstanceProfile = {
 	helpdesk: { agent: 'wainston' },
 	vocabulary: {},
 	integrations: { allow_manual_mcp: false },
-	topics_single: {}
+	topics_single: {},
+	topics_defaults: {}
 };
 
 const _store = writable<InstanceProfile>(FULL_PROFILE);
