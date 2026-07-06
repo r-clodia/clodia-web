@@ -23,9 +23,18 @@
 		"script-src 'unsafe-inline'; font-src data: https:; media-src data: blob: https:" +
 		'">';
 
-	function withCsp(raw: string): string {
-		if (/<head[^>]*>/i.test(raw)) return raw.replace(/<head[^>]*>/i, (m) => m + CSP);
-		return CSP + raw;
+	// Default responsivo: immagini/media rientrano nella finestra (proporzioni
+	// preservate), così un artefatto "solo immagine" si vede INTERO senza scroll.
+	// È un default: l'artefatto può sovrascriverlo con selettori propri.
+	const DEFAULT_STYLE =
+		'<style>html,body{margin:0}' +
+		'img,svg,video,canvas{max-width:100%;max-height:100vh;height:auto}</style>';
+
+	const HEAD_INJECT = CSP + DEFAULT_STYLE;
+
+	function withInject(raw: string): string {
+		if (/<head[^>]*>/i.test(raw)) return raw.replace(/<head[^>]*>/i, (m) => m + HEAD_INJECT);
+		return HEAD_INJECT + raw;
 	}
 
 	async function refresh() {
@@ -40,7 +49,7 @@
 			const key = `${h}:${raw.length}`;
 			if (key !== lastKey) {
 				lastKey = key;
-				html = withCsp(raw);
+				html = withInject(raw);
 			}
 			err = '';
 		} catch (e) {
