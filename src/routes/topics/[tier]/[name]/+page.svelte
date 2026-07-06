@@ -20,6 +20,7 @@
 		getChannelFiles,
 		uploadChannelFile,
 		channelFileUrl,
+		signedChannelFileUrl,
 		type ChannelInfo,
 		type ChannelMessage,
 		type ChannelFile
@@ -279,6 +280,26 @@
 	// link markdown scaricabili, PRIMA del render → renderMarkdown li rende <a>.
 	// Salta i CODE span (`…` / ```…```): un path lì dentro deve restare testo,
 	// non diventare un link grezzo dentro <code> (gli LLM citano i path tra backtick).
+	/** Fix sicurezza 7 lug 2026: i download passano da URL FIRMATI a scadenza.
+	 *  I link diretti (senza firma) rispondono 401/403 dal backend. */
+	async function openSignedFile(path: string) {
+		try {
+			const u = await signedChannelFileUrl(tier, name, path);
+			window.open(u, '_blank', 'noopener');
+		} catch (e) {
+			console.error('download non autorizzato', e);
+		}
+	}
+	/** Delegazione: intercetta i link file renderizzati nel markdown dei
+	 *  messaggi (linkifyFiles) e li apre con URL firmato. */
+	function handleStreamClick(e: MouseEvent) {
+		const a = (e.target as HTMLElement)?.closest?.('a') as HTMLAnchorElement | null;
+		if (!a?.href) return;
+		const m = a.href.match(/\/topics\/[^/]+\/[^/]+\/download\?path=([^&]+)/);
+		if (!m) return;
+		e.preventDefault();
+		void openSignedFile(decodeURIComponent(m[1]));
+	}
 	function linkifyFiles(text: string): string {
 		const PATH = /(?<!\]\()(?<!\[)(?<![\w/])((?:files|dump)\/[\w.\-/]+\.[A-Za-z0-9]{1,8})/g;
 		const repl = (_m: string, p: string) => `[${p}](${channelFileUrl(tier, name, p)})`;
@@ -812,7 +833,7 @@
 	{:else}
 	<div class="body">
 		<main class="stream-wrap">
-			<div class="stream" bind:this={stream}>
+			<div class="stream" bind:this={stream} on:click={handleStreamClick} role="presentation">
 				{#each shownMessages as m, i (m.id)}
 					<div class="msg" class:ai={m.kind === 'ai'} class:mine={m.author === me}>
 						<div class="msg-head">
@@ -848,7 +869,7 @@
 						{#if m.attachments?.length}
 							<div class="atts">
 								{#each m.attachments as a}
-									<a class="att" href={channelFileUrl(tier, name, `files/${a}`)} target="_blank" rel="noopener">📎 {a}</a>
+									<a class="att" href="#download" on:click|preventDefault={() => openSignedFile(`files/${a}`)}>📎 {a}</a>
 								{/each}
 							</div>
 						{/if}
@@ -1008,7 +1029,7 @@
 							{:else if f.remote}
 								<a href={f.url} target="_blank" rel="noopener" class="remote" title="Documento Google — apri e modifica su Drive">📄 {f.name}</a>
 							{:else}
-								<a href={channelFileUrl(tier, name, f.path)} target="_blank" rel="noopener">📎 {f.name}</a>
+								<a href="#download" on:click|preventDefault={() => openSignedFile(f.path)}>📎 {f.name}</a>
 								{#if /\.html?$/i.test(f.name)}
 									<button type="button" class="artifact-open" title="Apri anteprima live (finestra separata)"
 										on:click={() => openArtifact(f.path)}>🔎</button>
