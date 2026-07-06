@@ -618,9 +618,37 @@
 	}
 
 	async function onUpload(e: Event) {
-		const f = (e.target as HTMLInputElement).files?.[0];
-		if (f) await uploadFile(f);
+		const files = (e.target as HTMLInputElement).files;
+		if (files) for (const f of Array.from(files)) await uploadFile(f);
 		(e.target as HTMLInputElement).value = ''; // permette di ricaricare lo stesso file
+	}
+
+	// Paste di una o più immagini dalla clipboard → carica come file del topic.
+	function pasteStamp(): string {
+		const d = new Date();
+		const p = (n: number) => String(n).padStart(2, '0');
+		return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+	}
+	async function onPasteFiles(e: ClipboardEvent) {
+		const items = e.clipboardData?.items;
+		if (!items) return;
+		const imgs: File[] = [];
+		for (const it of Array.from(items)) {
+			if (it.kind === 'file' && it.type.startsWith('image/')) {
+				const raw = it.getAsFile();
+				if (!raw) continue;
+				const ext = (it.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+				// La clipboard dà nomi generici ("image.png") o nessuno → nome con timestamp.
+				const named = raw.name && raw.name !== 'image.png'
+					? raw
+					: new File([raw], `incolla-${pasteStamp()}.${ext}`, { type: it.type });
+				imgs.push(named);
+			}
+		}
+		if (imgs.length) {
+			e.preventDefault();
+			for (const f of imgs) await uploadFile(f);
+		}
 	}
 
 	// Drag-and-drop di file direttamente sull'input della chat.
@@ -881,7 +909,7 @@
 						{/each}
 					</ul>
 				{/if}
-				<input type="file" bind:this={fileInput} on:change={onUpload} hidden />
+				<input type="file" multiple bind:this={fileInput} on:change={onUpload} hidden />
 				<button type="button" class="clip" title="Allega file" on:click={() => fileInput?.click()}>📎</button>
 				<button type="button" class="expand-input" title="Apri editor ampio" aria-label="Apri editor ampio"
 					on:click={openExpandedComposer}>↗</button>
@@ -961,6 +989,11 @@
 					{/each}
 					{#if filesLoading}<span class="files-spinner" aria-label="Caricamento…" title="Caricamento…"></span>{/if}
 				</nav>
+				<button type="button" class="paste-zone" on:paste={onPasteFiles}
+					on:click={(e) => (e.currentTarget as HTMLButtonElement).focus()}
+					title="Clicca qui e incolla (⌘/Ctrl+V) un'immagine dalla clipboard">
+					📋 incolla immagine
+				</button>
 				<ul class="files" class:loading={filesLoading} aria-busy={filesLoading}>
 					{#each files as f}
 						<li>
@@ -1209,6 +1242,10 @@
 	.remote-actions button:disabled { opacity: .5; cursor: default; }
 	.remote-actions button.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 	.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-bottom: 6px; font-size: 11.5px; }
+	.paste-zone { display: block; width: 100%; box-sizing: border-box; margin: 0 0 8px; padding: 5px 8px;
+		font: inherit; font-size: 11px; text-align: center; color: var(--fg-muted); cursor: pointer;
+		background: transparent; border: 1px dashed var(--border); border-radius: 7px; }
+	.paste-zone:hover, .paste-zone:focus { border-color: var(--accent); color: var(--accent); outline: none; }
 	.files-spinner { width: 12px; height: 12px; margin-left: 6px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: files-spin .7s linear infinite; flex: none; }
 	@keyframes files-spin { to { transform: rotate(360deg); } }
 	.files.loading { opacity: .55; pointer-events: none; }
