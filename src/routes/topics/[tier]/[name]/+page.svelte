@@ -5,6 +5,7 @@
 	import { onEventStream, startEventStream } from '$lib/stores/events-stream';
 	import { renderMarkdown } from '$lib/markdown';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
+	import ArtifactCanvas from '$lib/components/ArtifactCanvas.svelte';
 	import {
 		ApiError,
 		getAgents,
@@ -957,6 +958,7 @@
 		</main>
 
 		<aside class="side">
+			<ArtifactCanvas {tier} {name} />
 			<section>
 				<h3>Partecipanti</h3>
 				<ul class="parts">
