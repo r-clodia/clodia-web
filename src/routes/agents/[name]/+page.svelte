@@ -16,7 +16,7 @@
 
 	$: name = $page.params.name ?? '';
 
-	type Tab = 'definition' | 'logs' | 'system-prompt' | 'profile';
+	type Tab = 'definition' | 'logs' | 'memories' | 'system-prompt' | 'profile';
 	let tab: Tab = 'definition';
 
 	/** Formatta una data ISO in gg/mm/aaaa (per validità certificato PKI). */
@@ -87,8 +87,16 @@
 		| { kind: 'ok'; events: ReadonlyArray<AgentActivityEvent> }
 		| { kind: 'error'; message: string; status?: number };
 
+	type MemoryFile = { name: string; body: string };
+	type MemoriesState =
+		| { kind: 'idle' }
+		| { kind: 'loading' }
+		| { kind: 'ok'; index: string | null; files: MemoryFile[] }
+		| { kind: 'error'; message: string; status?: number };
+
 	let detail: DetailState = { kind: 'idle' };
 	let activity: ActivityState = { kind: 'idle' };
+	let memories: MemoriesState = { kind: 'idle' };
 	let promptBody = '';
 	let promptError = '';
 
@@ -191,6 +199,7 @@
 		detail = { kind: 'loading' };
 		promptBody = '';
 		promptError = '';
+		memories = { kind: 'idle' };   // ricaricata pigramente all'apertura del tab
 		try {
 			const data = await apiGet<Agent>(`/api/agents/${encodeURIComponent(n)}`);
 			detail = { kind: 'ok', agent: data };
@@ -235,6 +244,22 @@
 			activity = { kind: 'ok', events };
 		} catch (err) {
 			activity = toErr(err) as ActivityState;
+		}
+	}
+
+	async function loadMemories(n: string) {
+		memories = { kind: 'loading' };
+		try {
+			const d = await apiGet<{ index: string | null; files: MemoryFile[] }>(
+				`/api/agents/${encodeURIComponent(n)}/memories`
+			);
+			memories = {
+				kind: 'ok',
+				index: d?.index ?? null,
+				files: Array.isArray(d?.files) ? d.files : []
+			};
+		} catch (err) {
+			memories = toErr(err) as MemoriesState;
 		}
 	}
 
@@ -348,6 +373,7 @@
 		catch (e) { toastError('Revoca fallita', e instanceof ApiError ? e.message : String(e)); }
 	}
 	$: if (tab === 'profile' && profile === null && name) { void loadProfile(); void loadAgentNames(); void loadProfileFiles(); }
+	$: if (tab === 'memories' && memories.kind === 'idle' && name) void loadMemories(name);
 	(async () => {
 		try {
 			const st = await getAdminState();
@@ -603,6 +629,18 @@
 		Logs
 		{#if events.length}
 			<span class="badge">{events.length}</span>
+		{/if}
+	</button>
+	<button
+		role="tab"
+		aria-selected={tab === 'memories'}
+		class:active={tab === 'memories'}
+		on:click={() => (tab = 'memories')}
+		type="button"
+	>
+		Memories
+		{#if memories.kind === 'ok' && memories.files.length}
+			<span class="badge">{memories.files.length}</span>
 		{/if}
 	</button>
 	{#if !isHuman}
@@ -926,6 +964,34 @@
 					</li>
 				{/each}
 			</ul>
+		{/if}
+	</section>
+{/if}
+
+<!-- MEMORIES ------------------------------------------------------------- -->
+{#if tab === 'memories'}
+	<section class="panel">
+		{#if memories.kind === 'loading' || memories.kind === 'idle'}
+			<div class="row"><Skeleton width="70%" height="12px" /></div>
+			<div class="row"><Skeleton width="90%" height="12px" /></div>
+		{:else if memories.kind === 'error'}
+			<p class="err">{memories.message}</p>
+		{:else}
+			{#if memories.index}
+				<article class="mem-block">
+					<h3 class="mem-h">MEMORY.md <span class="mem-tag">indice</span></h3>
+					<pre class="mem-body">{memories.index}</pre>
+				</article>
+			{/if}
+			{#each memories.files as f (f.name)}
+				<article class="mem-block">
+					<h3 class="mem-h">{f.name}</h3>
+					<pre class="mem-body">{f.body}</pre>
+				</article>
+			{/each}
+			{#if !memories.index && memories.files.length === 0}
+				<p class="muted">Nessuna memoria ancora. Le memorie dell'agente compaiono qui man mano che ne accumula.</p>
+			{/if}
 		{/if}
 	</section>
 {/if}
@@ -1287,6 +1353,11 @@
 		border-radius: 10px;
 		padding: 20px 22px;
 	}
+	.mem-block { margin-bottom: 16px; }
+	.mem-block:last-child { margin-bottom: 0; }
+	.mem-h { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; margin: 0 0 6px; }
+	.mem-tag { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; }
+	.mem-body { margin: 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; overflow-x: auto; }
 
 	.def {
 		display: grid;
