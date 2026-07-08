@@ -795,6 +795,8 @@
 		font-weight: 700;
 		padding: 2px 7px;
 		border-radius: 999px;
+		white-space: nowrap;
+		flex: 0 0 auto;
 	}
 	.storage {
 			font-size: 9.5px;
@@ -804,6 +806,8 @@
 			background: rgba(120, 144, 156, 0.16);
 			color: var(--fg-muted);
 			font-family: var(--mono);
+			white-space: nowrap;
+			flex: 0 0 auto;
 		}
 		.state-archived {
 		background: rgba(140, 140, 140, 0.16);
@@ -834,6 +838,8 @@
 		border-radius: 999px;
 		background: rgba(120, 144, 156, 0.16);
 		color: var(--fg-muted);
+		white-space: nowrap;
+		flex: 0 0 auto;
 	}
 	.deadline-soon { background: rgba(199, 154, 46, 0.18); color: #c79a2e; }
 	.deadline-overdue { background: rgba(239, 68, 68, 0.18); color: #ef4444; }
@@ -951,7 +957,8 @@
 	.card-top {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		flex-wrap: wrap;
+		gap: 6px 8px;
 	}
 	/* la data spinge il caret a destra */
 	.topic-date {
