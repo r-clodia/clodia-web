@@ -97,7 +97,9 @@
 	$: running = sessions.filter((s) => s.state === 'running').length;
 	$: blocked = sessions.filter((s) => s.state === 'blocked').length;
 	$: totalRuns = leaderboard.reduce((sum, a) => sum + (a.runs || 0), 0);
-	$: totalProviderTokens = providers.reduce((sum, p) => sum + (p.tokens_in || 0) + (p.tokens_out || 0), 0);
+	// Token in e out NON si sommano (grandezze e prezzi diversi): li teniamo distinti.
+	$: totalProviderIn = providers.reduce((sum, p) => sum + (p.tokens_in || 0), 0);
+	$: totalProviderOut = providers.reduce((sum, p) => sum + (p.tokens_out || 0), 0);
 </script>
 
 <svelte:head><title>Agents Activity — Clodia</title></svelte:head>
@@ -208,7 +210,7 @@
 		<section class="panel provider-panel">
 			<div class="panel-head">
 				<h2>Provider leaderboard</h2>
-				<span class="panel-count">{fmtTok(totalProviderTokens)} token · {providers.length} provider</span>
+				<span class="panel-count">{fmtTok(totalProviderIn)} in · {fmtTok(totalProviderOut)} out · {providers.length} provider</span>
 			</div>
 			{#if loading}
 				<p class="muted">Caricamento…</p>
@@ -221,7 +223,7 @@
 							<tr>
 								<th>#</th><th>Provider di inferenza</th>
 								<th class="num">Token in</th><th class="num">Token out</th>
-								<th class="num">Totale</th><th class="num">Run</th><th class="num">Agent</th>
+								<th class="num">Run</th><th class="num">Agent</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -231,7 +233,6 @@
 									<td class="ag"><span class="prov-dot" data-prov={p.provider}></span><span>{providerLabel(p.provider)}</span></td>
 									<td class="num">{fmtTok(p.tokens_in)}</td>
 									<td class="num">{fmtTok(p.tokens_out)}</td>
-									<td class="num tot-col">{fmtTok(p.tokens_in + p.tokens_out)}</td>
 									<td class="num">{p.runs}</td>
 									<td class="num">{p.agents_count}</td>
 								</tr>
@@ -253,7 +254,6 @@
 	.err { color: var(--danger, #e85d75); font-size: 12px; margin-bottom: 10px; }
 	.muted { color: var(--fg-muted); font-size: 13px; }
 	.activity-grid { display: grid; grid-template-rows: repeat(3, minmax(200px, 1fr)); gap: 18px; min-height: calc(100vh - 190px); }
-	.tot-col { font-weight: 700; }
 	.prov-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--fg-muted); display: inline-block; flex: none; }
 	.prov-dot[data-prov="anthropic-api"], .prov-dot[data-prov="claude-pro-max"] { background: #d97757; }
 	.prov-dot[data-prov="aws-region-eu"] { background: #ff9900; }
