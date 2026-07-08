@@ -1393,6 +1393,9 @@ export interface BackupStatus {
 	repository?: string;
 	schedule?: string;
 	retention?: { daily: number; weekly: number; monthly: number };
+	/** Ultimo backup ESEGUITO (anche se fallito): data + esito. */
+	last_run?: { time: string; ok: boolean; error?: string };
+	/** Ultimo backup VALIDO (ultimo snapshot restic: sempre un successo). */
 	last_snapshot?: { time: string; id: string };
 }
 export async function getBackupStatus(opts: RequestOptions = {}): Promise<BackupStatus> {

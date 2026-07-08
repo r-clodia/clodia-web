@@ -145,7 +145,7 @@
 		<div class="state {status?.configured ? 'ok' : 'off'}">
 			{#if status?.configured}
 				✓ Configurato · <strong>{status.backend}</strong> · {status.repository}
-				{#if status.last_snapshot}<br/>ultimo snapshot: {new Date(status.last_snapshot.time).toLocaleString('it-IT')} ({status.last_snapshot.id}){:else}<br/><em>nessuno snapshot ancora</em>{/if}
+				{#if status.last_run}<br/>ultimo backup eseguito: {new Date(status.last_run.time).toLocaleString('it-IT')} · <strong class={status.last_run.ok ? 'run-ok' : 'run-fail'}>{status.last_run.ok ? 'success' : 'fail'}</strong>{#if !status.last_run.ok && status.last_run.error}<span class="run-err"> — {status.last_run.error}</span>{/if}{:else}<br/><em>nessun backup ancora eseguito</em>{/if}{#if status.last_snapshot}<br/>ultimo backup valido: {new Date(status.last_snapshot.time).toLocaleString('it-IT')} · <strong class="run-ok">success</strong> ({status.last_snapshot.id}){:else}<br/><em>nessuno snapshot valido ancora</em>{/if}
 			{:else}
 				Backup non ancora configurato.
 			{/if}
@@ -220,6 +220,9 @@
 	.state { font-size: 12.5px; padding: 8px 10px; border-radius: 8px; margin-bottom: 14px; line-height: 1.5; }
 	.state.ok { border: 1px solid rgba(70,211,154,.4); background: rgba(70,211,154,.08); }
 	.state.off { border: 1px solid var(--border); color: var(--fg-muted); }
+	.run-ok { color: #2fa974; }
+	.run-fail { color: #e85d75; }
+	.run-err { color: var(--fg-muted); font-style: italic; }
 	.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 	@media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
 	label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--fg-muted); }
