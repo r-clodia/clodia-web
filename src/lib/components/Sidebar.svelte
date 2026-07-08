@@ -20,7 +20,7 @@
 		...(prof.features.activity ? [{ href: '/activity', label: 'ACTIVITY' }] : []),
 		...(prof.features.jobs ? [{ href: '/jobs', label: term(prof, 'job', 'JOBS', { plural: true, upper: true }) }] : []),
 		...(prof.features.packs_ui ? [{ href: '/packs', label: 'PACKS' }] : []),
-		{ href: '/kanban', label: 'KANBAN', disabled: true },
+		...(prof.features.kanban ? [{ href: '/workflows', label: 'WORKFLOWS' }] : [{ href: '/kanban', label: 'KANBAN', disabled: true }]),
 		...(prof.features.integrations !== 'off' ? [{ href: '/tools', label: term(prof, 'integration', 'INTEGRATIONS', { plural: true, upper: true }) }] : []),
 		...(prof.features.providers_ui ? [{ href: '/providers', label: term(prof, 'provider', 'PROVIDERS', { plural: true, upper: true }) }] : []),
 		{ href: '/settings', label: 'SETTINGS' },

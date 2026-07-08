@@ -1694,3 +1694,32 @@ export const TOPIC_STATUSES = ['await', 'active', 'archived', 'urgent'] as const
 export async function setTopicStatus(tier: string, name: string, status: string, opts: RequestOptions = {}): Promise<{ status: string }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/status`, { status }, opts);
 }
+
+/* ── Workflows dichiarativi (feature kanban) ─────────────────────────────── */
+export interface WorkflowStage { lane: string; skill: string; human_gate?: boolean }
+export interface WorkflowDef { plugin: string; name: string; trigger: string[]; stages: WorkflowStage[] }
+export interface WorkflowHistoryEntry {
+	lane: string; skill: string; agent: string | null;
+	started_at: string; finished_at: string | null; status: string; summary: string;
+}
+export interface WorkflowRun {
+	id: string; plugin: string; workflow: string; title: string; params: string;
+	topic: { tier: string; name: string } | null; requested_by: string;
+	stages: WorkflowStage[]; current: number; status: string;
+	history: WorkflowHistoryEntry[];
+	approvals: { stage: number; by: string; verdict: string; note: string; at: string }[];
+	created_at: string; updated_at: string;
+}
+export async function listWorkflows(opts: RequestOptions = {}): Promise<{ workflows: Record<string, WorkflowDef>; runs: WorkflowRun[] }> {
+	return apiGet('/clodia/workflows', opts);
+}
+export async function startWorkflowRun(plugin: string, name: string,
+	body: { title?: string; params?: string; topic?: { tier: string; name: string } }): Promise<WorkflowRun> {
+	return apiPost(`/clodia/workflows/${encodeURIComponent(plugin)}/${encodeURIComponent(name)}/start`, body);
+}
+export async function approveWorkflowRun(id: string, note = ''): Promise<WorkflowRun> {
+	return apiPost(`/clodia/workflows/runs/${encodeURIComponent(id)}/approve`, { note });
+}
+export async function rejectWorkflowRun(id: string, note = ''): Promise<WorkflowRun> {
+	return apiPost(`/clodia/workflows/runs/${encodeURIComponent(id)}/reject`, { note });
+}
