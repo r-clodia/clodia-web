@@ -448,11 +448,30 @@ export interface Plugin {
 	readonly skills: ReadonlyArray<PluginEntry>;
 	readonly rules: ReadonlyArray<PluginEntry>;
 	readonly mcp_servers: ReadonlyArray<PluginMcpServer>;
+	readonly workflows?: ReadonlyArray<PluginWorkflow>;
+	readonly datastores?: ReadonlyArray<PluginDatastore>;
 	readonly counts: {
 		readonly skills: number;
 		readonly rules: number;
 		readonly mcp_servers: number;
+		readonly workflows?: number;
+		readonly datastores?: number;
 	};
+}
+
+/** Workflow dichiarato da un plugin (composizione di skill in lane). */
+export interface PluginWorkflow {
+	readonly name: string;
+	readonly trigger: ReadonlyArray<string>;
+	readonly stages: ReadonlyArray<{ readonly lane: string; readonly skill: string; readonly human_gate: boolean }>;
+}
+
+/** Datastore dichiarato da un plugin (db locale posseduto dal suo MCP). */
+export interface PluginDatastore {
+	readonly path: string;
+	readonly purpose: string;
+	readonly pii: boolean;
+	readonly backup: boolean;
 }
 
 /** Prerequisito (soft) di un agent seed verso un plugin. */

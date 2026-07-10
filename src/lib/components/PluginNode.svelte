@@ -39,6 +39,8 @@
 		if (p.counts.skills) parts.push(`${p.counts.skills} skill`);
 		if (p.counts.rules) parts.push(`${p.counts.rules} rule`);
 		if (p.counts.mcp_servers) parts.push(`${p.counts.mcp_servers} MCP`);
+		if (p.counts.workflows) parts.push(`${p.counts.workflows} workflow`);
+		if (p.counts.datastores) parts.push(`${p.counts.datastores} datastore`);
 		return parts.join(' · ') || 'vuoto';
 	}
 </script>
@@ -100,7 +102,27 @@
 					</div>
 				{/each}
 			{/if}
-			{#if !plugin.skills.length && !plugin.rules.length && !plugin.mcp_servers.length}
+			{#if plugin.workflows?.length}
+				<div class="group-label">Workflows</div>
+				{#each plugin.workflows as w (w.name)}
+					<a class="child workflow" href="/workflows">
+						<span class="child-kind kind-wf">wf</span>
+						<span class="child-name">{w.name}</span>
+						<span class="child-desc">{w.stages.map((st) => st.lane + (st.human_gate ? ' 🔒' : '')).join(' → ')}</span>
+					</a>
+				{/each}
+			{/if}
+			{#if plugin.datastores?.length}
+				<div class="group-label">Datastore</div>
+				{#each plugin.datastores as d (d.path)}
+					<div class="child datastore">
+						<span class="child-kind kind-ds">db</span>
+						<span class="child-name">{d.path}</span>
+						<span class="child-desc">{d.purpose}{d.pii ? ' · PII' : ''}{d.backup ? ' · backup' : ''}</span>
+					</div>
+				{/each}
+			{/if}
+			{#if !plugin.skills.length && !plugin.rules.length && !plugin.mcp_servers.length && !plugin.workflows?.length && !plugin.datastores?.length}
 				<div class="child empty-child">plugin vuoto</div>
 			{/if}
 		</div>
@@ -246,6 +268,14 @@
 	.kind-mcp {
 		border-color: rgba(73, 204, 144, 0.55);
 		color: #49cc90;
+	}
+	.kind-wf {
+		border-color: rgba(199, 154, 46, 0.55);
+		color: #c79a2e;
+	}
+	.kind-ds {
+		border-color: rgba(147, 112, 219, 0.55);
+		color: #9370db;
 	}
 	.child-name {
 		font-family: var(--mono);
