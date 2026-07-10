@@ -222,8 +222,6 @@ import type {
 	ColonyEvent,
 	Pipeline,
 	PipelineVersion,
-	Kanban,
-	KanbanDetail,
 	Job,
 	JobCreate,
 	JobDetail,
@@ -325,19 +323,7 @@ export async function getJob(id: string, opts: RequestOptions = {}): Promise<Job
 // KANBAN wallboard — readonly aggregate of configured Trello boards.
 // ---------------------------------------------------------------------------
 
-/** GET `/api/kanbans` — list of configured boards with per-lane card counts. */
-export async function getKanbans(opts: RequestOptions = {}): Promise<ReadonlyArray<Kanban>> {
-	const data = await apiGet<ReadonlyArray<Kanban>>('/api/kanbans', opts);
-	return Array.isArray(data) ? data : [];
-}
 
-/** GET `/api/kanbans/{board_id}` — detail with full card lists per lane. */
-export async function getKanbanDetail(
-	boardId: string,
-	opts: RequestOptions = {},
-): Promise<KanbanDetail> {
-	return apiGet<KanbanDetail>(`/api/kanbans/${encodeURIComponent(boardId)}`, opts);
-}
 
 // ---------------------------------------------------------------------------
 // COLONY — execution ledger + approval gates.
@@ -1356,15 +1342,7 @@ export async function logout(opts: RequestOptions = {}): Promise<AuthActionRespo
 // KANBAN — Pause / Resume pipeline per board
 // ---------------------------------------------------------------------------
 
-/** POST `/api/kanbans/{id}/pause` — mette in pausa la pipeline di un board. */
-export async function pauseKanban(boardId: string, opts: RequestOptions = {}): Promise<{ paused: boolean }> {
-	return apiPost<{ paused: boolean }>(`/api/kanbans/${encodeURIComponent(boardId)}/pause`, {}, opts);
-}
 
-/** POST `/api/kanbans/{id}/resume` — riprende la pipeline di un board. */
-export async function resumeKanban(boardId: string, opts: RequestOptions = {}): Promise<{ paused: boolean }> {
-	return apiPost<{ paused: boolean }>(`/api/kanbans/${encodeURIComponent(boardId)}/resume`, {}, opts);
-}
 
 // ─── Tools / connettori OAuth (backend gateway clodia-tools, wire diretto) ───
 
@@ -1695,7 +1673,7 @@ export async function setTopicStatus(tier: string, name: string, status: string,
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/status`, { status }, opts);
 }
 
-/* ── Workflows dichiarativi (feature kanban) ─────────────────────────────── */
+/* ── Workflows dichiarativi ──────────────────────────────────────────────── */
 export interface WorkflowStage { lane: string; skill: string; human_gate?: boolean }
 export interface WorkflowDef { plugin: string; name: string; trigger: string[]; stages: WorkflowStage[] }
 export interface WorkflowHistoryEntry {

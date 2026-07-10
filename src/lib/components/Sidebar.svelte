@@ -12,7 +12,6 @@
 	// Navigazione derivata dal profilo d'istanza (Modular Distro F2): il
 	// backend è la fonte di verità, feature spenta = voce assente. Con profilo
 	// FULL la lista è identica a quella storica. `disabled` = funzione
-	// parcheggiata (kanban): visibile in grigio, non cliccabile.
 	type NavItem = { href: string; label: string; disabled?: boolean };
 	$: prof = $instanceProfile;
 	$: items = [
@@ -20,7 +19,7 @@
 		...(prof.features.activity ? [{ href: '/activity', label: 'ACTIVITY' }] : []),
 		...(prof.features.jobs ? [{ href: '/jobs', label: term(prof, 'job', 'JOBS', { plural: true, upper: true }) }] : []),
 		...(prof.features.packs_ui ? [{ href: '/packs', label: 'PACKS' }] : []),
-		...(prof.features.kanban ? [{ href: '/workflows', label: 'WORKFLOWS' }] : [{ href: '/kanban', label: 'KANBAN', disabled: true }]),
+		...(prof.features.workflows ? [{ href: '/workflows', label: 'WORKFLOWS' }] : []),
 		...(prof.features.integrations !== 'off' ? [{ href: '/tools', label: term(prof, 'integration', 'INTEGRATIONS', { plural: true, upper: true }) }] : []),
 		...(prof.features.providers_ui ? [{ href: '/providers', label: term(prof, 'provider', 'PROVIDERS', { plural: true, upper: true }) }] : []),
 		{ href: '/settings', label: 'SETTINGS' },

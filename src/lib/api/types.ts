@@ -389,7 +389,7 @@ export interface InstanceFeatures {
 	readonly activity: boolean;
 	readonly pwa: boolean;
 	readonly helpdesk: boolean;
-	readonly kanban: boolean;
+	readonly workflows: boolean;
 	readonly colony: boolean;
 }
 
@@ -752,33 +752,7 @@ export interface CardStateBreakdown {
 	readonly idle: number;
 }
 
-export interface KanbanLane {
-	readonly id?: string;
-	readonly name: string;
-	readonly pos?: number;
-	readonly count: number;
-	/** Card con `idMembers != []`: un agent o umano le sta lavorando.
-	 *  Convenzione kanban-operations: claim = self-assign, release a fine lavoro. */
-	readonly in_progress?: number;
-	/** Breakdown delle card per stato runtime (running/await/ready/idle). */
-	readonly states?: CardStateBreakdown;
-	/** Skill Claude Code richiesta per lavorare task in questa lane.
-	 *  null/assente = nessuna skill mappata (badge nascosto nella UI). */
-	readonly skill?: string | null;
-}
 
-export interface Kanban {
-	readonly id: string;
-	readonly name: string | null;
-	readonly url: string | null;
-	readonly lanes: ReadonlyArray<KanbanLane>;
-	/** Breakdown aggregato delle card del board per stato runtime. */
-	readonly states?: CardStateBreakdown;
-	/** Present only when the server failed to fetch this board from Trello. */
-	readonly error?: string;
-	/** true = pipeline in pausa (lane_consumer salta le card di questo board). */
-	readonly paused?: boolean;
-}
 
 // ---------------------------------------------------------------------------
 // KANBAN board detail — drilldown view of a single board with full card lists.
@@ -791,31 +765,8 @@ export interface Kanban {
  *  - `idle`: lane senza skill (parking/terminale), nessuno la lavora */
 export type CardState = 'running' | 'await' | 'ready' | 'idle';
 
-export interface KanbanCard {
-	readonly id: string;
-	readonly name: string;
-	readonly url: string | null;
-	readonly in_progress: boolean;
-	readonly state?: CardState;
-	readonly dateLastActivity: string | null;
-	/** Presente solo quando `state === 'running'`: chi sta lavorando la card. */
-	readonly agent?: { readonly name: string; readonly display_name: string };
-}
 
-export interface KanbanLaneDetail extends KanbanLane {
-	readonly id: string;
-	readonly pos: number;
-	readonly cards: ReadonlyArray<KanbanCard>;
-	readonly is_notify?: boolean;
-}
 
-export interface KanbanDetail {
-	readonly id: string;
-	readonly name: string | null;
-	readonly url: string | null;
-	readonly lanes: ReadonlyArray<KanbanLaneDetail>;
-	readonly paused?: boolean;
-}
 
 // ---------------------------------------------------------------------------
 // COLONY — execution ledger + approval gates (agent-server colony runtime).
