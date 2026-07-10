@@ -6,7 +6,7 @@
 	 */
 	import { onDestroy, onMount } from 'svelte';
 	import {
-		listWorkflows, startWorkflowRun, approveWorkflowRun, rejectWorkflowRun,
+		listWorkflows, startWorkflowRun, approveWorkflowRun, rejectWorkflowRun, cancelWorkflowRun,
 		type WorkflowDef, type WorkflowRun
 	} from '$lib/api/client';
 
@@ -41,6 +41,18 @@
 			await refresh();
 		} finally {
 			busy = { ...busy, [key]: false };
+		}
+	}
+
+	async function stop(run: WorkflowRun) {
+		if (!confirm(`Interrompere il run «${run.title}»?`)) return;
+		const note = prompt('Nota (opzionale):') ?? '';
+		busy = { ...busy, [run.id]: true };
+		try {
+			await cancelWorkflowRun(run.id, note);
+			await refresh();
+		} finally {
+			busy = { ...busy, [run.id]: false };
 		}
 	}
 
@@ -111,11 +123,14 @@
 		<p class="wf-empty">Nessun run. Avvia un workflow qui sopra.</p>
 	{/if}
 	{#each runs as run (run.id)}
-		<article class="wf-run" class:done={run.status === 'done'} class:failed={run.status === 'failed'} class:rejected={run.status === 'rejected'}>
+		<article class="wf-run" class:done={run.status === 'done'} class:failed={run.status === 'failed'} class:rejected={run.status === 'rejected' || run.status === 'cancelled'}>
 			<div class="wf-run-top">
 				<strong>{run.title}</strong>
 				<span class="wf-badge wf-{run.status}">{run.status}</span>
 				<span class="wf-run-wf">{run.plugin}/{run.workflow}</span>
+				{#if !['done', 'failed', 'rejected', 'cancelled'].includes(run.status)}
+					<button type="button" class="wf-stop" on:click={() => stop(run)} disabled={busy[run.id]} title="Interrompi il run">■ Stop</button>
+				{/if}
 			</div>
 			<div class="wf-board">
 				{#each run.stages as st, i (st.lane)}
@@ -160,6 +175,8 @@
 	.wf-run.failed, .wf-run.rejected { border-color: rgba(239,68,68,0.5); }
 	.wf-run-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 	.wf-run-wf { font-size: 11px; color: var(--fg-muted); margin-left: auto; }
+	.wf-stop { font: inherit; font-size: 11px; padding: 3px 9px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.5); background: rgba(239,68,68,0.1); color: #ef4444; cursor: pointer; }
+	.wf-cancelled { background: rgba(120,144,156,0.2); color: var(--fg-muted); }
 	.wf-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: rgba(120,144,156,0.16); }
 	.wf-waiting_approval { background: rgba(199,154,46,0.2); color: #c79a2e; }
 	.wf-running { background: rgba(96,165,250,0.18); color: #60a5fa; }
