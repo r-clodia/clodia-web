@@ -1698,6 +1698,9 @@ export async function startWorkflowRun(plugin: string, name: string,
 export async function approveWorkflowRun(id: string, note = ''): Promise<WorkflowRun> {
 	return apiPost(`/clodia/workflows/runs/${encodeURIComponent(id)}/approve`, { note });
 }
+export async function cancelWorkflowRun(id: string, note = ''): Promise<WorkflowRun> {
+	return apiPost(`/clodia/workflows/runs/${encodeURIComponent(id)}/cancel`, { note });
+}
 export async function rejectWorkflowRun(id: string, note = ''): Promise<WorkflowRun> {
 	return apiPost(`/clodia/workflows/runs/${encodeURIComponent(id)}/reject`, { note });
 }
