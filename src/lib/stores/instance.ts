@@ -24,7 +24,7 @@ export const FULL_PROFILE: InstanceProfile = {
 		activity: true,
 		pwa: true,
 		helpdesk: true,
-		kanban: false,
+		workflows: false,
 		colony: false
 	},
 	branding: { name: 'Clodia Agency', logo: '', accent: '' },

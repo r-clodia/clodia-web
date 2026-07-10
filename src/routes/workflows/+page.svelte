@@ -2,7 +2,7 @@
 	/**
 	 * WORKFLOWS — board dei workflow dichiarativi dei pack. Read-mostly:
 	 * le card le muovono gli agenti (una colonna per lane); l'umano avvia un
-	 * run e approva/respinge sui gate (waiting_approval). Feature `kanban`.
+	 * run e approva/respinge sui gate (waiting_approval). Feature `workflows`.
 	 */
 	import { onDestroy, onMount } from 'svelte';
 	import {
