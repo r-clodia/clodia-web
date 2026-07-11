@@ -87,10 +87,11 @@
 
 	async function createPairing() {
 		pairingError = '';
-		// Token EFFIMERO dedicato (5 min), non la sessione 12h: il QR è bearer.
+		// La sessione PWA eredita l'exp del token di pairing: TTL 30gg (default di
+		// mintPairingToken) così la PWA non chiede il ri-pairing ad ogni utilizzo.
 		let minted: { principal: string; token: string; exp: number };
 		try {
-			minted = await mintPairingToken(300);
+			minted = await mintPairingToken();
 		} catch (e) {
 			pairingError = e instanceof Error ? e.message : String(e);
 			return;
@@ -189,7 +190,7 @@
 		<span class="iso">session pairing</span>
 	</div>
 	<p class="note">
-		Collega la PWA scansionando un QR da questo browser già autenticato. La PWA riceve un token a breve scadenza (5 min), non la masterkey: anche se il QR finisse in uno screenshot, scade in fretta.
+		Collega la PWA scansionando un QR da questo browser già autenticato. La PWA riceve un token di sessione valido 30 giorni, non la masterkey: dura per non richiedere il ri-pairing ad ogni utilizzo, ma è un bearer — tieni riservato il QR ed evita di condividerne screenshot.
 	</p>
 	{#if pairingError}<div class="err">{pairingError}</div>{/if}
 	<div class="actions">
