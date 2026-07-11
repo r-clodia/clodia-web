@@ -2,7 +2,8 @@
 	/**
 	 * WORKFLOWS — board dei workflow dichiarativi dei pack. Read-mostly:
 	 * le card le muovono gli agenti (una colonna per lane); l'umano avvia un
-	 * run e approva/respinge sui gate (waiting_approval). Feature `workflows`.
+	 * run; l'interazione (avvio, gate, sblocco) avviene nella CHAT del run
+	 * (topic effimero). I bottoni qui sono scorciatoie. Feature `workflows`.
 	 */
 	import { onDestroy, onMount } from 'svelte';
 	import {
@@ -73,7 +74,7 @@
 		if (run.status === 'failed' && idx === run.current) return 'failed';
 		if (idx < run.current || run.status === 'done') return 'done';
 		if (idx === run.current) {
-			if (run.status === 'waiting_approval') return 'gate';
+			if (run.status === 'await') return run.gate_pending ? 'gate' : 'await';
 			if (run.status === 'running') return 'running';
 			return 'current';
 		}
@@ -128,7 +129,10 @@
 				<strong>{run.title}</strong>
 				<span class="wf-badge wf-{run.status}">{run.status}</span>
 				<span class="wf-run-wf">{run.plugin}/{run.workflow}</span>
-				{#if !['done', 'failed', 'rejected', 'cancelled'].includes(run.status)}
+				{#if run.topic}
+					<a class="wf-chat" href={`/topics/${run.topic.tier}/${run.topic.name}`} title="Apri la conversazione del run">💬 Chat</a>
+				{/if}
+				{#if !['done', 'failed', 'cancelled'].includes(run.status)}
 					<button type="button" class="wf-stop" on:click={() => stop(run)} disabled={busy[run.id]} title="Interrompi il run">■ Stop</button>
 				{/if}
 			</div>
@@ -146,11 +150,15 @@
 					</div>
 				{/each}
 			</div>
-			{#if run.status === 'waiting_approval'}
+			{#if run.status === 'await'}
 				<div class="wf-gate">
-					<span>In attesa di approvazione sulla lane «{run.stages[run.current]?.lane}»</span>
-					<button type="button" class="wf-ok" on:click={() => decide(run, true)} disabled={busy[run.id]}>✓ Approva</button>
-					<button type="button" class="wf-no" on:click={() => decide(run, false)} disabled={busy[run.id]}>✗ Respingi</button>
+					{#if run.gate_pending}
+						<span>Gate sulla lane «{run.stages[run.current]?.lane}» — decidi in <a href={run.topic ? `/topics/${run.topic.tier}/${run.topic.name}` : '#'}>chat</a> o qui:</span>
+						<button type="button" class="wf-ok" on:click={() => decide(run, true)} disabled={busy[run.id]}>✓ Approva</button>
+						<button type="button" class="wf-no" on:click={() => decide(run, false)} disabled={busy[run.id]}>↩ Rimanda</button>
+					{:else}
+						<span>L'agente attende una tua risposta sulla lane «{run.stages[run.current]?.lane}» → <a href={run.topic ? `/topics/${run.topic.tier}/${run.topic.name}` : '#'}>rispondi in chat</a></span>
+					{/if}
 				</div>
 			{/if}
 		</article>
@@ -175,6 +183,9 @@
 	.wf-run.failed, .wf-run.rejected { border-color: rgba(239,68,68,0.5); }
 	.wf-run-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 	.wf-run-wf { font-size: 11px; color: var(--fg-muted); margin-left: auto; }
+	.wf-chat { font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border); text-decoration: none; color: inherit; }
+	.wf-lane-await { border-color: rgba(199,154,46,0.6); border-style: dashed; }
+	.wf-await { background: rgba(199,154,46,0.2); color: #c79a2e; }
 	.wf-stop { font: inherit; font-size: 11px; padding: 3px 9px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.5); background: rgba(239,68,68,0.1); color: #ef4444; cursor: pointer; }
 	.wf-cancelled { background: rgba(120,144,156,0.2); color: var(--fg-muted); }
 	.wf-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: rgba(120,144,156,0.16); }
