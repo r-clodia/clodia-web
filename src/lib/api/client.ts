@@ -1683,7 +1683,7 @@ export interface WorkflowHistoryEntry {
 export interface WorkflowRun {
 	id: string; plugin: string; workflow: string; title: string; params: string;
 	topic: { tier: string; name: string } | null; requested_by: string;
-	stages: WorkflowStage[]; current: number; status: string;
+	stages: WorkflowStage[]; current: number; status: string; gate_pending?: boolean;
 	history: WorkflowHistoryEntry[];
 	approvals: { stage: number; by: string; verdict: string; note: string; at: string }[];
 	created_at: string; updated_at: string;
