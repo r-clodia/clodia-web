@@ -1684,6 +1684,7 @@ export interface WorkflowRun {
 	id: string; plugin: string; workflow: string; title: string; params: string;
 	topic: { tier: string; name: string } | null; requested_by: string;
 	stages: WorkflowStage[]; current: number; status: string; gate_pending?: boolean;
+	question?: { text: string; choices: string[]; gate: boolean } | null;
 	history: WorkflowHistoryEntry[];
 	approvals: { stage: number; by: string; verdict: string; note: string; at: string }[];
 	created_at: string; updated_at: string;
@@ -1694,6 +1695,9 @@ export async function listWorkflows(opts: RequestOptions = {}): Promise<{ workfl
 export async function startWorkflowRun(plugin: string, name: string,
 	body: { title?: string; params?: string; topic?: { tier: string; name: string } }): Promise<WorkflowRun> {
 	return apiPost(`/clodia/workflows/${encodeURIComponent(plugin)}/${encodeURIComponent(name)}/start`, body);
+}
+export async function answerWorkflowRun(id: string, text: string): Promise<WorkflowRun> {
+	return apiPost(`/clodia/workflows/runs/${encodeURIComponent(id)}/answer`, { text });
 }
 export async function approveWorkflowRun(id: string, note = ''): Promise<WorkflowRun> {
 	return apiPost(`/clodia/workflows/runs/${encodeURIComponent(id)}/approve`, { note });

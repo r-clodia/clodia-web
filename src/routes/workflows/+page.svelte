@@ -2,12 +2,12 @@
 	/**
 	 * WORKFLOWS — board dei workflow dichiarativi dei pack. Read-mostly:
 	 * le card le muovono gli agenti (una colonna per lane); l'umano avvia un
-	 * run; l'interazione (avvio, gate, sblocco) avviene nella CHAT del run
-	 * (topic effimero). I bottoni qui sono scorciatoie. Feature `workflows`.
+	 * run e risponde alle domande/gate INLINE, sotto la card dello stadio che
+	 * chiede input. Nessuna chat separata. Feature `workflows`.
 	 */
 	import { onDestroy, onMount } from 'svelte';
 	import {
-		listWorkflows, startWorkflowRun, approveWorkflowRun, rejectWorkflowRun, cancelWorkflowRun,
+		listWorkflows, startWorkflowRun, answerWorkflowRun, cancelWorkflowRun,
 		type WorkflowDef, type WorkflowRun
 	} from '$lib/api/client';
 
@@ -16,6 +16,7 @@
 	let loading = true;
 	let err = '';
 	let busy: Record<string, boolean> = {};
+	let answerText: Record<string, string> = {};
 	let poll: ReturnType<typeof setInterval> | null = null;
 
 	async function refresh() {
@@ -57,11 +58,13 @@
 		}
 	}
 
-	async function decide(run: WorkflowRun, ok: boolean) {
-		const note = prompt(ok ? 'Nota di approvazione (opzionale):' : 'Motivo del rifiuto:') ?? '';
+	async function answer(run: WorkflowRun, text: string) {
+		const t = (text ?? '').trim();
+		if (!t) return;
 		busy = { ...busy, [run.id]: true };
 		try {
-			ok ? await approveWorkflowRun(run.id, note) : await rejectWorkflowRun(run.id, note);
+			await answerWorkflowRun(run.id, t);
+			answerText = { ...answerText, [run.id]: '' };
 			await refresh();
 		} finally {
 			busy = { ...busy, [run.id]: false };
@@ -70,7 +73,6 @@
 
 	// Stato lane→classe per la card: done/current/pending/failed.
 	function laneState(run: WorkflowRun, idx: number): string {
-		if (run.status === 'rejected' && idx === run.current) return 'rejected';
 		if (run.status === 'failed' && idx === run.current) return 'failed';
 		if (idx < run.current || run.status === 'done') return 'done';
 		if (idx === run.current) {
@@ -129,9 +131,6 @@
 				<strong>{run.title}</strong>
 				<span class="wf-badge wf-{run.status}">{run.status}</span>
 				<span class="wf-run-wf">{run.plugin}/{run.workflow}</span>
-				{#if run.topic}
-					<a class="wf-chat" href={`/topics/${run.topic.tier}/${run.topic.name}`} title="Apri la conversazione del run">💬 Chat</a>
-				{/if}
 				{#if !['done', 'failed', 'cancelled'].includes(run.status)}
 					<button type="button" class="wf-stop" on:click={() => stop(run)} disabled={busy[run.id]} title="Interrompi il run">■ Stop</button>
 				{/if}
@@ -150,16 +149,26 @@
 					</div>
 				{/each}
 			</div>
-			{#if run.status === 'await'}
-				<div class="wf-gate">
-					{#if run.gate_pending}
-						<span>Gate sulla lane «{run.stages[run.current]?.lane}» — decidi in <a href={run.topic ? `/topics/${run.topic.tier}/${run.topic.name}` : '#'}>chat</a> o qui:</span>
-						<button type="button" class="wf-ok" on:click={() => decide(run, true)} disabled={busy[run.id]}>✓ Approva</button>
-						<button type="button" class="wf-no" on:click={() => decide(run, false)} disabled={busy[run.id]}>↩ Rimanda</button>
+			{#if run.status === 'await' && run.question}
+				<div class="wf-ask" class:gate={run.question.gate}>
+					<div class="wf-ask-lane">{run.stages[run.current]?.lane}{run.question.gate ? ' · gate' : ''}</div>
+					<div class="wf-ask-text">{run.question.text}</div>
+					{#if run.question.choices.length}
+						<div class="wf-pills">
+							{#each run.question.choices as c (c)}
+								<button type="button" class="wf-pill" on:click={() => answer(run, c)} disabled={busy[run.id]}>{c}</button>
+							{/each}
+						</div>
 					{:else}
-						<span>L'agente attende una tua risposta sulla lane «{run.stages[run.current]?.lane}» → <a href={run.topic ? `/topics/${run.topic.tier}/${run.topic.name}` : '#'}>rispondi in chat</a></span>
+						<div class="wf-answer-row">
+							<input type="text" placeholder="La tua risposta…" bind:value={answerText[run.id]}
+								on:keydown={(e) => e.key === 'Enter' && answer(run, answerText[run.id])} disabled={busy[run.id]} />
+							<button type="button" class="wf-send" on:click={() => answer(run, answerText[run.id])} disabled={busy[run.id]}>Invia</button>
+						</div>
 					{/if}
 				</div>
+			{:else if run.status === 'await'}
+				<div class="wf-ask"><div class="wf-ask-text">L'agente sta elaborando…</div></div>
 			{/if}
 		</article>
 	{/each}
@@ -183,6 +192,16 @@
 	.wf-run.failed, .wf-run.rejected { border-color: rgba(239,68,68,0.5); }
 	.wf-run-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 	.wf-run-wf { font-size: 11px; color: var(--fg-muted); margin-left: auto; }
+	.wf-ask { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(199,154,46,0.5); background: rgba(199,154,46,0.08); }
+	.wf-ask.gate { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+	.wf-ask-lane { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin-bottom: 4px; }
+	.wf-ask-text { font-size: 13px; white-space: pre-wrap; margin-bottom: 8px; }
+	.wf-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+	.wf-pill { font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); color: inherit; cursor: pointer; }
+	.wf-pill:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+	.wf-answer-row { display: flex; gap: 8px; }
+	.wf-answer-row input { flex: 1; font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--card-bg, transparent); color: var(--fg); }
+	.wf-send { font: inherit; font-size: 12px; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg); cursor: pointer; }
 	.wf-chat { font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border); text-decoration: none; color: inherit; }
 	.wf-lane-await { border-color: rgba(199,154,46,0.6); border-style: dashed; }
 	.wf-await { background: rgba(199,154,46,0.2); color: #c79a2e; }
