@@ -117,6 +117,10 @@
 	<!-- Nessun superadmin: NON si rivela nulla dell'app. Solo il setup iniziale
 	     per configurare il superadmin (unico human accanto a clodia/ophelia). -->
 	<SetupScreen />
+{:else if $page.url.pathname.startsWith('/gate/')}
+	<!-- Decisione gate via link firmato one-time: NO login (il token autorizza).
+	     Nessuna shell dell'app. -->
+	<slot />
 {:else if !loggedIn}
 	<!-- Non loggato: si vede SOLO il modulo di login, nient'altro. -->
 	<LoginScreen />
