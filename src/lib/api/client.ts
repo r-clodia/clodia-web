@@ -1686,8 +1686,9 @@ export async function setTopicStatus(tier: string, name: string, status: string,
 export interface WorkflowStage { lane: string; skill: string; human_gate?: boolean }
 export interface WorkflowDef { plugin: string; name: string; trigger: string[]; stages: WorkflowStage[] }
 export interface WorkflowHistoryEntry {
-	lane: string; skill: string; agent: string | null;
-	started_at: string; finished_at: string | null; status: string; summary: string;
+	stage_idx?: number; lane: string; skill: string; agent: string | null;
+	started_at: string; finished_at: string | null; status: string;
+	input?: string; summary: string; artefatto?: string | null;
 }
 export interface WorkflowRun {
 	id: string; seq?: number; name?: string;

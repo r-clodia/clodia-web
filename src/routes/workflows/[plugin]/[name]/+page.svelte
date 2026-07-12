@@ -23,7 +23,17 @@
 	let err = '';
 	let busy: Record<string, boolean> = {};
 	let answerText: Record<string, string> = {};
+	let openStep: Record<string, number | null> = {};   // run.id → indice step ispezionato
 	let poll: ReturnType<typeof setInterval> | null = null;
+
+	// ultima entry di history relativa a uno step (per indice), o null
+	function entryFor(run: WorkflowRun, idx: number) {
+		const es = (run.history ?? []).filter((h) => h.stage_idx === idx);
+		return es.length ? es[es.length - 1] : null;
+	}
+	function toggleStep(run: WorkflowRun, idx: number) {
+		openStep = { ...openStep, [run.id]: openStep[run.id] === idx ? null : idx };
+	}
 
 	async function refresh() {
 		try {
@@ -156,9 +166,50 @@
 				</div>
 				<div class="wf-track">
 					{#each run.stages as st, i (st.lane)}
-						<span class="wf-dot wf-dot-{stepState(run, i)}" title={st.lane}></span>
+						<button
+							type="button"
+							class="wf-dot wf-dot-{stepState(run, i)}"
+							class:sel={openStep[run.id] === i}
+							title="{st.lane} — {stepState(run, i)}"
+							on:click={() => toggleStep(run, i)}
+						></button>
 					{/each}
 				</div>
+
+				{#if openStep[run.id] != null}
+					{@const idx = openStep[run.id] ?? 0}
+					{@const st = run.stages[idx]}
+					{@const e = entryFor(run, idx)}
+					<div class="wf-step">
+						<div class="wf-step-head">
+							<strong>{idx + 1}. {st?.lane}</strong>
+							<span class="wf-badge wf-{e?.status ?? stepState(run, idx)}">{e?.status ?? stepState(run, idx)}</span>
+							{#if st?.human_gate}<span title="Gate umano">🔒</span>{/if}
+							<button type="button" class="wf-step-x" on:click={() => toggleStep(run, idx)} title="Chiudi">×</button>
+						</div>
+						<div class="wf-step-meta">
+							<span>skill: {st?.skill}</span>
+							{#if e?.agent}<span>agente: {e.agent}</span>{/if}
+							<span>▷ {fmtDt(e?.started_at)}</span>
+							{#if e?.finished_at}<span>◼ {fmtDt(e.finished_at)}</span>{/if}
+						</div>
+						{#if !e}
+							<p class="wf-step-empty">Step non ancora eseguito.</p>
+						{:else}
+							{#if e.artefatto}
+								<div class="wf-step-art">Artefatto: <code>{e.artefatto}</code></div>
+							{/if}
+							<details class="wf-step-io">
+								<summary>Input</summary>
+								<pre>{e.input || '—'}</pre>
+							</details>
+							<details class="wf-step-io" open>
+								<summary>Output{e.status === 'running' ? ' (in corso…)' : e.status === 'await' ? ' (parziale — in attesa)' : ''}</summary>
+								<pre>{e.summary || (e.status === 'running' ? 'in esecuzione…' : '—')}</pre>
+							</details>
+						{/if}
+					</div>
+				{/if}
 				{#if run.status === 'await' && run.question}
 					<div class="wf-ask" class:gate={run.question.gate}>
 						<div class="wf-ask-lane">{run.stages[run.current]?.lane}{run.question.gate ? ' · gate' : ''}</div>
@@ -213,11 +264,25 @@
 	.wf-cur { font-size: 11px; color: var(--fg-muted); }
 	.wf-stop { margin-left: auto; font: inherit; font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.5); background: rgba(239,68,68,0.1); color: #ef4444; cursor: pointer; }
 	.wf-track { display: flex; gap: 5px; margin: 8px 0; }
-	.wf-dot { width: 11px; height: 11px; border-radius: 50%; border: 1px solid var(--border); background: transparent; }
+	.wf-dot { width: 13px; height: 13px; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: transparent; cursor: pointer; transition: transform 0.1s; }
+	.wf-dot:hover { transform: scale(1.25); }
+	.wf-dot.sel { box-shadow: 0 0 0 2px var(--accent); }
 	.wf-dot-done { background: #34c759; border-color: #34c759; }
 	.wf-dot-running { background: #60a5fa; border-color: #60a5fa; }
 	.wf-dot-await, .wf-dot-gate { background: #c79a2e; border-color: #c79a2e; }
 	.wf-dot-failed, .wf-dot-cancelled { background: #ef4444; border-color: #ef4444; }
+
+	.wf-step { margin: 8px 0 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: rgba(120,144,156,0.06); }
+	.wf-step-head { display: flex; align-items: center; gap: 8px; }
+	.wf-step-head strong { font-size: 13px; }
+	.wf-step-x { margin-left: auto; border: none; background: transparent; font-size: 16px; line-height: 1; cursor: pointer; color: var(--fg-muted); }
+	.wf-step-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--fg-muted); margin: 6px 0; }
+	.wf-step-empty { font-size: 12px; color: var(--fg-muted); }
+	.wf-step-art { font-size: 11.5px; margin: 4px 0; }
+	.wf-step-art code { font-size: 11px; word-break: break-all; }
+	.wf-step-io { margin: 4px 0; }
+	.wf-step-io summary { font-size: 11.5px; font-weight: 700; cursor: pointer; color: var(--fg-muted); }
+	.wf-step-io pre { margin: 6px 0 0; padding: 8px; max-height: 260px; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; white-space: pre-wrap; word-break: break-word; }
 	.wf-ask { margin-top: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(199,154,46,0.5); background: rgba(199,154,46,0.08); }
 	.wf-ask.gate { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 	.wf-ask-lane { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); margin-bottom: 4px; }
