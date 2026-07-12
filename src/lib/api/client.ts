@@ -1493,6 +1493,15 @@ export async function connectTrello(
 
 /** POST `/tools/github/connect` — deposita il PAT GitHub nel vault e registra il
  *  backend MCP ufficiale. PAT vuoto → disconnette. */
+/** POST `/tools/{id}/test` — verifica REALE della connessione (chiamata al
+ *  provider). {ok: bool|null, detail}. ok=null → non testabile. */
+export async function testConnector(
+	id: string,
+	opts: RequestOptions = {}
+): Promise<{ ok: boolean | null; detail: string }> {
+	return apiPost(`/tools/${encodeURIComponent(id)}/test`, {}, opts);
+}
+
 export async function connectGithub(
 	pat: string,
 	opts: RequestOptions = {}

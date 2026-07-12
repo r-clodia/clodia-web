@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, connectOpenAI, connectTrello, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, ApiError } from '$lib/api/client';
+	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, connectOpenAI, connectTrello, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
 	import { askWainston } from '$lib/stores/helpdesk';
 	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
 	import { toastSuccess, toastError, toastInfo } from '$lib/stores/toasts';
@@ -90,6 +90,24 @@
 		void ensureProfileLoaded();
 		void load();
 	});
+
+	let testResult: Record<string, { ok: boolean | null; detail: string }> = {};
+	let testing: Record<string, boolean> = {};
+
+	async function testConn(id: string) {
+		testing = { ...testing, [id]: true };
+		try {
+			const r = await testConnector(id);
+			testResult = { ...testResult, [id]: r };
+			if (r.ok === true) toastSuccess(`${id}: ${r.detail}`);
+			else if (r.ok === false) toastError(`${id}: ${r.detail}`);
+			else toastInfo(`${id}: ${r.detail}`);
+		} catch (e) {
+			toastError(e instanceof ApiError ? e.message : String(e));
+		} finally {
+			testing = { ...testing, [id]: false };
+		}
+	}
 
 	async function load() {
 		loading = true;
@@ -527,6 +545,12 @@
 				{:else if c.kind === 'mailbox'}
 					<button type="button" class="btn primary" on:click={openMailboxes}>Gestisci caselle</button>
 				{:else if c.connected}
+					{#if testResult[c.id]}
+						<span class="test-badge" class:ok={testResult[c.id].ok === true} class:ko={testResult[c.id].ok === false} title={testResult[c.id].detail}>
+							{testResult[c.id].ok === true ? '✓' : testResult[c.id].ok === false ? '✕' : '—'}
+						</span>
+					{/if}
+					<button type="button" class="btn ghost" on:click={() => testConn(c.id)} disabled={testing[c.id]}>{testing[c.id] ? '…' : 'Test'}</button>
 					{#if c.kind === 'telegram'}
 						<button type="button" class="btn ghost" on:click={() => askWainston(TELEGRAM_HELP)}>💬 Aiuto</button>
 					{/if}
@@ -826,6 +850,9 @@
 	.scopes { display: flex; flex-wrap: wrap; gap: 6px; }
 	.scope { font-family: var(--mono); font-size: 11px; color: var(--fg-muted); background: color-mix(in srgb, var(--fg-muted) 10%, transparent); border-radius: 5px; padding: 2px 6px; word-break: break-all; }
 	.card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 4px; }
+	.test-badge { font-weight: 700; font-size: 13px; }
+	.test-badge.ok { color: #34c759; }
+	.test-badge.ko { color: #ef4444; }
 	.account { font-family: var(--mono); font-size: 12px; color: var(--fg-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.builtin-note { font-size: 11px; color: var(--fg-muted); font-style: italic; }
 	.btn { flex: none; padding: 8px 14px; border-radius: 6px; font-size: 12.5px; font-weight: 700; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--fg); transition: background .12s, color .12s, border-color .12s; }
