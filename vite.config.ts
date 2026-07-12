@@ -63,6 +63,10 @@ export default defineConfig({
 			'/health': { target: API, changeOrigin: true },
 			'/profile': { target: API, changeOrigin: true },
 			'/auth': { target: API, changeOrigin: true },
+			// `/gate` è SIA route SPA (pagina di decisione via link firmato) SIA
+			// prefisso API (/gate/{token}): htmlBypass serve la SPA alle
+			// navigazioni, proxa le fetch JSON al backend.
+			'/gate': { target: API, changeOrigin: true, bypass: htmlBypass },
 			// `/tools` è SIA route SPA (pagina Tools) SIA prefisso API del gateway:
 			// htmlBypass serve la SPA alle navigazioni HTML, proxa le fetch JSON.
 			'/tools': {
