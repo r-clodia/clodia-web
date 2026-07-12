@@ -10,7 +10,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import {
-		listWorkflows, startWorkflowRun, answerWorkflowRun, cancelWorkflowRun,
+		listWorkflows, startWorkflowRun, answerWorkflowRun, cancelWorkflowRun, deleteWorkflowRun,
 		type WorkflowDef, type WorkflowRun
 	} from '$lib/api/client';
 
@@ -87,6 +87,21 @@
 		}
 	}
 
+	async function del(run: WorkflowRun) {
+		const active = !['done', 'failed', 'cancelled'].includes(run.status);
+		const msg = active
+			? `Il run «${run.title}» è ancora attivo: verrà annullato ed eliminato. Procedere?`
+			: `Eliminare il run «${run.title}» dalla lista?`;
+		if (!confirm(msg)) return;
+		busy = { ...busy, [run.id]: true };
+		try {
+			await deleteWorkflowRun(run.id);
+			await refresh();
+		} finally {
+			busy = { ...busy, [run.id]: false };
+		}
+	}
+
 	// datetime compatta (locale) per inizio/fine run
 	function fmtDt(s: string | null | undefined): string {
 		if (!s) return '—';
@@ -157,6 +172,7 @@
 						<span class="wf-cur">▶ {run.stages[run.current]?.lane}</span>
 						<button type="button" class="wf-stop" on:click={() => stop(run)} disabled={busy[run.id]} title="Interrompi">■</button>
 					{/if}
+					<button type="button" class="wf-del" on:click={() => del(run)} disabled={busy[run.id]} title="Elimina run">✕</button>
 				</div>
 				<div class="wf-when">
 					<span title="inizio">▷ {fmtDt(run.started_at ?? run.created_at)}</span>
@@ -263,6 +279,8 @@
 	.wf-failed, .wf-cancelled { background: rgba(239,68,68,0.18); color: #ef4444; }
 	.wf-cur { font-size: 11px; color: var(--fg-muted); }
 	.wf-stop { margin-left: auto; font: inherit; font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.5); background: rgba(239,68,68,0.1); color: #ef4444; cursor: pointer; }
+	.wf-del { margin-left: auto; font: inherit; font-size: 12px; line-height: 1; padding: 3px 7px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--fg-muted); cursor: pointer; }
+	.wf-del:hover { border-color: #ef4444; color: #ef4444; }
 	.wf-track { display: flex; gap: 5px; margin: 8px 0; }
 	.wf-dot { width: 13px; height: 13px; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: transparent; cursor: pointer; transition: transform 0.1s; }
 	.wf-dot:hover { transform: scale(1.25); }
