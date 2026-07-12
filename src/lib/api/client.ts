@@ -1719,3 +1719,6 @@ export async function cancelWorkflowRun(id: string, note = ''): Promise<Workflow
 export async function rejectWorkflowRun(id: string, note = ''): Promise<WorkflowRun> {
 	return apiPost(`/clodia/workflows/runs/${encodeURIComponent(id)}/reject`, { note });
 }
+export async function deleteWorkflowRun(id: string, opts: RequestOptions = {}): Promise<void> {
+	await apiDelete(`/clodia/workflows/runs/${encodeURIComponent(id)}`, opts);
+}
