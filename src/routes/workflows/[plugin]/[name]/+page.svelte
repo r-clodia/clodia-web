@@ -41,11 +41,12 @@
 	}
 
 	async function start() {
-		const title = prompt(`Titolo del run per «${name}»:`, name);
+		// Vuoto → il backend assegna il nome automatico «{workflow} #N».
+		const title = prompt(`Nome del run per «${name}» (vuoto = «${name} #N» automatico):`, '');
 		if (title === null) return;
 		busy = { ...busy, __start: true };
 		try {
-			await startWorkflowRun(plugin, name, { title: title || name });
+			await startWorkflowRun(plugin, name, { title });
 			await refresh();
 		} finally {
 			busy = { ...busy, __start: false };
@@ -74,6 +75,16 @@
 		} finally {
 			busy = { ...busy, [run.id]: false };
 		}
+	}
+
+	// datetime compatta (locale) per inizio/fine run
+	function fmtDt(s: string | null | undefined): string {
+		if (!s) return '—';
+		const d = new Date(s);
+		if (isNaN(d.getTime())) return '—';
+		return d.toLocaleString('it-IT', {
+			day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+		});
 	}
 
 	// classe di uno step nella mini-pipeline di un run
@@ -137,6 +148,12 @@
 						<button type="button" class="wf-stop" on:click={() => stop(run)} disabled={busy[run.id]} title="Interrompi">■</button>
 					{/if}
 				</div>
+				<div class="wf-when">
+					<span title="inizio">▷ {fmtDt(run.started_at ?? run.created_at)}</span>
+					{#if run.ended_at}
+						<span title="fine">◼ {fmtDt(run.ended_at)}</span>
+					{/if}
+				</div>
 				<div class="wf-track">
 					{#each run.stages as st, i (st.lane)}
 						<span class="wf-dot wf-dot-{stepState(run, i)}" title={st.lane}></span>
@@ -184,6 +201,7 @@
 	.wf-stage-skill { font-size: 10px; color: var(--fg-muted); }
 	.wf-arrow { opacity: 0.45; }
 	.wf-run { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 10px 0; }
+	.wf-when { display: flex; gap: 14px; font-size: 11px; opacity: 0.6; margin: 2px 0 6px; }
 	.wf-run.done { opacity: 0.7; }
 	.wf-run.failed { border-color: rgba(239,68,68,0.5); }
 	.wf-run-top { display: flex; align-items: center; gap: 10px; }

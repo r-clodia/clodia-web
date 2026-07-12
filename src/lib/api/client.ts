@@ -1690,13 +1690,14 @@ export interface WorkflowHistoryEntry {
 	started_at: string; finished_at: string | null; status: string; summary: string;
 }
 export interface WorkflowRun {
-	id: string; plugin: string; workflow: string; title: string; params: string;
+	id: string; seq?: number; name?: string;
+	plugin: string; workflow: string; title: string; params: string;
 	topic: { tier: string; name: string } | null; requested_by: string;
 	stages: WorkflowStage[]; current: number; status: string; gate_pending?: boolean;
 	question?: { text: string; choices: string[]; gate: boolean } | null;
 	history: WorkflowHistoryEntry[];
 	approvals: { stage: number; by: string; verdict: string; note: string; at: string }[];
-	created_at: string; updated_at: string;
+	created_at: string; started_at?: string | null; ended_at?: string | null; updated_at: string;
 }
 export async function listWorkflows(opts: RequestOptions = {}): Promise<{ workflows: Record<string, WorkflowDef>; runs: WorkflowRun[] }> {
 	return apiGet('/clodia/workflows', opts);
