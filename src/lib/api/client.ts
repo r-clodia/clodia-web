@@ -1425,6 +1425,21 @@ export async function gmailConnect(
 	return apiPost('/tools/gmail/connect', body, opts);
 }
 
+/** GET `/tools/google/auth` — URL del consenso Google UNIFICATO (Gmail + Drive + Docs + Calendar). */
+export async function getGoogleAuth(
+	opts: RequestOptions = {}
+): Promise<{ auth_url: string; state: string; redirect_uri: string }> {
+	return apiGet('/tools/google/auth', opts);
+}
+
+/** POST `/tools/google/connect` — scambia il code del consenso unificato → google_<account>. */
+export async function googleConnect(
+	body: { code: string; state: string },
+	opts: RequestOptions = {}
+): Promise<{ connected: boolean; account: string; email: string }> {
+	return apiPost('/tools/google/connect', body, opts);
+}
+
 /** GET `/tools/gworkspace/auth` — URL di consenso Google Workspace (Drive · Docs · Calendar) + state. */
 export async function getWorkspaceAuth(
 	opts: RequestOptions = {}

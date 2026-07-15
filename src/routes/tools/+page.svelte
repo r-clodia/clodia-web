@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, connectOpenAI, connectTrello, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
+	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, connectOpenAI, connectTrello, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
 	import { askWainston } from '$lib/stores/helpdesk';
 	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
 	import { toastSuccess, toastError, toastInfo } from '$lib/stores/toasts';
@@ -23,24 +23,21 @@
 		connected: boolean;
 		accounts: string[];
 		provider?: string; // etichetta provider (google, openai, storage, …)
-		kind?: 'gmail' | 'gworkspace' | 'openai' | 'trello' | 'mailbox' | 'github' | 'telegram'; // flusso di connessione da usare
+		kind?: 'gmail' | 'gworkspace' | 'google' | 'openai' | 'trello' | 'mailbox' | 'github' | 'telegram'; // flusso di connessione da usare
 		bot_username?: string; // Telegram: @username del bot connesso
 		mcp?: boolean; // backend MCP montato (Add-MCP)
 		builtin?: boolean; // integrazione interna (es. storage topic local-fs)
 		transport?: string;
 	}
 
-	// Connettori nativi cablati (sempre elencati, non state-dependent): Gmail e
-	// Google Workspace (Drive · Docs · Calendar). Sono due consensi OAuth distinti.
+	// Connettore Google UNIFICATO (sempre elencato): un solo consenso OAuth per
+	// Gmail + Drive + Docs + Calendar → un solo token (niente due grant che si
+	// scalzano il refresh token a vicenda).
 	const BASE: CardModel[] = [
-		{ id: 'gmail', name: 'Gmail', wired: true, connected: false, accounts: [],
-		  provider: 'google', kind: 'gmail',
-		  blurb: 'Lettura e invio email della casella dell’agency (Clodia) — IMAP/SMTP via OAuth.',
-		  scope: 'https://mail.google.com/' },
-		{ id: 'google-workspace', name: 'Google Workspace', wired: true, connected: false, accounts: [],
-		  provider: 'google', kind: 'gworkspace',
-		  blurb: 'Accesso nativo a Google Drive, Documenti e Calendar dell’owner (OAuth, token nel vault).',
-		  scope: 'Drive · Docs · Calendar' },
+		{ id: 'google', name: 'Google', wired: true, connected: false, accounts: [],
+		  provider: 'google', kind: 'google',
+		  blurb: 'Gmail, Drive, Documenti e Calendar in un solo consenso (un token OAuth): lettura/invio email + accesso ai file dell’owner.',
+		  scope: 'Gmail · Drive · Docs · Calendar' },
 		{ id: 'openai-images', name: 'Image generation', wired: true, connected: false, accounts: [],
 		  provider: 'openai', kind: 'openai',
 		  blurb: 'Generazione avatar/immagini via gpt-image-2 (PFP degli agenti). Key custodita nel vault.',
@@ -75,8 +72,8 @@
 
 	// ─── Modale di connessione OAuth Google (Gmail o Workspace) ───
 	let modalOpen = false;
-	let connectKind: 'gmail' | 'gworkspace' = 'gmail';
-	$: connectLabel = connectKind === 'gworkspace' ? 'Google Workspace' : 'Gmail';
+	let connectKind: 'gmail' | 'gworkspace' | 'google' = 'google';
+	$: connectLabel = connectKind === 'google' ? 'Google' : connectKind === 'gworkspace' ? 'Google Workspace' : 'Gmail';
 	let step: 'intro' | 'code' | 'app-config' = 'intro';
 	let code = '';
 	let clientJson = '';
@@ -159,7 +156,7 @@
 		}
 	}
 
-	function openConnect(kind: 'gmail' | 'gworkspace' = 'gmail') {
+	function openConnect(kind: 'gmail' | 'gworkspace' | 'google' = 'google') {
 		connectKind = kind;
 		step = 'intro';
 		code = '';
@@ -179,7 +176,7 @@
 		modalError = '';
 		try {
 			const { auth_url, state, redirect_uri } =
-				connectKind === 'gworkspace' ? await getWorkspaceAuth() : await getGmailAuth();
+				connectKind === 'google' ? await getGoogleAuth() : connectKind === 'gworkspace' ? await getWorkspaceAuth() : await getGmailAuth();
 			authState = state;
 			redirectUri = redirect_uri;
 			window.open(auth_url, '_blank', 'noopener');
@@ -224,7 +221,9 @@
 		modalError = '';
 		try {
 			const body = { code: code.trim(), state: authState };
-			const res = connectKind === 'gworkspace'
+			const res = connectKind === 'google'
+				? await googleConnect(body)
+				: connectKind === 'gworkspace'
 				? await workspaceConnect(body)
 				: await gmailConnect(body);
 			toastSuccess(`${connectLabel} connesso`, res.email);
@@ -554,12 +553,12 @@
 					{#if c.kind === 'telegram'}
 						<button type="button" class="btn ghost" on:click={() => askWainston(TELEGRAM_HELP)}>💬 Aiuto</button>
 					{/if}
-					<button type="button" class="btn ghost" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Riconnetti</button>
+					<button type="button" class="btn ghost" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'google' ? 'google' : c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Riconnetti</button>
 				{:else}
 					{#if c.kind === 'telegram'}
 						<button type="button" class="btn ghost" on:click={() => askWainston(TELEGRAM_HELP)}>💬 Aiuto setup</button>
 					{/if}
-					<button type="button" class="btn primary" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Connetti</button>
+					<button type="button" class="btn primary" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'google' ? 'google' : c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Connetti</button>
 				{/if}
 			</div>
 		</div>
