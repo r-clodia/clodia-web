@@ -200,6 +200,25 @@
 			? ''
 			: `${activeWorking.join(' e ')} ${activeWorking.length === 1 ? 'sta scrivendo' : 'stanno scrivendo'}…`;
 
+	// --- Routing: quale agente risponde e perché (evento routing_decision) ---
+	type RoutingCand = { name: string; score: number; super?: boolean };
+	type RoutingTrace = {
+		chosen: string;
+		reason: string;
+		mode: string;
+		threshold?: number;
+		margin?: number;
+		candidates?: RoutingCand[];
+	};
+	let lastRouting: RoutingTrace | null = null;
+	let routingOpen = false;
+	const routingReason: Record<string, string> = {
+		tagged: 'richiesto esplicitamente con @menzione',
+		relevance: 'dominio più pertinente al messaggio (embedding)',
+		'fallback-rank': 'nessuno abbastanza pertinente → fallback per rango',
+		rank: 'per rango (routing per rilevanza disattivato)'
+	};
+
 	// --- Ragionamento / attività live del turno del risponditore -----------
 	// Il backend emette thinking_chunk / message_chunk / tool_use sul bus, con
 	// chat_id = `chan:{tier}:{name}:{agent}`. Li accumuliamo in un pannello
@@ -445,6 +464,7 @@
 		messages = [];
 		files = [];
 		typing = []; // reset indicatore al cambio canale
+		lastRouting = null;
 		workingResponders = [];
 		filePath = ''; // riparti dalla radice dei file
 		try {
@@ -723,6 +743,12 @@
 				void refreshMessages().then(() => tick().then(scrollDown));
 				return;
 			}
+			if (ev.type === 'routing_decision') {
+				if (p.tier !== tier || p.name !== name) return;
+				lastRouting = p as unknown as RoutingTrace;
+				void tick().then(scrollDown);
+				return;
+			}
 			// eventi del turno del risponditore di QUESTO canale
 			const liveAgent = agentFromChatId(p.chat_id);
 			if (!liveAgent) return;
@@ -879,6 +905,37 @@
 					<p class="empty">Nessun messaggio. Scrivi qualcosa per iniziare.</p>
 				{/each}
 			</div>
+			{#if lastRouting}
+				<div class="routing" class:open={routingOpen}>
+					<button type="button" class="routing-head" on:click={() => (routingOpen = !routingOpen)}
+						aria-expanded={routingOpen}>
+						<span class="caret" class:open={routingOpen}>▸</span>
+						<span class="routing-title">🧭 Routing → <b>{lastRouting.chosen}</b></span>
+						<span class="routing-why">{routingReason[lastRouting.reason] ?? lastRouting.reason}</span>
+						<span class="think-hint">{routingOpen ? 'comprimi' : 'dettagli'}</span>
+					</button>
+					{#if routingOpen}
+						<div class="routing-body">
+							{#if lastRouting.candidates && lastRouting.candidates.length}
+								<div class="routing-meta">
+									Punteggi di pertinenza (soglia {lastRouting.threshold ?? '—'}, margine {lastRouting.margin ?? '—'}):
+								</div>
+								<ul class="routing-scores">
+									{#each lastRouting.candidates as c}
+										<li class:winner={c.name === lastRouting.chosen}>
+											<span class="rs-name">{c.name}{#if c.super}<span class="rs-tag">super</span>{/if}</span>
+											<span class="rs-bar"><span class="rs-fill" style="width:{Math.min(100, Math.round(c.score * 100))}%"></span></span>
+											<span class="rs-val">{c.score.toFixed(3)}</span>
+										</li>
+									{/each}
+								</ul>
+							{:else}
+								<div class="routing-meta">Nessun punteggio disponibile (tag esplicito o embedder non raggiungibile).</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/if}
 			{#if typingLabel}
 				<div class="typing" aria-live="polite">
 					<span class="typing-dots"><span></span><span></span><span></span></span>
@@ -1176,6 +1233,26 @@
 	.reply-btn { margin-left: 4px; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 5px; opacity: 0; transition: opacity .12s ease, background .12s ease; }
 	.msg:hover .reply-btn { opacity: 1; }
 	.reply-btn:hover { background: rgba(255,107,61,.12); color: var(--accent); }
+	/* blocco Routing (quale agente risponde e perché) */
+	.routing { margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-subtle, rgba(127,127,127,.06)); font-size: 12px; }
+	.routing-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; background: none; border: 0; cursor: pointer; color: var(--fg); text-align: left; }
+	.routing-head .caret { transition: transform .15s; color: var(--fg-muted); }
+	.routing-head .caret.open { transform: rotate(90deg); }
+	.routing-title { font-weight: 500; }
+	.routing-why { color: var(--fg-muted); flex: 1; font-style: italic; }
+	.routing-head .think-hint { color: var(--fg-muted); font-size: 11px; }
+	.routing-body { padding: 4px 12px 10px 12px; }
+	.routing-meta { color: var(--fg-muted); margin-bottom: 6px; }
+	.routing-scores { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+	.routing-scores li { display: grid; grid-template-columns: 120px 1fr 48px; align-items: center; gap: 8px; }
+	.routing-scores li.winner .rs-name { font-weight: 600; color: var(--accent); }
+	.rs-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.rs-tag { margin-left: 4px; font-size: 9px; text-transform: uppercase; opacity: .6; }
+	.rs-bar { height: 6px; border-radius: 3px; background: rgba(127,127,127,.18); overflow: hidden; }
+	.rs-fill { display: block; height: 100%; background: var(--accent); opacity: .55; }
+	.routing-scores li.winner .rs-fill { opacity: 1; }
+	.rs-val { text-align: right; font-variant-numeric: tabular-nums; color: var(--fg-muted); }
+
 	/* "sta scrivendo…" */
 	.typing { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12px; color: var(--fg-muted); font-style: italic; }
 	.typing-dots { display: inline-flex; gap: 3px; }
