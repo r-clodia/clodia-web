@@ -17,6 +17,7 @@
 		topicRemote,
 		type RemoteStatus,
 		setChannelParticipant,
+		decideJobProposal,
 		getChannelEligibility,
 		getChannelFiles,
 		uploadChannelFile,
@@ -305,8 +306,31 @@
 		const items = m[1].split(/[,;|]/).map((s) => s.trim().toLowerCase()).filter(Boolean);
 		return items.length ? Array.from(new Set(items)) : null;
 	}
+	// Marker PROPOSTA DI JOB: un agente propone un job schedulato →
+	//   <!-- job-proposal=12 -->
+	// popup di conferma SINCRONO in chat (l'owner è presente): Approva/Annulla.
+	// L'approvazione la esegue l'owner autenticato (endpoint admin), niente link.
+	const _JOB_RE = /<!--\s*job-proposal\s*=\s*(\d+)\s*-->/i;
+	function msgJobProposal(text: string): number | null {
+		const m = (text || '').match(_JOB_RE);
+		return m ? Number(m[1]) : null;
+	}
+	let jobDeciding = false;
+	let jobDecided: Record<number, string> = {};
+	async function decideJob(id: number, choice: string) {
+		if (jobDeciding) return;
+		jobDeciding = true;
+		try {
+			const r = await decideJobProposal(id, choice);
+			jobDecided = { ...jobDecided, [id]: r.outcome };
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			jobDeciding = false;
+		}
+	}
 	function stripChoices(text: string): string {
-		return (text || '').replace(_CH_RE, '').replace(_INV_RE, '').trim();
+		return (text || '').replace(_CH_RE, '').replace(_INV_RE, '').replace(_JOB_RE, '').trim();
 	}
 	// Agenti deselezionati nel widget di invito (default: tutti selezionati).
 	let inviteSkip = new Set<string>();
@@ -954,6 +978,22 @@
 									{/if}
 								</div>
 							{/if}
+							{@const jp = msgJobProposal(m.text)}
+							{#if jp !== null}
+								<div class="jobprop">
+									{#if jobDecided[jp]}
+										<span class="jobprop-done">Job {jobDecided[jp]}.</span>
+									{:else if isOwner}
+										<span class="jobprop-q">⏰ Approvi questo job schedulato?</span>
+										<button type="button" class="jobprop-ok" disabled={jobDeciding}
+											on:click={() => decideJob(jp, 'Approva')}>{jobDeciding ? '…' : '✓ Approva'}</button>
+										<button type="button" class="jobprop-no" disabled={jobDeciding}
+											on:click={() => decideJob(jp, 'Annulla')}>Annulla</button>
+									{:else}
+										<span class="invite-note">solo l'owner può approvare un job</span>
+									{/if}
+								</div>
+							{/if}
 						{/if}
 						{#if m.attachments?.length}
 							<div class="atts">
@@ -1379,6 +1419,14 @@
 	.invite-go { margin-left: auto; background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font: inherit; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; cursor: pointer; }
 	.invite-go:disabled { opacity: .5; cursor: not-allowed; }
 	.invite-note { margin-left: auto; font-size: 11px; color: var(--fg-muted); font-style: italic; }
+
+	/* popup conferma proposta di job (marker <!-- job-proposal=id -->) */
+	.jobprop { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 10px; background: rgba(127,127,127,.05); font-size: 12px; }
+	.jobprop-q { flex: 1; }
+	.jobprop-done { color: var(--fg-muted); font-style: italic; }
+	.jobprop-ok { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font: inherit; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; cursor: pointer; }
+	.jobprop-ok:disabled { opacity: .5; cursor: not-allowed; }
+	.jobprop-no { background: transparent; border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 999px; cursor: pointer; }
 	.atts { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
 	.att, .files a { font-size: 12px; color: var(--accent); text-decoration: none; }
 	.empty { color: var(--fg-muted); font-size: 13px; text-align: center; margin-top: 24px; }

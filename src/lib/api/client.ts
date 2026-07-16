@@ -630,6 +630,18 @@ export async function setChannelParticipant(tier: string, name: string, agent: s
 	if (!res.ok) throw await parseError(res);
 	return parseJsonOrText(res);
 }
+
+/** Conferma SINCRONA (popup in chat) di una proposta di job: solo l'owner (admin).
+ *  choice = 'Approva' | 'Annulla'. Approva → crea+registra il job. */
+export async function decideJobProposal(id: number, choice: string): Promise<{ ok: boolean; outcome: string; job_id?: number }> {
+	const res = await fetch(joinUrl(`/clodia/jobs/proposals/${id}/decide`), {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...authHeaders() },
+		body: JSON.stringify({ choice })
+	});
+	if (!res.ok) throw await parseError(res);
+	return parseJsonOrText(res);
+}
 export async function getChannelFiles(tier: string, name: string, subpath = '', opts: RequestOptions = {}): Promise<ChannelFile[]> {
 	const qs = subpath ? `?path=${encodeURIComponent(subpath)}` : '';
 	const d = await apiGet<{ files: ChannelFile[] }>(
