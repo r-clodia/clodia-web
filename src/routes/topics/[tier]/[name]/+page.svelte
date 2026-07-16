@@ -293,8 +293,43 @@
 		const items = m[2].split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
 		return items.length ? { multi: !!m[1], items } : null;
 	}
+	// Marker di INVITO SQUADRA: un coordinatore (Clodia) propone chi invitare —
+	//   <!-- invite=aitiero,minerva,clodia -->
+	// La UI lo rende come checkbox (deselezionabili) + bottone "Invita la squadra".
+	// L'invito lo esegue l'OWNER (setChannelParticipant è owner-only): la proposta
+	// dell'agente non aggiunge nessuno finché non clicchi.
+	const _INV_RE = /<!--\s*invite\s*=(.*?)-->/i;
+	function msgInvite(text: string): string[] | null {
+		const m = (text || '').match(_INV_RE);
+		if (!m) return null;
+		const items = m[1].split(/[,;|]/).map((s) => s.trim().toLowerCase()).filter(Boolean);
+		return items.length ? Array.from(new Set(items)) : null;
+	}
 	function stripChoices(text: string): string {
-		return (text || '').replace(_CH_RE, '').trim();
+		return (text || '').replace(_CH_RE, '').replace(_INV_RE, '').trim();
+	}
+	// Agenti deselezionati nel widget di invito (default: tutti selezionati).
+	let inviteSkip = new Set<string>();
+	let inviting = false;
+	function toggleInvite(a: string) {
+		inviteSkip.has(a) ? inviteSkip.delete(a) : inviteSkip.add(a);
+		inviteSkip = new Set(inviteSkip);
+	}
+	async function inviteTeam(items: string[]) {
+		if (inviting) return;
+		const chosen = items.filter((a) => !inviteSkip.has(a) && !participants.includes(a));
+		if (!chosen.length) return;
+		inviting = true;
+		try {
+			for (const a of chosen) {
+				const r = await setChannelParticipant(tier, name, a, true);
+				if (info) info = { ...info, meta: { ...info.meta, participants: r.participants } };
+			}
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			inviting = false;
+		}
 	}
 	// Trasforma i path di file del topic (files/… o dump/…) citati nel testo in
 	// link markdown scaricabili, PRIMA del render → renderMarkdown li rende <a>.
@@ -892,6 +927,33 @@
 									{/if}
 								</div>
 							{/if}
+							{@const inv = msgInvite(m.text)}
+							{#if inv}
+								{@const pending = inv.filter((a) => !participants.includes(a))}
+								<div class="invite-team">
+									<div class="invite-agents">
+										{#each inv as a}
+											{#if participants.includes(a)}
+												<span class="invite-chip in">✓ {a}</span>
+											{:else}
+												<button type="button" class="invite-chip" class:off={inviteSkip.has(a)}
+													title={inviteSkip.has(a) ? 'escluso — clic per includere' : 'incluso — clic per escludere'}
+													on:click={() => toggleInvite(a)}>
+													{inviteSkip.has(a) ? '☐' : '☑'} {a}
+												</button>
+											{/if}
+										{/each}
+									</div>
+									{#if isOwner}
+										<button type="button" class="invite-go" disabled={inviting || !pending.some((a) => !inviteSkip.has(a))}
+											on:click={() => inviteTeam(inv)}>
+											{inviting ? 'Invito…' : '＋ Invita la squadra'}
+										</button>
+									{:else}
+										<span class="invite-note">solo l'owner può invitare</span>
+									{/if}
+								</div>
+							{/if}
 						{/if}
 						{#if m.attachments?.length}
 							<div class="atts">
@@ -1307,6 +1369,16 @@
 	.pill.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 700; }
 	.pill-confirm { border-style: dashed; font-weight: 700; }
 	.pill:disabled { opacity: .5; cursor: not-allowed; }
+
+	/* widget invito squadra (marker <!-- invite=... -->) */
+	.invite-team { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 10px; background: rgba(127,127,127,.05); }
+	.invite-agents { display: flex; flex-wrap: wrap; gap: 6px; }
+	.invite-chip { background: transparent; border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 999px; cursor: pointer; }
+	.invite-chip.off { opacity: .45; text-decoration: line-through; }
+	.invite-chip.in { border-color: var(--accent); color: var(--accent); cursor: default; opacity: .8; }
+	.invite-go { margin-left: auto; background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font: inherit; font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; cursor: pointer; }
+	.invite-go:disabled { opacity: .5; cursor: not-allowed; }
+	.invite-note { margin-left: auto; font-size: 11px; color: var(--fg-muted); font-style: italic; }
 	.atts { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
 	.att, .files a { font-size: 12px; color: var(--accent); text-decoration: none; }
 	.empty { color: var(--fg-muted); font-size: 13px; text-align: center; margin-top: 24px; }
