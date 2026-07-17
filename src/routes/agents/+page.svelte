@@ -13,7 +13,7 @@
 	} from '$lib/api/client';
 	import type { Agent, AgentsListResponse } from '$lib/api/types';
 	import { session } from '$lib/auth/session';
-	import AgentCard from '$lib/components/AgentCard.svelte';
+	import AgentTable from '$lib/components/AgentTable.svelte';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import NewAgentDialog from '$lib/components/NewAgentDialog.svelte';
@@ -228,19 +228,14 @@
 {/if}
 
 {#if state.kind === 'loading' || state.kind === 'idle'}
-	<div class="grid" aria-busy="true">
-		{#each Array(6) as _}
-			<div class="card-skel">
-				<div class="skel-head">
-					<Skeleton width="44px" height="44px" radius="50%" />
-					<div class="skel-text">
-						<Skeleton width="60%" height="14px" />
-						<Skeleton width="40%" height="11px" />
-					</div>
-				</div>
-				<Skeleton width="100%" height="11px" />
-				<Skeleton width="90%" height="11px" />
-				<Skeleton width="70%" height="11px" />
+	<div class="rows-skel" aria-busy="true">
+		{#each Array(8) as _}
+			<div class="row-skel">
+				<Skeleton width="32px" height="32px" radius="50%" />
+				<Skeleton width="18%" height="13px" />
+				<Skeleton width="12%" height="11px" />
+				<Skeleton width="14%" height="11px" />
+				<Skeleton width="38%" height="11px" />
 			</div>
 		{/each}
 	</div>
@@ -264,11 +259,7 @@
 		</p>
 	</div>
 {:else}
-	<div class="grid">
-		{#each sortAgents(state.agents) as agent (agent.name)}
-			<AgentCard {agent} runState={runStateFor(agent.name)} />
-		{/each}
-	</div>
+	<AgentTable agents={sortAgents(state.agents)} {runStateFor} on:changed={load} />
 
 	{#if Object.keys(state.errors).length > 0}
 		<details class="errs">
@@ -341,31 +332,23 @@
 			transform: rotate(360deg);
 		}
 	}
-	.grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-		gap: 16px;
-	}
-	.card-skel {
+	.rows-skel {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
-		padding: 18px;
-		background: var(--card-bg);
 		border: 1px solid var(--border);
-		border-radius: 12px;
-		min-height: 154px;
+		border-radius: 10px;
+		background: var(--card-bg);
+		overflow: hidden;
 	}
-	.skel-head {
+	.row-skel {
 		display: flex;
-		gap: 12px;
 		align-items: center;
+		gap: 14px;
+		padding: 10px 12px;
+		border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 	}
-	.skel-text {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		flex: 1 1 auto;
+	.row-skel:last-child {
+		border-bottom: none;
 	}
 	.status {
 		padding: 16px 18px;
