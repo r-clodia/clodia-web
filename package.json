@@ -1,6 +1,6 @@
 {
   "name": "webui-v2",
-  "version": "0.109.0",
+  "version": "0.111.0",
   "private": true,
   "type": "module",
   "scripts": {

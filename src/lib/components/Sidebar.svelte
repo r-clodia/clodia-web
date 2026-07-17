@@ -9,27 +9,42 @@
 	import { instanceProfile, ensureProfileLoaded, singleTopicHref, term } from '$lib/stores/instance';
 	import { API_BASE_URL } from '$lib/api/client';
 
+	// Icone Unicode per ogni route
+	const ICONS: Record<string, string> = {
+		'/agents':    '⬡',
+		'/activity':  '≋',
+		'/jobs':      '◷',
+		'/packs':     '❖',
+		'/workflows': '⇄',
+		'/tools':     '⨄',
+		'/providers': '⛽︎',
+		'/settings':  '⚙',
+		'/topics':    '▤',
+	};
+
 	// Navigazione derivata dal profilo d'istanza (Modular Distro F2): il
 	// backend è la fonte di verità, feature spenta = voce assente. Con profilo
 	// FULL la lista è identica a quella storica. `disabled` = funzione
-	type NavItem = { href: string; label: string; disabled?: boolean };
+	type NavItem = { href: string; label: string; icon: string; disabled?: boolean };
 	$: prof = $instanceProfile;
 	$: items = [
-		{ href: '/agents', label: term(prof, 'agent', 'AGENTS', { plural: true, upper: true }) },
-		...(prof.features.activity ? [{ href: '/activity', label: 'ACTIVITY' }] : []),
-		...(prof.features.jobs ? [{ href: '/jobs', label: term(prof, 'job', 'JOBS', { plural: true, upper: true }) }] : []),
-		...(prof.features.packs_ui ? [{ href: '/packs', label: 'PACKS' }] : []),
-		...(prof.features.workflows ? [{ href: '/workflows', label: 'WORKFLOWS' }] : []),
-		...(prof.features.integrations !== 'off' ? [{ href: '/tools', label: term(prof, 'integration', 'INTEGRATIONS', { plural: true, upper: true }) }] : []),
-		...(prof.features.providers_ui ? [{ href: '/providers', label: term(prof, 'provider', 'PROVIDERS', { plural: true, upper: true }) }] : []),
-		{ href: '/settings', label: 'SETTINGS' },
+		{ href: '/agents',    label: term(prof, 'agent', 'AGENTS', { plural: true, upper: true }),             icon: ICONS['/agents'] },
+		...(prof.features.activity   ? [{ href: '/activity',  label: 'ACTIVITY',                                                                              icon: ICONS['/activity']  }] : []),
+		...(prof.features.jobs       ? [{ href: '/jobs',      label: term(prof, 'job',         'JOBS',         { plural: true, upper: true }), icon: ICONS['/jobs']      }] : []),
+		...(prof.features.packs_ui   ? [{ href: '/packs',     label: 'PACKS',                                                                                 icon: ICONS['/packs']     }] : []),
+		...(prof.features.workflows  ? [{ href: '/workflows', label: 'WORKFLOWS',                                                                              icon: ICONS['/workflows'] }] : []),
+		...(prof.features.integrations !== 'off' ? [{ href: '/tools',     label: term(prof, 'integration', 'INTEGRATIONS', { plural: true, upper: true }), icon: ICONS['/tools']     }] : []),
+		...(prof.features.providers_ui ? [{ href: '/providers', label: term(prof, 'provider', 'PROVIDERS', { plural: true, upper: true }),                   icon: ICONS['/providers'] }] : []),
+		{ href: '/settings',  label: 'SETTINGS',                                                                                                               icon: ICONS['/settings']  },
 		...(prof.features.topics === 'off'
 			? []
 			: [{
 					href: prof.features.topics === 'single' ? singleTopicHref(prof) : '/topics',
-					label: term(prof, 'topic', 'TOPICS', { plural: true, upper: true })
+					label: term(prof, 'topic', 'TOPICS', { plural: true, upper: true }),
+					icon: ICONS['/topics']
 				}])
 	] as NavItem[];
+
 	// Branding: solo per le edizioni custom (full = aspetto storico invariato).
 	$: brandName = prof.edition !== 'full' && prof.branding.name ? prof.branding.name : 'Clodia';
 	$: brandLogo = prof.edition !== 'full' && prof.branding.logo ? `${API_BASE_URL}/profile/logo` : '';
@@ -40,6 +55,20 @@
 		if (prof.edition !== 'full' && prof.branding.accent) {
 			document.documentElement.style.setProperty('--accent', prof.branding.accent);
 		}
+	}
+
+	// Stato collapsed — persistito in localStorage
+	let collapsed = false;
+
+	function toggleCollapse() {
+		collapsed = !collapsed;
+		try { localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0'); } catch {}
+	}
+
+	// In collapsed le label uppercase a 9px non ci stanno (es. INTEGRATIONS):
+	// mixed-case è più stretto e più leggibile a quella dimensione.
+	function shortLabel(label: string): string {
+		return label.charAt(0) + label.slice(1).toLowerCase();
 	}
 
 	let recentTopics: Topic[] = [];
@@ -70,6 +99,7 @@
 	}
 
 	onMount(() => {
+		try { collapsed = localStorage.getItem('sidebar-collapsed') === '1'; } catch {}
 		void ensureProfileLoaded().then(loadRecentTopics);
 	});
 	// Al login/claim la sessione compare senza reload di pagina: il primo
@@ -92,37 +122,52 @@
 	const APP_VERSION = (import.meta.env.PUBLIC_APP_VERSION as string | undefined) || 'v6.0';
 </script>
 
-<aside class="sidebar">
+<aside class="sidebar" class:collapsed>
 	<div class="brand">
 		{#if brandLogo}
 			<img class="brand-logo" src={brandLogo} alt={brandName} />
 		{:else}
 			<span class="brand-mark">●</span>
 		{/if}
-		<span class="brand-name">{brandName}</span>
-		<span class="brand-tag">{APP_VERSION}</span>
+		{#if !collapsed}
+			<span class="brand-name">{brandName}</span>
+			<span class="brand-tag">{APP_VERSION}</span>
+		{/if}
+		<button
+			class="collapse-btn"
+			type="button"
+			on:click={toggleCollapse}
+			title={collapsed ? 'Espandi navigazione' : 'Comprimi navigazione'}
+			aria-label={collapsed ? 'Espandi navigazione' : 'Comprimi navigazione'}
+		>
+			{collapsed ? '›' : '‹'}
+		</button>
 	</div>
 
 	<nav class="nav" aria-label="Primary">
 		{#each items as item}
 			{#if item.disabled}
 				<span class="nav-item disabled" aria-disabled="true" title="Coming soon">
-					{item.label}<span class="soon">soon</span>
+					<span class="nav-icon">{item.icon}</span>
+					<span class="nav-label">{collapsed ? shortLabel(item.label) : item.label}</span>
+					{#if !collapsed}<span class="soon">soon</span>{/if}
 				</span>
 			{:else}
 				<a
 					class="nav-item"
 					class:active={isActive(item.href, $page.url.pathname)}
 					href={item.href}
+					title={collapsed ? item.label : undefined}
 					aria-current={isActive(item.href, $page.url.pathname) ? 'page' : undefined}
 				>
-					{item.label}
+					<span class="nav-icon">{item.icon}</span>
+					<span class="nav-label">{collapsed ? shortLabel(item.label) : item.label}</span>
 				</a>
 			{/if}
 		{/each}
 	</nav>
 
-	{#if recentTopics.length}
+	{#if recentTopics.length && !collapsed}
 		<section class="recent" aria-label="Topic recenti">
 			<div class="recent-title">{term($instanceProfile, 'topic', '', { plural: true, upper: true }) ? `${term($instanceProfile, 'topic', '', { plural: true, upper: true })} RECENTI` : 'RECENT TOPICS'}</div>
 			<div class="recent-list">
@@ -145,8 +190,12 @@
 
 	{#if $session}
 		<div class="account" aria-label="Utente connesso">
-			<span class="acct-who" title={`Connesso come ${$session.principal}`}>👤 {$session.principal}</span>
-			<button class="acct-btn" type="button" on:click={sessionLogout}>Esci</button>
+			{#if collapsed}
+				<span class="acct-icon" title={`${$session.principal}`}>👤</span>
+			{:else}
+				<span class="acct-who" title={`Connesso come ${$session.principal}`}>👤 {$session.principal}</span>
+				<button class="acct-btn" type="button" on:click={sessionLogout}>Esci</button>
+			{/if}
 		</div>
 	{/if}
 
@@ -160,19 +209,23 @@
 		>
 			{$theme === 'dark' ? '☀' : '☾'}
 		</button>
-		<div class="font-ctl" title="Dimensione testo ({Math.round($fontScale * 100)}%)">
-			<button class="pref-btn" type="button" on:click={decFont} aria-label="Riduci testo">Aa−</button>
-			<button class="pref-btn" type="button" on:click={incFont} aria-label="Aumenta testo">Aa+</button>
-		</div>
+		{#if !collapsed}
+			<div class="font-ctl" title="Dimensione testo ({Math.round($fontScale * 100)}%)">
+				<button class="pref-btn" type="button" on:click={decFont} aria-label="Riduci testo">Aa−</button>
+				<button class="pref-btn" type="button" on:click={incFont} aria-label="Aumenta testo">Aa+</button>
+			</div>
+		{/if}
 	</div>
 
 </aside>
 
 <style>
-	.account { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; margin-bottom: 8px; font-size: 12px; }
+	.account { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; margin-bottom: 8px; font-size: 11px; }
 	.acct-who { color: var(--sidebar-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.acct-btn { background: transparent; border: 1px solid var(--border); color: var(--sidebar-fg); font: inherit; font-size: 11px; padding: 3px 9px; border-radius: 6px; cursor: pointer; }
+	.acct-icon { font-size: 15px; display: block; text-align: center; cursor: default; }
+	.acct-btn { background: transparent; border: 1px solid var(--border); color: var(--sidebar-fg); font: inherit; font-size: 11px; padding: 3px 9px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
 	.acct-btn:hover { border-color: var(--accent); color: var(--accent); }
+
 	.sidebar {
 		display: flex;
 		flex-direction: column;
@@ -181,35 +234,76 @@
 		min-height: 0;
 		background: var(--sidebar-bg);
 		color: var(--sidebar-fg);
-		padding: 18px 12px;
+		padding: 18px 10px;
 		border-right: 1px solid var(--border);
 		position: sticky;
 		top: 0;
+		transition: width 0.2s ease;
+		overflow: hidden;
+	}
+	.sidebar.collapsed {
+		width: 78px;
+		padding: 18px 5px;
 	}
 
 	.brand {
 		display: flex;
-		align-items: baseline;
-		gap: 8px;
-		padding: 4px 10px 18px;
+		align-items: center;
+		gap: 6px;
+		padding: 2px 6px 16px;
 		border-bottom: 1px solid var(--border);
-		margin-bottom: 14px;
+		margin-bottom: 12px;
+		min-width: 0;
 	}
-	.brand-logo { width: 20px; height: 20px; object-fit: contain; border-radius: 4px; }
+	.sidebar.collapsed .brand {
+		justify-content: center;
+		padding-bottom: 14px;
+	}
+	.brand-logo { width: 20px; height: 20px; flex-shrink: 0; object-fit: contain; border-radius: 4px; }
 	.brand-mark {
 		color: var(--accent);
-		font-size: 16px;
+		font-size: 15px;
 		line-height: 1;
+		flex-shrink: 0;
 	}
 	.brand-name {
 		font-weight: 600;
+		font-size: 13px;
 		letter-spacing: 0.02em;
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.brand-tag {
-		font-size: 11px;
+		font-size: 10px;
 		color: var(--sidebar-fg-muted);
 		text-transform: uppercase;
+		white-space: nowrap;
 	}
+	.collapse-btn {
+		margin-left: auto;
+		flex-shrink: 0;
+		background: transparent;
+		border: 1px solid var(--border);
+		color: var(--sidebar-fg-muted);
+		border-radius: 4px;
+		width: 22px;
+		height: 22px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 14px;
+		cursor: pointer;
+		line-height: 1;
+		padding: 0;
+		transition: border-color 0.12s, color 0.12s;
+	}
+	.sidebar.collapsed .collapse-btn {
+		margin-left: 0;
+	}
+	.collapse-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 	.nav {
 		display: flex;
@@ -220,14 +314,45 @@
 	}
 
 	.nav-item {
-		display: block;
-		padding: 9px 12px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 10px;
 		border-radius: 6px;
 		color: var(--sidebar-fg);
-		font-size: 12.5px;
+		font-size: 11.5px;
 		font-weight: 500;
 		letter-spacing: 0.06em;
 		transition: background 0.12s ease, color 0.12s ease;
+		white-space: nowrap;
+		overflow: hidden;
+		position: relative;
+	}
+	.sidebar.collapsed .nav {
+		gap: 4px;
+	}
+	.sidebar.collapsed .nav-item {
+		flex-direction: column;
+		justify-content: center;
+		align-items: center;
+		gap: 4px;
+		padding: 8px 2px;
+		text-align: center;
+	}
+	.sidebar.collapsed .nav-icon {
+		font-size: 17px;
+		width: auto;
+	}
+	.sidebar.collapsed .nav-label {
+		flex: 0 0 auto;
+		font-size: 9px;
+		font-weight: 600;
+		letter-spacing: 0;
+		line-height: 1.1;
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		text-align: center;
 	}
 	.nav-item:hover {
 		background: rgba(255, 255, 255, 0.04);
@@ -241,14 +366,28 @@
 	.nav-item.disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
 	}
 	.nav-item.disabled:hover {
 		background: transparent;
 		color: var(--sidebar-fg);
 	}
+
+	.nav-icon {
+		flex-shrink: 0;
+		font-size: 14px;
+		width: 18px;
+		text-align: center;
+		line-height: 1;
+	}
+	.nav-label {
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	/* In collapsed mode i nav-item mostrano il tooltip via title nativo del browser. */
+
 	.soon {
 		font-size: 8.5px;
 		text-transform: uppercase;
@@ -257,17 +396,19 @@
 		border-radius: 999px;
 		padding: 0 5px;
 		opacity: 0.8;
+		margin-left: auto;
 	}
+
 	.recent {
-		margin: 14px 0 0;
-		padding: 12px 0 0;
+		margin: 12px 0 0;
+		padding: 10px 0 0;
 		border-top: 1px solid var(--border);
 		min-height: 0;
 	}
 	.recent-title {
-		padding: 0 10px 6px;
+		padding: 0 8px 5px;
 		color: var(--sidebar-fg-muted);
-		font-size: 10px;
+		font-size: 9.5px;
 		font-weight: 700;
 		letter-spacing: 0.08em;
 	}
@@ -282,10 +423,10 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 7px 9px 7px 12px;
+		padding: 6px 8px 6px 10px;
 		border-radius: 6px;
 		color: var(--sidebar-fg);
-		font-size: 12px;
+		font-size: 11px;
 		text-decoration: none;
 	}
 	.recent-topic:hover {
@@ -323,19 +464,22 @@
 		padding: 8px 4px 0;
 		border-top: 1px solid var(--border);
 	}
+	.sidebar.collapsed .prefs {
+		justify-content: center;
+	}
 	.font-ctl {
 		display: inline-flex;
 		gap: 4px;
 	}
 	.pref-btn {
-		min-width: 32px;
-		height: 30px;
-		padding: 0 8px;
+		min-width: 30px;
+		height: 28px;
+		padding: 0 7px;
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		background: transparent;
 		color: var(--sidebar-fg);
-		font-size: 13px;
+		font-size: 12px;
 		cursor: pointer;
 		transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 	}
@@ -344,5 +488,4 @@
 		border-color: var(--accent);
 		color: var(--accent);
 	}
-
 </style>

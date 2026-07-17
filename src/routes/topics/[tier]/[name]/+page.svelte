@@ -45,6 +45,20 @@
 	let remoteStatus: RemoteStatus | null = null;
 	let remoteBusy = false;
 	$: remoteMeta = (info?.meta as Record<string, any> | undefined)?.remote ?? null;
+	// Nome umano del remote (cartella Drive / repo git): dal backend
+	// (config.name, gateway ≥0.90) con fallback client-side sul basename
+	// dell'URL git per i topic non ancora backfillati.
+	$: remoteName = (() => {
+		const r = remoteMeta;
+		if (!r) return null;
+		const c = r.config || {};
+		if (c.name) return String(c.name);
+		if (r.type === 'git' && c.url) {
+			const tail = String(c.url).replace(/\/+$/, '').split('/').pop() || '';
+			return tail.replace(/\.git$/, '') || null;
+		}
+		return null;
+	})();
 	function remoteUrl(): string | null {
 		const r = remoteMeta;
 		if (!r) return null;
@@ -78,10 +92,81 @@
 		if (!remoteMeta) { remoteStatus = null; return; }
 		try { remoteStatus = (await topicRemote(tier, name, 'status')) as RemoteStatus; } catch { /* ignore */ }
 	}
+	// --- Stato sync PER-FILE (gateway ≥0.92): rel → synced|modified|staged|unsynced.
+	// Vocabolario git-like comune a git e drive; colora i nomi file e guida il (+).
+	$: syncFiles = ((remoteStatus as unknown as { files?: Record<string, string> })?.files ?? {}) as Record<string, string>;
+	const relOf = (path: string) => path.replace(/^files\//, '');
+	function fileState(path: string): string | null {
+		if (!remoteMeta) return null;
+		return syncFiles[relOf(path)] ?? null;
+	}
+	const ADDABLE = ['unsynced', 'modified'];
+	$: folderAddable = files
+		.filter((f) => f.kind !== 'dir' && !f.remote && ADDABLE.includes(fileState(f.path) ?? ''))
+		.map((f) => relOf(f.path));
+	$: folderStaged = files
+		.filter((f) => f.kind !== 'dir' && !f.remote && fileState(f.path) === 'staged')
+		.map((f) => relOf(f.path));
+	/** Unstage di uno o più file; null = tutto (una sola chiamata senza path). */
+	async function unstageMany(paths: string[] | null) {
+		if (remoteBusy || (paths !== null && !paths.length)) return;
+		remoteBusy = true;
+		loadErr = '';
+		try {
+			if (paths === null) await topicRemote(tier, name, 'unstage', {});
+			else for (const p of paths) await topicRemote(tier, name, 'unstage', { path: p });
+			await loadRemoteStatus();
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			remoteBusy = false;
+		}
+	}
+	/** Staging di uno o più file (add): refresh del solo sync status, non dei file. */
+	async function stageMany(paths: string[]) {
+		if (!paths.length || remoteBusy) return;
+		remoteBusy = true;
+		loadErr = '';
+		try {
+			for (const p of paths) await topicRemote(tier, name, 'add', { path: p });
+			await loadRemoteStatus();
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			remoteBusy = false;
+		}
+	}
+	// Gruppi della sezione "Sync status" (equivalente del git status). I file
+	// "solo locali" NON si listano qui (sarebbero centinaia sui topic grandi):
+	// restano visibili in blu nella vista file, dove si aggiungono con ⊕.
+	$: syncGroups = ([
+		{ state: 'staged', label: 'Staged — da pushare' },
+		{ state: 'modified', label: 'Modificati' }
+	] as const)
+		.map((g) => ({
+			...g,
+			paths: Object.entries(syncFiles).filter(([, v]) => v === g.state).map(([k]) => k).sort()
+		}))
+		.filter((g) => g.paths.length > 0);
+	// Report dell'ultimo pull/push (protocollo .remoteinclude/.remoteignore):
+	// conteggi per stato synced/conflict/skipped_by_*/error.
+	let lastSyncReport: { action: string; counts: Record<string, number> } | null = null;
+	const SYNC_REPORT_LABELS: Record<string, string> = {
+		synced: 'sincronizzati',
+		conflict: 'conflitti',
+		skipped_by_include: 'fuori include',
+		skipped_by_ignore: 'ignorati',
+		skipped_by_hard_deny: 'protetti',
+		error: 'errori'
+	};
 	async function doRemote(action: string, params: Record<string, unknown> = {}) {
 		remoteBusy = true; loadErr = '';
 		try {
-			await topicRemote(tier, name, action, params);
+			const res = (await topicRemote(tier, name, action, params)) as Record<string, unknown>;
+			const rep = (res?.report ?? null) as { counts?: Record<string, number> } | null;
+			if ((action === 'pull' || action === 'push' || action === 'commit') && rep?.counts) {
+				lastSyncReport = { action, counts: rep.counts };
+			}
 			await refreshInfo(); // meta.remote può cambiare (enable/disable)
 			await loadRemoteStatus();
 			await loadFiles();
@@ -91,6 +176,10 @@
 			remoteBusy = false;
 		}
 	}
+	// Solo gli stati con conteggio > 0, per il riepilogo compatto.
+	$: syncReportEntries = lastSyncReport
+		? Object.entries(lastSyncReport.counts).filter(([, n]) => n > 0)
+		: [];
 	// Form inline nella sidebar (non un popup effimero): l'input dell'URL/cartella
 	// resta visibile e navigabile finché non si conferma o si annulla.
 	let remoteForm: 'git' | 'drive' | null = null;
@@ -525,6 +614,9 @@
 		typing = []; // reset indicatore al cambio canale
 		lastRouting = null;
 		workingResponders = [];
+		resetLive(); // blocchi live (thinking/tools/reply) del canale precedente
+		replyingTo = null; // niente reply-quote trascinata da un altro canale
+		thinkOpen = false;
 		filePath = ''; // riparti dalla radice dei file
 		try {
 			[info, messages, files] = await Promise.all([
@@ -1101,9 +1193,10 @@
 				<button type="button" class="expand-input" title="Apri editor ampio" aria-label="Apri editor ampio"
 					on:click={openExpandedComposer}>↗</button>
 				<textarea bind:this={composer} bind:value={draft} rows="2"
-					placeholder="Scrivi nel canale… (@nome per rivolgerti a un partecipante)"
+					placeholder="Scrivi nel canale… (@nome per rivolgerti a un partecipante; ⌘/Ctrl+V per incollare immagini)"
 					on:input={updateMention}
 					on:click={updateMention}
+					on:paste={onPasteFiles}
 					on:keydown={onCompactComposerKeydown}></textarea>
 				{#if hasLive || typing.length}
 					<button type="button" class="stop-btn" on:click={stopTurn} title="Interrompi le risposte in corso">
@@ -1165,49 +1258,99 @@
 					{#if remoteMeta}{@const ru = remoteUrl()}
 						{#if ru}
 							<a class="remote-goto" href={ru} target="_blank" rel="noopener"
-								title={`Apri il remote (${remoteMeta.type})`}>{@html remoteIconSvg()} apri {remoteMeta.type}</a>
+								title={`Apri il remote (${remoteMeta.type})${remoteName ? ` — ${remoteName}` : ''}`}>{@html remoteIconSvg()} {remoteName || `apri ${remoteMeta.type}`}</a>
 						{/if}
 					{/if}
 				</h3>
 				<nav class="crumbs" aria-label="Percorso file">
-					<button type="button" class="crumb" on:click={() => gotoCrumb(-1)}>🏠 root</button>
+					<button type="button" class="crumb" on:click={() => gotoCrumb(-1)}>/</button>
 					{#each crumbs as seg, i}
 						<span class="crumb-sep">/</span>
 						<button type="button" class="crumb" on:click={() => gotoCrumb(i)}>{seg}</button>
 					{/each}
 					{#if filesLoading}<span class="files-spinner" aria-label="Caricamento…" title="Caricamento…"></span>{/if}
+					{#if remoteMeta && folderAddable.length}
+						<button type="button" class="sync-add stage-all" disabled={remoteBusy}
+							title={`Metti in sync tutti i file di questa cartella (${folderAddable.length})`}
+							on:click={() => stageMany(folderAddable)}>⊕ tutti</button>
+					{/if}
+					{#if remoteMeta && folderStaged.length}
+						<button type="button" class="sync-add stage-all" class:solo-unstage={!folderAddable.length} disabled={remoteBusy}
+							title={`Togli dallo staging tutti i file di questa cartella (${folderStaged.length})`}
+							on:click={() => unstageMany(folderStaged)}>⊖ tutti</button>
+					{/if}
 				</nav>
-				<button type="button" class="paste-zone" on:paste={onPasteFiles}
-					on:click={(e) => (e.currentTarget as HTMLButtonElement).focus()}
-					title="Clicca qui e incolla (⌘/Ctrl+V) un'immagine dalla clipboard">
-					📋 incolla immagine
-				</button>
-				<ul class="files" class:loading={filesLoading} aria-busy={filesLoading}>
+			<ul class="files" class:loading={filesLoading} aria-busy={filesLoading}>
 					{#each files as f}
+						{@const st = f.kind !== 'dir' ? fileState(f.path) : null}
 						<li>
 							{#if f.kind === 'dir'}
 								<button type="button" class="dir" on:click={() => openDir(f)} disabled={filesLoading}>📂 {f.name}</button>
 							{:else if f.remote}
-								<a href={f.url} target="_blank" rel="noopener" class="remote" title="Documento Google — apri e modifica su Drive">📄 {f.name}</a>
+								<a href={f.url} target="_blank" rel="noopener" class="remote st-{st ?? 'none'}" title="Documento Google — apri e modifica su Drive">📄 {f.name}</a>
 							{:else}
-								<a href="#download" on:click|preventDefault={() => openSignedFile(f.path)}>📎 {f.name}</a>
+								<a href="#download" class="st-{st ?? 'none'}"
+									title={st ? `${f.name} — ${st}` : f.name}
+									on:click|preventDefault={() => openSignedFile(f.path)}>{f.name}</a>
 								{#if /\.html?$/i.test(f.name)}
 									<button type="button" class="artifact-open" title="Apri anteprima live (finestra separata)"
 										on:click={() => openArtifact(f.path)}>🔎</button>
 								{/if}
 							{/if}
-							{#if remoteMeta?.type === 'drive' && f.kind !== 'dir'}
-								<button type="button" class="sync-add" title="Aggiungi al sync (drive)"
-									on:click={() => doRemote('add', { path: f.path.replace(/^files\//, '') })}
+							{#if remoteMeta && f.kind !== 'dir' && !f.remote && ADDABLE.includes(st ?? '')}
+								<button type="button" class="sync-add"
+									title={st === 'modified' ? 'Metti in staging la modifica' : 'Aggiungi al sync'}
+									on:click={() => stageMany([relOf(f.path)])}
 									disabled={remoteBusy}>⊕</button>
+							{:else if remoteMeta && f.kind !== 'dir' && !f.remote && st === 'staged'}
+								<button type="button" class="sync-add"
+									title="Togli dallo staging"
+									on:click={() => unstageMany([relOf(f.path)])}
+									disabled={remoteBusy}>⊖</button>
 							{/if}
 						</li>
 					{:else}
 						<li class="muted">{filesLoading ? 'caricamento…' : 'cartella vuota'}</li>
 					{/each}
 				</ul>
-				<p class="files-hint">Carica i file dall'input della chat con 📎 o trascinandoli.</p>
+				<p class="files-hint">Carica i file dall'input della chat: 📎, trascinamento o incolla (⌘/Ctrl+V) di immagini.</p>
 			</section>
+
+			{#if remoteMeta && syncGroups.length}
+				<section class="sync-status" aria-label="Sync status">
+					<h3>Sync status</h3>
+					{#each syncGroups as g (g.state)}
+						<div class="ss-group">
+							<div class="ss-title st-{g.state}">
+								<span class="ss-dot st-{g.state}"></span>{g.label}
+								<span class="ss-n">{g.paths.length}</span>
+								{#if g.state === 'staged'}
+									<button type="button" class="sync-add" disabled={remoteBusy}
+										title="Togli tutto dallo staging" on:click={() => unstageMany(null)}>⊖ tutti</button>
+								{:else}
+									<button type="button" class="sync-add" disabled={remoteBusy}
+										title="Metti in sync tutti" on:click={() => stageMany(g.paths)}>⊕ tutti</button>
+								{/if}
+							</div>
+							<ul class="ss-list">
+								{#each g.paths as p (p)}
+									<li>
+										<span class="ss-path st-{g.state}" title={p}>{p}</span>
+										{#if g.state === 'staged'}
+											<button type="button" class="sync-add" disabled={remoteBusy}
+												title="Togli dallo staging" on:click={() => unstageMany([p])}>⊖</button>
+										{:else}
+											<button type="button" class="sync-add" disabled={remoteBusy}
+												title={g.state === 'modified' ? 'Metti in staging' : 'Aggiungi al sync'}
+												on:click={() => stageMany([p])}>⊕</button>
+										{/if}
+									</li>
+								{/each}
+							</ul>
+						</div>
+					{/each}
+				</section>
+			{/if}
 
 			<section class="remote-panel">
 				<h3>Remote</h3>
@@ -1234,7 +1377,8 @@
 					{/if}
 				{:else}
 					<p class="remote-info">
-						{@html remoteIconSvg()} <strong>{remoteMeta.type}</strong>
+						{@html remoteIconSvg()} <strong>{remoteMeta.type}</strong>{#if remoteName}
+							<span class="remote-name" title={remoteName}>{remoteName}</span>{/if}
 						{#if remoteStatus}
 							{#if remoteStatus.type === 'git'}<span class="muted"> · {remoteStatus.dirty ?? 0} da committare</span>
 							{:else}<span class="muted"> · {remoteStatus.synced ?? 0} in sync, {remoteStatus.pending ?? 0} da pushare</span>{/if}
@@ -1251,6 +1395,17 @@
 							on:click={() => confirm('Disattivare il remote? I file locali restano.') && doRemote('disable')}
 							disabled={remoteBusy}>disattiva</button>
 					</div>
+					{#if syncReportEntries.length}
+						<div class="sync-report" aria-label="Esito ultimo sync">
+							<span class="sr-action">{lastSyncReport?.action}:</span>
+							{#each syncReportEntries as [state, n] (state)}
+								<span class="sr-chip sr-{state}" title={SYNC_REPORT_LABELS[state] ?? state}>{n} {SYNC_REPORT_LABELS[state] ?? state}</span>
+							{/each}
+						</div>
+					{/if}
+					<p class="remote-filter-hint">
+						Filtra la sync con <code>remoteinclude</code> / <code>remoteignore</code> nella root dei file (stile <code>.gitignore</code>).
+					</p>
 				{/if}
 			</section>
 		</aside>
@@ -1270,6 +1425,7 @@
 			</header>
 			<textarea bind:this={expandedComposer} bind:value={draft}
 				placeholder="Scrivi un messaggio lungo…"
+				on:paste={onPasteFiles}
 				on:keydown={onExpandedComposerKeydown}></textarea>
 			<footer class="composer-modal-actions">
 				<span>Enter va a capo · Ctrl/⌘+Enter invia</span>
@@ -1456,13 +1612,49 @@
 	.mention-item.sel, .mention-item:hover { background: rgba(255, 107, 61, 0.12); }
 	.files-hint { font-size: 11px; color: var(--fg-muted); margin: 8px 0 0; line-height: 1.4; }
 	.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-	.remote-goto { font-size: 11px; font-weight: 600; color: var(--accent); text-decoration: none; }
+	.remote-goto { font-size: 11px; font-weight: 600; color: var(--accent); text-decoration: none;
+		max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+	.remote-name { margin-left: 6px; font-size: 11.5px; color: var(--fg-muted); font-family: var(--mono);
+		max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.remote-goto:hover { text-decoration: underline; }
-	.sync-add { margin-left: 6px; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; padding: 0 3px; border-radius: 5px; }
+	.sync-add { margin-left: 6px; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; padding: 0 3px; border-radius: 5px; white-space: nowrap; }
 	.sync-add:hover { color: var(--accent); background: rgba(255,107,61,.12); }
+	.sync-add:disabled { opacity: .4; cursor: not-allowed; }
+	.stage-all { margin-left: auto; font-size: 11px; }
+
+	/* Codice colore stato sync (comune a git e drive, stile git status):
+	   blu = solo locale · verde = in sync · arancio = modificato · teal = staged */
+	.files a.st-unsynced, .ss-path.st-unsynced, .ss-title.st-unsynced { color: #60a5fa; }
+	.files a.st-synced { color: #4ade80; }
+	.files a.st-modified, .ss-path.st-modified, .ss-title.st-modified { color: #f59e0b; }
+	.files a.st-staged, .ss-path.st-staged, .ss-title.st-staged { color: #2dd4bf; }
+	.files a.st-none { color: var(--accent); }
+
+	/* Sync status — l'equivalente del git status sotto la vista file */
+	.sync-status { margin-top: 12px; }
+	.sync-status h3 { margin: 0 0 6px; }
+	.ss-group { margin: 0 0 8px; }
+	.ss-title { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700;
+		text-transform: uppercase; letter-spacing: .05em; padding: 2px 0; }
+	.ss-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: currentColor; }
+	.ss-n { font-family: var(--mono); font-size: 10.5px; color: var(--fg-muted); }
+	.ss-list { list-style: none; margin: 2px 0 0; padding: 0 0 0 14px; display: flex;
+		flex-direction: column; gap: 2px; max-height: 180px; overflow-y: auto; }
+	.ss-list li { display: flex; align-items: center; gap: 4px; min-width: 0; }
+	.ss-path { font-size: 11.5px; font-family: var(--mono); overflow: hidden;
+		text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
 	.artifact-open { margin-left: 4px; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; padding: 0 3px; border-radius: 5px; }
 	.artifact-open:hover { color: var(--accent); background: rgba(255,107,61,.12); }
 	.remote-panel { margin-top: 14px; }
+	.sync-report { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 8px 0 0; }
+	.sr-action { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-muted); }
+	.sr-chip { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: rgba(120,144,156,.16); color: var(--fg-muted); white-space: nowrap; }
+	.sr-synced { background: rgba(74,222,128,.16); color: #4ade80; }
+	.sr-conflict { background: rgba(239,68,68,.18); color: #ef4444; }
+	.sr-error { background: rgba(239,68,68,.18); color: #ef4444; }
+	.sr-skipped_by_hard_deny { background: rgba(245,158,11,.16); color: #f59e0b; }
+	.remote-filter-hint { font-size: 10.5px; color: var(--fg-muted); margin: 8px 0 0; line-height: 1.5; }
+	.remote-filter-hint code { font-size: 10px; }
 	.remote-info { font-size: 12px; margin: 2px 0 8px; display: flex; align-items: center; }
 	.remote-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
 	.remote-url-input { width: 100%; box-sizing: border-box; font-size: 12px; padding: 5px 8px;
@@ -1474,10 +1666,6 @@
 	.remote-actions button:disabled { opacity: .5; cursor: default; }
 	.remote-actions button.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 	.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-bottom: 6px; font-size: 11.5px; }
-	.paste-zone { display: block; width: 100%; box-sizing: border-box; margin: 0 0 8px; padding: 5px 8px;
-		font: inherit; font-size: 11px; text-align: center; color: var(--fg-muted); cursor: pointer;
-		background: transparent; border: 1px dashed var(--border); border-radius: 7px; }
-	.paste-zone:hover, .paste-zone:focus { border-color: var(--accent); color: var(--accent); outline: none; }
 	.files-spinner { width: 12px; height: 12px; margin-left: 6px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: files-spin .7s linear infinite; flex: none; }
 	@keyframes files-spin { to { transform: rotate(360deg); } }
 	.files.loading { opacity: .55; pointer-events: none; }
