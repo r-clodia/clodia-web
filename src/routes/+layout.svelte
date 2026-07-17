@@ -135,7 +135,7 @@
 			<slot />
 		</main>
 		{#if $instanceProfile.features.helpdesk}
-			{@const hdAgent = $instanceProfile.helpdesk?.agent || 'wainston'}
+			{@const hdAgent = $instanceProfile.helpdesk?.agent || 'janitor'}
 			<ChatWidget
 				agent={hdAgent}
 				tier="SEAL-1"
