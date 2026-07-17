@@ -406,25 +406,27 @@
 		{#if isAdmin}
 			<input type="file" accept=".tgz,.gz,application/gzip" bind:this={importInput}
 				on:change={onImportFile} hidden />
-			<button type="button" class="snap" title="Importa topic da snapshot (merge, non sovrascrive)"
+			<button type="button" class="btn ghost" title="Importa topic da snapshot (merge, non sovrascrive)"
 				on:click={() => importInput?.click()} disabled={importing}>
 				{importing ? 'Import…' : '⬆ Importa'}
 			</button>
-			<button type="button" class="snap" title="Esporta topic selezionati (snapshot .tgz)"
+			<button type="button" class="btn ghost" title="Esporta topic selezionati (snapshot .tgz)"
 				on:click={openExport} disabled={exporting}>
 				{exporting ? 'Export…' : '⬇ Esporta'}
 			</button>
 		{/if}
-		{#if $instanceProfile.features.topics === 'full'}
-			<button type="button" class="new-topic" on:click={() => openNew()}>{$instanceProfile.vocabulary?.nuovo_topic || '+ Nuovo topic'}</button>
-		{/if}
-		<label class="archived-toggle" class:on={showArchived} title="Mostra/nascondi i topic archiviati">
-			<input type="checkbox" bind:checked={showArchived} />
-			<span>Mostra archiviati{archivedCount ? ` (${archivedCount})` : ''}</span>
-		</label>
-		<button type="button" on:click={loadList} disabled={listState.kind === 'loading'}>
-			{listState.kind === 'loading' ? 'Loading…' : 'Reload'}
+		<button type="button" class="btn ghost toggle" class:on={showArchived}
+			title="Mostra/nascondi i topic archiviati" aria-pressed={showArchived ? 'true' : 'false'}
+			on:click={() => (showArchived = !showArchived)}>
+			🗄 Archiviati{archivedCount ? ` (${archivedCount})` : ''}
 		</button>
+		<button type="button" class="btn ghost" title="Ricarica la lista"
+			on:click={loadList} disabled={listState.kind === 'loading'}>
+			{listState.kind === 'loading' ? 'Loading…' : '↻ Reload'}
+		</button>
+		{#if $instanceProfile.features.topics === 'full'}
+			<button type="button" class="btn primary" on:click={() => openNew()}>{$instanceProfile.vocabulary?.nuovo_topic || '+ Nuovo topic'}</button>
+		{/if}
 	</div>
 </header>
 
@@ -724,7 +726,7 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		margin-bottom: 16px;
+		margin-bottom: 18px;
 		padding: 8px 12px;
 		background: var(--card-bg);
 		border: 1px solid var(--border);
@@ -756,10 +758,14 @@
 	.search-clear:hover { color: var(--fg); background: rgba(255, 255, 255, 0.06); }
 	.head {
 		display: flex;
-		align-items: flex-end;
+		align-items: center;
 		justify-content: space-between;
-		gap: 16px;
-		margin-bottom: 18px;
+		flex-wrap: wrap;
+		gap: 12px 16px;
+		margin-bottom: 20px;
+	}
+	.head h1 {
+		margin: 0;
 	}
 	.hint {
 		margin: 4px 0 0;
@@ -769,22 +775,47 @@
 	.head-actions {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		flex-wrap: wrap;
+		gap: 8px;
 	}
-	.archived-toggle {
+
+	/* Toolbar: un solo sistema di bottoni (ghost/primary), stessa altezza e forma */
+	.btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		font-size: 12px;
-		color: var(--fg-muted);
+		gap: 5px;
+		height: 32px;
+		padding: 0 13px;
+		border-radius: 7px;
+		font: inherit;
+		font-size: 12.5px;
+		white-space: nowrap;
 		cursor: pointer;
-		user-select: none;
+		transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
 	}
-	.archived-toggle.on {
+	.btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.btn.ghost {
+		background: transparent;
+		border: 1px solid var(--border);
 		color: var(--fg);
 	}
-	.archived-toggle input {
-		cursor: pointer;
+	.btn.ghost:hover:not(:disabled) {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+	.btn.primary {
+		background: var(--accent);
+		border: 1px solid var(--accent);
+		color: var(--accent-fg);
+		font-weight: 700;
+	}
+	.btn.toggle.on {
+		border-color: var(--accent);
+		color: var(--accent);
+		background: color-mix(in srgb, var(--accent) 10%, transparent);
 	}
 
 	/* Badge stato topic */
@@ -1226,13 +1257,9 @@
 		font-size: 11px;
 		padding: 4px 10px;
 	}
-	.new-topic { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font: inherit; font-weight: 700; font-size: 12.5px; padding: 7px 13px; border-radius: 7px; cursor: pointer; }
-	.type-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; }
+	.type-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
 	.type-chip { background: color-mix(in srgb, var(--accent) 12%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); color: inherit; font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; cursor: pointer; }
 	.type-chip:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-	.snap { background: transparent; border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 12.5px; padding: 7px 11px; border-radius: 7px; cursor: pointer; }
-	.snap:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-	.snap:disabled { opacity: .5; cursor: not-allowed; }
 	.nt-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: grid; place-items: center; z-index: 60; padding: 16px; }
 	.nt-modal { width: min(460px, 100%); background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 10px; }
 	.nt-modal h2 { margin: 0; font-size: 18px; }
