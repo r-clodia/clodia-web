@@ -1,6 +1,28 @@
 import { sveltekit } from '@sveltejs/kit/vite';
 import type { IncomingMessage } from 'node:http';
-import { defineConfig } from 'vite';
+import { defineConfig, type PluginOption } from 'vite';
+
+// Gli asset sotto /_app/immutable/ hanno hash nel nome → cache eterna (immutable).
+// index.html (la SPA shell) NON ha hash: se il browser lo mette in cache euristica
+// (vite preview manda solo etag, senza Cache-Control), a volte serve una shell
+// stale che punta a un bundle vecchio → UI della versione precedente ("a volte").
+// Forziamo no-cache sull'HTML così la shell è sempre rivalidata.
+function noCacheHtml(): PluginOption {
+	const setHtmlNoCache = (req: IncomingMessage, res: { setHeader: (k: string, v: string) => void }) => {
+		const url = req.url || '';
+		if (/^\/_app\//.test(url)) return; // asset hashati: lascia immutable
+		const accept = req.headers.accept || '';
+		if (req.method === 'GET' && accept.includes('text/html')) {
+			res.setHeader('Cache-Control', 'no-cache');
+		}
+	};
+	return {
+		name: 'no-cache-html',
+		configurePreviewServer(server) {
+			server.middlewares.use((req, res, next) => { setHtmlNoCache(req, res); next(); });
+		}
+	};
+}
 
 // Forward fetch/XHR (JSON) to the agent-server, but let SPA navigations
 // (Accept: text/html) fall through to the static SvelteKit fallback.
@@ -44,7 +66,7 @@ const ALLOWED_HOSTS = _allowed.length ? _allowed : true;
 
 export default defineConfig({
 	envPrefix: ['VITE_', 'PUBLIC_'],
-	plugins: [sveltekit()],
+	plugins: [sveltekit(), noCacheHtml()],
 	server: {
 		port: 7843,
 		strictPort: true,
