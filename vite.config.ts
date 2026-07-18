@@ -8,18 +8,26 @@ import { defineConfig, type PluginOption } from 'vite';
 // stale che punta a un bundle vecchio → UI della versione precedente ("a volte").
 // Forziamo no-cache sull'HTML così la shell è sempre rivalidata.
 function noCacheHtml(): PluginOption {
-	const setHtmlNoCache = (req: IncomingMessage, res: { setHeader: (k: string, v: string) => void }) => {
-		const url = req.url || '';
-		if (/^\/_app\//.test(url)) return; // asset hashati: lascia immutable
-		const accept = req.headers.accept || '';
-		if (req.method === 'GET' && accept.includes('text/html')) {
-			res.setHeader('Cache-Control', 'no-cache');
-		}
-	};
 	return {
 		name: 'no-cache-html',
 		configurePreviewServer(server) {
-			server.middlewares.use((req, res, next) => { setHtmlNoCache(req, res); next(); });
+			server.middlewares.use((req, res, next) => {
+				// Override di writeHead: al momento del flush degli header, se la
+				// risposta è HTML e nessuno ha già fissato Cache-Control (gli asset
+				// immutable lo impostano), forza no-cache. Robusto rispetto all'ordine
+				// dei middleware interni (sirv/compression) di vite preview.
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const orig = res.writeHead as any;
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				(res as any).writeHead = function (...args: any[]) {
+					const ct = String(res.getHeader('content-type') || '');
+					if (ct.includes('text/html') && !res.getHeader('cache-control')) {
+						res.setHeader('Cache-Control', 'no-cache');
+					}
+					return orig.apply(res, args);
+				};
+				next();
+			});
 		}
 	};
 }
