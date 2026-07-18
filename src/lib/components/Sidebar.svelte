@@ -65,12 +65,6 @@
 		try { localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0'); } catch {}
 	}
 
-	// In collapsed le label uppercase a 9px non ci stanno (es. INTEGRATIONS):
-	// mixed-case è più stretto e più leggibile a quella dimensione.
-	function shortLabel(label: string): string {
-		return label.charAt(0) + label.slice(1).toLowerCase();
-	}
-
 	let recentTopics: Topic[] = [];
 
 	function topicHref(t: Topic): string {
@@ -123,24 +117,33 @@
 </script>
 
 <aside class="sidebar" class:collapsed>
+	{#if collapsed}
+		<button
+			class="reopen-btn"
+			type="button"
+			on:click={toggleCollapse}
+			title="Espandi navigazione"
+			aria-label="Espandi navigazione"
+		>
+			▤
+		</button>
+	{:else}
 	<div class="brand">
 		{#if brandLogo}
 			<img class="brand-logo" src={brandLogo} alt={brandName} />
 		{:else}
 			<span class="brand-mark">●</span>
 		{/if}
-		{#if !collapsed}
-			<span class="brand-name">{brandName}</span>
-			<span class="brand-tag">{APP_VERSION}</span>
-		{/if}
+		<span class="brand-name">{brandName}</span>
+		<span class="brand-tag">{APP_VERSION}</span>
 		<button
 			class="collapse-btn"
 			type="button"
 			on:click={toggleCollapse}
-			title={collapsed ? 'Espandi navigazione' : 'Comprimi navigazione'}
-			aria-label={collapsed ? 'Espandi navigazione' : 'Comprimi navigazione'}
+			title="Comprimi navigazione"
+			aria-label="Comprimi navigazione"
 		>
-			{collapsed ? '›' : '‹'}
+			‹
 		</button>
 	</div>
 
@@ -149,25 +152,24 @@
 			{#if item.disabled}
 				<span class="nav-item disabled" aria-disabled="true" title="Coming soon">
 					<span class="nav-icon">{item.icon}</span>
-					<span class="nav-label">{collapsed ? shortLabel(item.label) : item.label}</span>
-					{#if !collapsed}<span class="soon">soon</span>{/if}
+					<span class="nav-label">{item.label}</span>
+					<span class="soon">soon</span>
 				</span>
 			{:else}
 				<a
 					class="nav-item"
 					class:active={isActive(item.href, $page.url.pathname)}
 					href={item.href}
-					title={collapsed ? item.label : undefined}
 					aria-current={isActive(item.href, $page.url.pathname) ? 'page' : undefined}
 				>
 					<span class="nav-icon">{item.icon}</span>
-					<span class="nav-label">{collapsed ? shortLabel(item.label) : item.label}</span>
+					<span class="nav-label">{item.label}</span>
 				</a>
 			{/if}
 		{/each}
 	</nav>
 
-	{#if recentTopics.length && !collapsed}
+	{#if recentTopics.length}
 		<section class="recent" aria-label="Topic recenti">
 			<div class="recent-title">{term($instanceProfile, 'topic', '', { plural: true, upper: true }) ? `${term($instanceProfile, 'topic', '', { plural: true, upper: true })} RECENTI` : 'RECENT TOPICS'}</div>
 			<div class="recent-list">
@@ -190,12 +192,8 @@
 
 	{#if $session}
 		<div class="account" aria-label="Utente connesso">
-			{#if collapsed}
-				<span class="acct-icon" title={`${$session.principal}`}>👤</span>
-			{:else}
-				<span class="acct-who" title={`Connesso come ${$session.principal}`}>👤 {$session.principal}</span>
-				<button class="acct-btn" type="button" on:click={sessionLogout}>Esci</button>
-			{/if}
+			<span class="acct-who" title={`Connesso come ${$session.principal}`}>👤 {$session.principal}</span>
+			<button class="acct-btn" type="button" on:click={sessionLogout}>Esci</button>
 		</div>
 	{/if}
 
@@ -209,20 +207,18 @@
 		>
 			{$theme === 'dark' ? '☀' : '☾'}
 		</button>
-		{#if !collapsed}
-			<div class="font-ctl" title="Dimensione testo ({Math.round($fontScale * 100)}%)">
-				<button class="pref-btn" type="button" on:click={decFont} aria-label="Riduci testo">Aa−</button>
-				<button class="pref-btn" type="button" on:click={incFont} aria-label="Aumenta testo">Aa+</button>
-			</div>
-		{/if}
+		<div class="font-ctl" title="Dimensione testo ({Math.round($fontScale * 100)}%)">
+			<button class="pref-btn" type="button" on:click={decFont} aria-label="Riduci testo">Aa−</button>
+			<button class="pref-btn" type="button" on:click={incFont} aria-label="Aumenta testo">Aa+</button>
+		</div>
 	</div>
+	{/if}
 
 </aside>
 
 <style>
 	.account { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; margin-bottom: 8px; font-size: 11px; }
 	.acct-who { color: var(--sidebar-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.acct-icon { font-size: 15px; display: block; text-align: center; cursor: default; }
 	.acct-btn { background: transparent; border: 1px solid var(--border); color: var(--sidebar-fg); font: inherit; font-size: 11px; padding: 3px 9px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
 	.acct-btn:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -242,9 +238,28 @@
 		overflow: hidden;
 	}
 	.sidebar.collapsed {
-		width: 78px;
-		padding: 18px 5px;
+		width: 48px;
+		padding: 14px 6px;
+		align-items: center;
 	}
+
+	.reopen-btn {
+		background: transparent;
+		border: 1px solid var(--border);
+		color: var(--sidebar-fg-muted);
+		border-radius: 6px;
+		width: 34px;
+		height: 34px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 17px;
+		line-height: 1;
+		cursor: pointer;
+		padding: 0;
+		transition: border-color 0.12s, color 0.12s;
+	}
+	.reopen-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 	.brand {
 		display: flex;
@@ -254,10 +269,6 @@
 		border-bottom: 1px solid var(--border);
 		margin-bottom: 12px;
 		min-width: 0;
-	}
-	.sidebar.collapsed .brand {
-		justify-content: center;
-		padding-bottom: 14px;
 	}
 	.brand-logo { width: 20px; height: 20px; flex-shrink: 0; object-fit: contain; border-radius: 4px; }
 	.brand-mark {
@@ -300,9 +311,6 @@
 		padding: 0;
 		transition: border-color 0.12s, color 0.12s;
 	}
-	.sidebar.collapsed .collapse-btn {
-		margin-left: 0;
-	}
 	.collapse-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 	.nav {
@@ -327,32 +335,6 @@
 		white-space: nowrap;
 		overflow: hidden;
 		position: relative;
-	}
-	.sidebar.collapsed .nav {
-		gap: 4px;
-	}
-	.sidebar.collapsed .nav-item {
-		flex-direction: column;
-		justify-content: center;
-		align-items: center;
-		gap: 4px;
-		padding: 8px 2px;
-		text-align: center;
-	}
-	.sidebar.collapsed .nav-icon {
-		font-size: 17px;
-		width: auto;
-	}
-	.sidebar.collapsed .nav-label {
-		flex: 0 0 auto;
-		font-size: 9px;
-		font-weight: 600;
-		letter-spacing: 0;
-		line-height: 1.1;
-		max-width: 100%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		text-align: center;
 	}
 	.nav-item:hover {
 		background: rgba(255, 255, 255, 0.04);
@@ -463,9 +445,6 @@
 		gap: 6px;
 		padding: 8px 4px 0;
 		border-top: 1px solid var(--border);
-	}
-	.sidebar.collapsed .prefs {
-		justify-content: center;
 	}
 	.font-ctl {
 		display: inline-flex;
