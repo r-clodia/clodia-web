@@ -225,6 +225,12 @@
 	.sidebar {
 		display: flex;
 		flex-direction: column;
+		/* flex-basis fisso + flex-shrink:0: la sidebar non cede mai alla
+		   compressione del sibling `.main`. Senza, un contenuto largo nel main
+		   (es. chat di topic con canvas/preview o blocchi di codice) scaricava
+		   l'overflow orizzontale sulla sidebar, restringendola sotto
+		   --sidebar-width e troncando le label (overflow:hidden). */
+		flex: 0 0 var(--sidebar-width);
 		width: var(--sidebar-width);
 		height: 100%;
 		min-height: 0;
@@ -238,6 +244,7 @@
 		overflow: hidden;
 	}
 	.sidebar.collapsed {
+		flex: 0 0 48px;
 		width: 48px;
 		padding: 14px 6px;
 		align-items: center;
