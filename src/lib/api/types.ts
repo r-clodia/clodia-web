@@ -495,6 +495,19 @@ export interface PackPluginMissing {
 	readonly missing: true;
 }
 
+export interface PackProvider {
+	readonly name: string;
+	readonly sdk: string;
+	readonly base_url: string;
+	readonly adapter_code: boolean;
+	readonly sovereignty: {
+		readonly seal: string | null;
+		readonly residency: string | null;
+		readonly dpa: boolean;
+		readonly training: unknown;
+	};
+}
+
 export interface Pack {
 	readonly name: string;
 	readonly description: string;
@@ -502,6 +515,15 @@ export interface Pack {
 	readonly source: string;
 	readonly agents: ReadonlyArray<PackAgent>;
 	readonly plugins: ReadonlyArray<Plugin | PackPluginMissing>;
+	// M0b — licenze / terzi / provider
+	readonly deletable?: boolean;
+	readonly license?: string;
+	readonly licenses?: ReadonlyArray<string>;
+	readonly license_missing?: boolean;
+	readonly license_note?: string;
+	readonly third_party?: boolean;
+	readonly providers?: ReadonlyArray<PackProvider>;
+	readonly dpa_missing?: boolean;
 	readonly counts: {
 		readonly agents: number;
 		readonly plugins: number;

@@ -294,7 +294,16 @@
 							{#if p.version}<span class="version">v{p.version}</span>{/if}
 							<span class="counts">{packSummary(p)}</span>
 						</button>
-						<button type="button" class="danger-ghost" on:click={() => (pendingDelete = { kind: 'pack', item: p })}>Rimuovi</button>
+						<span class="pack-badges">
+							{#if p.license}<span class="lic-badge" title={p.license_note || 'Licenza dichiarata'}>{p.license}</span>
+							{:else if p.licenses && p.licenses.length}<span class="lic-badge" title="Licenze effettive">{p.licenses.join(' · ')}</span>{/if}
+							{#if p.third_party}<span class="tp-badge" title="Pack di terze parti: download opt-in, accetti la licenza">3ª parte</span>{/if}
+							{#if p.license_missing}<span class="warn-badge" title="Licenza non dichiarata su alcune skill — bloccante all'install">⚠ licenza</span>{/if}
+							{#if p.dpa_missing}<span class="warn-badge" title="Provider senza profilo DPA/sovranità completo — bloccante + consenso owner">⚠ DPA</span>{/if}
+						</span>
+						{#if p.deletable !== false}
+							<button type="button" class="danger-ghost" on:click={() => (pendingDelete = { kind: 'pack', item: p })}>Rimuovi</button>
+						{/if}
 					</div>
 					{#if p.description}
 						<div class="pack-desc">{p.description}</div>
@@ -466,6 +475,23 @@
 		color: var(--fg-muted);
 		white-space: nowrap;
 	}
+	.pack-badges {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+	.lic-badge, .tp-badge, .warn-badge {
+		font-size: 10px;
+		padding: 1px 7px;
+		border-radius: 999px;
+		white-space: nowrap;
+		flex-shrink: 0;
+		border: 1px solid var(--border);
+	}
+	.lic-badge { font-family: var(--mono); color: var(--fg-muted); }
+	.tp-badge { color: #a855f7; border-color: rgba(168,85,247,0.5); }
+	.warn-badge { color: #e0a800; border-color: rgba(224,168,0,0.5); font-weight: 600; }
 	.pack-desc {
 		margin: 2px 0 0 24px;
 		color: var(--fg-muted);
