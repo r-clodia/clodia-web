@@ -874,9 +874,44 @@
 		void loadAll(tier, name);
 	}
 
+	// --- Resize della colonna destra (.side) ---------------------------------
+	// Larghezza persistita in localStorage; trascinabile con un divisore.
+	const SIDE_WIDTH_KEY = 'clodia.topicSideWidth';
+	const SIDE_MIN = 200;
+	const SIDE_MAX = 620;
+	let sideWidth = 220;
+	let resizingSide = false;
+	let resizeStartX = 0;
+	let resizeStartW = 220;
+
+	function clampSideWidth(w: number): number {
+		return Math.max(SIDE_MIN, Math.min(SIDE_MAX, Math.round(w)));
+	}
+	function onSideResizeStart(e: PointerEvent) {
+		resizingSide = true;
+		resizeStartX = e.clientX;
+		resizeStartW = sideWidth;
+		(e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+		e.preventDefault();
+	}
+	function onSideResizeMove(e: PointerEvent) {
+		if (!resizingSide) return;
+		// La .side è a destra: trascinando il divisore verso SINISTRA si allarga.
+		sideWidth = clampSideWidth(resizeStartW + (resizeStartX - e.clientX));
+	}
+	function onSideResizeEnd() {
+		if (!resizingSide) return;
+		resizingSide = false;
+		try { localStorage.setItem(SIDE_WIDTH_KEY, String(sideWidth)); } catch {}
+	}
+
 	let stopStream: (() => void) | null = null;
 	let offEvt: (() => void) | null = null;
 	onMount(() => {
+		try {
+			const raw = localStorage.getItem(SIDE_WIDTH_KEY);
+			if (raw) sideWidth = clampSideWidth(Number(raw) || sideWidth);
+		} catch {}
 		poll = setInterval(refreshLive, 5000);
 		getAgents()
 			.then((as) => (allAgents = as.map((a) => a.name)))
@@ -941,6 +976,8 @@
 		}
 	}
 </script>
+
+<svelte:window on:pointermove={onSideResizeMove} on:pointerup={onSideResizeEnd} />
 
 <div class="channel">
 	<header class="head">
@@ -1209,7 +1246,17 @@
 			</div>
 		</main>
 
-		<aside class="side">
+		<div
+			class="side-resizer"
+			class:active={resizingSide}
+			role="separator"
+			aria-orientation="vertical"
+			aria-label="Ridimensiona pannello laterale"
+			title="Trascina per ridimensionare"
+			on:pointerdown={onSideResizeStart}
+		></div>
+
+		<aside class="side" style="flex: 0 0 {sideWidth}px; width: {sideWidth}px;">
 			<ArtifactCanvas {tier} {name} />
 			<section>
 				<h3>Partecipanti</h3>
@@ -1674,7 +1721,33 @@
 	.crumb-sep { color: var(--fg-muted); opacity: .6; }
 	.dir { background: transparent; border: none; color: var(--fg); cursor: pointer; font: inherit; font-size: 12px; padding: 0; text-align: left; }
 	.dir:hover { color: var(--accent); }
-	.side { flex: none; width: 220px; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+	/* Larghezza via inline style (resize); flex:0 0 evita che venga compressa.
+	   height:100% + min-height:0 → occupa tutta l'altezza del .body e scrolla
+	   internamente invece di allungare la pagina. */
+	.side { flex: 0 0 220px; width: 220px; height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+
+	/* Divisore trascinabile tra chat e pannello destro. Sta nel gap del .body;
+	   l'area cliccabile è più larga della barretta visibile (::before). */
+	.side-resizer {
+		flex: 0 0 6px;
+		align-self: stretch;
+		margin: 0 -5px; /* estende l'hit-area dentro il gap senza spostare i pannelli */
+		cursor: col-resize;
+		position: relative;
+		touch-action: none;
+	}
+	.side-resizer::before {
+		content: '';
+		position: absolute;
+		top: 0; bottom: 0; left: 50%;
+		width: 2px;
+		transform: translateX(-50%);
+		background: var(--border);
+		border-radius: 2px;
+		transition: background 0.12s ease;
+	}
+	.side-resizer:hover::before,
+	.side-resizer.active::before { background: var(--accent); width: 3px; }
 	.side h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); margin: 0 0 6px; }
 	.parts, .files { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
 	.parts li { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12.5px; }
