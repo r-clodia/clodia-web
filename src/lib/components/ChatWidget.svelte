@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, tick } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { renderMarkdown } from '$lib/markdown';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import { authToken, restoreSession, session, validateSession } from '$lib/auth/session';
@@ -28,11 +29,27 @@
 	let streamEl: HTMLDivElement;
 
 	const _CH_RE = /<!--\s*choices(-multi)?\s*=(.*?)-->/i;
+	// Marker di NAVIGAZIONE (janitor): <!-- goto=/tools --> oppure
+	// <!-- goto=/tools|Integrazioni --> → bottone "Vai a …" che porta l'utente
+	// alla pagina giusta senza uscire dal widget.
+	const _GOTO_RE = /<!--\s*goto\s*=(.*?)-->/gi;
 	const me = () => $session?.principal ?? '';
-	function stripChoices(t: string) { return (t || '').replace(_CH_RE, '').trim(); }
+	function stripChoices(t: string) {
+		return (t || '').replace(_CH_RE, '').replace(_GOTO_RE, '').trim();
+	}
 	function choices(t: string): string[] {
 		const m = (t || '').match(_CH_RE);
 		return m ? m[2].split(/[,;|]/).map((s) => s.trim()).filter(Boolean) : [];
+	}
+	// Solo route interne (sicurezza: niente URL esterni / javascript:).
+	const _ROUTE_RE = /^\/[a-zA-Z0-9/_-]*$/;
+	function gotoTargets(t: string): { route: string; label: string }[] {
+		const out: { route: string; label: string }[] = [];
+		for (const m of (t || '').matchAll(_GOTO_RE)) {
+			const [route, label] = m[1].split('|').map((s) => s.trim());
+			if (route && _ROUTE_RE.test(route)) out.push({ route, label: label || route });
+		}
+		return out;
 	}
 	function errText(e: unknown): string {
 		return e instanceof Error ? e.message : String(e);
@@ -139,6 +156,13 @@
 							{/each}
 						</div>
 					{/if}
+					{#if gotoTargets(m.text).length}
+						<div class="cw-pills">
+							{#each gotoTargets(m.text) as g}
+								<button class="cw-goto" on:click={() => goto(g.route)} title={g.route}>→ {g.label}</button>
+							{/each}
+						</div>
+					{/if}
 				</div>
 			{:else}
 				<p class="cw-empty">Avvio la conversazione…</p>
@@ -234,6 +258,8 @@
 	@keyframes cw-bounce { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
 	.cw-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 	.cw-pill { background: transparent; border: 1px solid rgba(255,107,61,.5); color: var(--fg); font-size: 12px; padding: 4px 10px; border-radius: 999px; cursor: pointer; }
+	.cw-goto { background: var(--accent); border: none; color: #1a1208; font-weight: 700; font-size: 12px; padding: 5px 12px; border-radius: 8px; cursor: pointer; }
+	.cw-goto:hover { filter: brightness(1.05); }
 	.cw-composer { flex: 0 0 auto; display: flex; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); }
 	.cw-composer textarea { flex: 1 1 auto; background: rgba(0,0,0,.25); border: 1px solid var(--border); color: var(--fg); border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 13px; resize: none; max-height: 100px; }
 	.cw-send { background: var(--accent); border: none; color: #1a1208; font-weight: 700; width: 38px; border-radius: 10px; cursor: pointer; }
