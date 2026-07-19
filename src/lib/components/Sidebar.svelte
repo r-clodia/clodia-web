@@ -113,7 +113,7 @@
 	}
 	// Versione di piattaforma (tag collettivo). Override a build-time via
 	// PUBLIC_APP_VERSION; fallback al tag corrente.
-	const APP_VERSION = (import.meta.env.PUBLIC_APP_VERSION as string | undefined) || 'v6.0';
+	const APP_VERSION = (import.meta.env.PUBLIC_APP_VERSION as string | undefined) || 'v6.2';
 </script>
 
 <aside class="sidebar" class:collapsed>
