@@ -41,7 +41,7 @@
 	async function ensureLoggedIn() {
 		if (!authToken()) await restoreSession();
 		if (!authToken() || !(await validateSession())) {
-			throw new Error('Login richiesto: accedi di nuovo per parlare con Wainston.');
+			throw new Error(`Login richiesto: accedi di nuovo per parlare con ${agent}.`);
 		}
 	}
 
@@ -110,7 +110,13 @@
 
 	onDestroy(() => { _unsub(); if (poll) clearInterval(poll); });
 	$: lastId = messages.length ? messages[messages.length - 1].id : null;
+	// "Sta elaborando": in attesa di risposta dell'agente = l'ultimo messaggio è
+	// dell'utente (o l'invio è in corso). Mostra l'indicatore typing finché
+	// l'agente non risponde.
+	$: awaitingReply = started && messages.length > 0 && messages[messages.length - 1].author === me();
+	$: thinking = sending || awaitingReply;
 	$: lastId, scrollDown();
+	$: thinking, scrollDown();
 </script>
 
 {#if open}
@@ -137,6 +143,12 @@
 			{:else}
 				<p class="cw-empty">Avvio la conversazione…</p>
 			{/each}
+			{#if thinking}
+				<div class="cw-msg cw-typing" aria-live="polite" aria-label="{agent} sta scrivendo">
+					<div class="cw-author">{agent}</div>
+					<div class="cw-dots"><span></span><span></span><span></span></div>
+				</div>
+			{/if}
 		</div>
 		<div class="cw-composer">
 			<textarea bind:value={draft} rows="1" placeholder="Scrivi a {agent}…"
@@ -214,6 +226,12 @@
 	.cw-body :global(table) { font-size: 12px; border-collapse: collapse; }
 	.cw-body :global(td), .cw-body :global(th) { border: 1px solid var(--border); padding: 2px 6px; }
 	.cw-body :global(code) { background: rgba(0,0,0,.25); padding: 0 4px; border-radius: 3px; }
+	.cw-typing { align-self: flex-start; padding: 8px 12px; }
+	.cw-dots { display: inline-flex; gap: 4px; align-items: center; height: 12px; }
+	.cw-dots span { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-muted); opacity: .4; animation: cw-bounce 1s infinite ease-in-out; }
+	.cw-dots span:nth-child(2) { animation-delay: .15s; }
+	.cw-dots span:nth-child(3) { animation-delay: .3s; }
+	@keyframes cw-bounce { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
 	.cw-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 	.cw-pill { background: transparent; border: 1px solid rgba(255,107,61,.5); color: var(--fg); font-size: 12px; padding: 4px 10px; border-radius: 999px; cursor: pointer; }
 	.cw-composer { flex: 0 0 auto; display: flex; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); }
