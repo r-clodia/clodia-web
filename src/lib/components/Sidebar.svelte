@@ -8,6 +8,7 @@
 	import { session, logout as sessionLogout } from '$lib/auth/session';
 	import { instanceProfile, ensureProfileLoaded, singleTopicHref, term } from '$lib/stores/instance';
 	import { API_BASE_URL } from '$lib/api/client';
+	import { isAdmin } from '$lib/stores/capabilities';
 
 	// Icone Unicode per ogni route
 	const ICONS: Record<string, string> = {
@@ -25,17 +26,19 @@
 	// Navigazione derivata dal profilo d'istanza (Modular Distro F2): il
 	// backend è la fonte di verità, feature spenta = voce assente. Con profilo
 	// FULL la lista è identica a quella storica. `disabled` = funzione
-	type NavItem = { href: string; label: string; icon: string; disabled?: boolean };
+	// `adminOnly`: sezioni di pura gestione piattaforma → nascoste ai non-admin
+	// (defense-in-depth UI: meno superficie esposta). L'enforcement vero è server-side.
+	type NavItem = { href: string; label: string; icon: string; disabled?: boolean; adminOnly?: boolean };
 	$: prof = $instanceProfile;
-	$: items = [
+	$: items = ([
 		{ href: '/agents',    label: term(prof, 'agent', 'AGENTS', { plural: true, upper: true }),             icon: ICONS['/agents'] },
 		...(prof.features.activity   ? [{ href: '/activity',  label: 'ACTIVITY',                                                                              icon: ICONS['/activity']  }] : []),
 		...(prof.features.jobs       ? [{ href: '/jobs',      label: term(prof, 'job',         'JOBS',         { plural: true, upper: true }), icon: ICONS['/jobs']      }] : []),
-		...(prof.features.packs_ui   ? [{ href: '/packs',     label: 'PACKS',                                                                                 icon: ICONS['/packs']     }] : []),
+		...(prof.features.packs_ui   ? [{ href: '/packs',     label: 'PACKS',                                                                                 icon: ICONS['/packs'], adminOnly: true }] : []),
 		...(prof.features.workflows  ? [{ href: '/workflows', label: 'WORKFLOWS',                                                                              icon: ICONS['/workflows'] }] : []),
-		...(prof.features.integrations !== 'off' ? [{ href: '/tools',     label: term(prof, 'integration', 'INTEGRATIONS', { plural: true, upper: true }), icon: ICONS['/tools']     }] : []),
-		...(prof.features.providers_ui ? [{ href: '/providers', label: term(prof, 'provider', 'PROVIDERS', { plural: true, upper: true }),                   icon: ICONS['/providers'] }] : []),
-		{ href: '/settings',  label: 'SETTINGS',                                                                                                               icon: ICONS['/settings']  },
+		...(prof.features.integrations !== 'off' ? [{ href: '/tools',     label: term(prof, 'integration', 'INTEGRATIONS', { plural: true, upper: true }), icon: ICONS['/tools'], adminOnly: true }] : []),
+		...(prof.features.providers_ui ? [{ href: '/providers', label: term(prof, 'provider', 'PROVIDERS', { plural: true, upper: true }),                   icon: ICONS['/providers'], adminOnly: true }] : []),
+		{ href: '/settings',  label: 'SETTINGS',                                                                                                               icon: ICONS['/settings'], adminOnly: true  },
 		...(prof.features.topics === 'off'
 			? []
 			: [{
@@ -43,7 +46,7 @@
 					label: term(prof, 'topic', 'TOPICS', { plural: true, upper: true }),
 					icon: ICONS['/topics']
 				}])
-	] as NavItem[];
+	] as NavItem[]).filter((it) => $isAdmin || !it.adminOnly);
 
 	// Branding: solo per le edizioni custom (full = aspetto storico invariato).
 	$: brandName = prof.edition !== 'full' && prof.branding.name ? prof.branding.name : 'Clodia';

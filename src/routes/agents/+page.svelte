@@ -169,6 +169,7 @@
 		</p>
 	</div>
 	<div class="head-actions">
+		{#if isAdmin}
 		<button
 			type="button"
 			class="action-secondary"
@@ -177,6 +178,7 @@
 		>
 			+ Nuovo agente
 		</button>
+		{/if}
 		<button
 			type="button"
 			class="action-secondary"

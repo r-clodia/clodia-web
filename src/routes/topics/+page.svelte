@@ -27,6 +27,9 @@
 	} from '$lib/api/client';
 	import type { Topic } from '$lib/api/types';
 	import { session } from '$lib/auth/session';
+	// owner-only (o admin): rispecchia _require_topic_owner del backend, reattivo.
+	$: canManage = (owner?: string | null) =>
+		isAdmin || (!!owner && owner === $session?.principal);
 	import { instanceProfile, ensureProfileLoaded, singleTopicHref, term } from '$lib/stores/instance';
 	import Modal from '$lib/components/Modal.svelte';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
@@ -579,7 +582,7 @@
 			{@const status = topicStatus(t)}
 			<article class="topic-card" class:expanded={expanded[keyOf(t)]} class:pinned={isPinned(t)}>
 				<div class="topic-actions" aria-label="Azioni topic">
-					{#if !isArchived(t)}
+					{#if !isArchived(t) && canManage(t.owner)}
 						<button
 							type="button"
 							class="archive-btn topic-action"
@@ -639,13 +642,17 @@
 						</a>
 						<div class="status-row" on:click|stopPropagation on:keydown|stopPropagation role="presentation">
 							<span class="status-label">Stato</span>
-							<select class="status-select" value={t.status ?? 'active'}
-								disabled={statusBusy[keyOf(t)]}
-								on:change={(e) => changeStatus(t, (e.currentTarget as HTMLSelectElement).value)}>
-								{#each statusOptions as s}
-									<option value={s}>{s}</option>
-								{/each}
-							</select>
+							{#if canManage(t.owner)}
+								<select class="status-select" value={t.status ?? 'active'}
+									disabled={statusBusy[keyOf(t)]}
+									on:change={(e) => changeStatus(t, (e.currentTarget as HTMLSelectElement).value)}>
+									{#each statusOptions as s}
+										<option value={s}>{s}</option>
+									{/each}
+								</select>
+							{:else}
+								<span class="status-select" style="opacity:.7">{t.status ?? 'active'}</span>
+							{/if}
 						</div>
 						{#if t.tldr}
 							<div class="topic-tldr md">{@html renderMarkdown(t.tldr)}</div>

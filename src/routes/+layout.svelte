@@ -36,6 +36,7 @@
 	import { session, validateSession, restoreSession, ensureFreshSession } from '$lib/auth/session';
 	import { initPrefs } from '$lib/stores/prefs';
 	import { getAdminState } from '$lib/api/client';
+	import { refreshCapabilities } from '$lib/stores/capabilities';
 
 	let releaseStream: (() => void) | null = null;
 	let offHandler: (() => void) | null = null;
@@ -98,8 +99,10 @@
 	}
 
 	$: if (browser) {
-		if (loggedIn) startStream();
-		else stopStream();
+		if (loggedIn) {
+			startStream();
+			void refreshCapabilities(); // carica isAdmin per il gating dei widget
+		} else stopStream();
 	}
 
 	onDestroy(() => {

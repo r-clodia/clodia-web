@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, connectOpenAI, connectTrello, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
+	import { isAdmin } from '$lib/stores/capabilities';
 	import { askWainston } from '$lib/stores/helpdesk';
 	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
 	import { toastSuccess, toastError, toastInfo } from '$lib/stores/toasts';
@@ -494,6 +495,9 @@
 	}
 </script>
 
+{#if !$isAdmin}
+	<div class="status error" style="margin:2rem 0">Accesso riservato agli amministratori dell'istanza.</div>
+{:else}
 <header class="head">
 	<div>
 		<h1>Integrations</h1>
@@ -826,6 +830,7 @@
 			</div>
 		</div>
 	</div>
+{/if}
 {/if}
 
 <style>

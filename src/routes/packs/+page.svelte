@@ -15,6 +15,7 @@
 	import PluginNode from '$lib/components/PluginNode.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
+	import { isAdmin } from '$lib/stores/capabilities';
 
 	type State =
 		| { kind: 'idle' }
@@ -191,7 +192,7 @@
 		</p>
 	</div>
 	<div class="head-actions">
-		<button type="button" class="add-btn" on:click={openAdd}>+ Importa</button>
+		{#if $isAdmin}<button type="button" class="add-btn" on:click={openAdd}>+ Importa</button>{/if}
 		<button type="button" on:click={load} disabled={state.kind === 'loading'}>
 			{state.kind === 'loading' ? 'Loading…' : 'Reload'}
 		</button>
@@ -302,7 +303,7 @@
 							{#if p.dpa_missing}<span class="warn-badge" title="Provider senza profilo DPA/sovranità completo — bloccante + consenso owner">⚠ DPA</span>{/if}
 						</span>
 						{#if p.deletable !== false}
-							<button type="button" class="danger-ghost" on:click={() => (pendingDelete = { kind: 'pack', item: p })}>Rimuovi</button>
+							{#if $isAdmin}<button type="button" class="danger-ghost" on:click={() => (pendingDelete = { kind: 'pack', item: p })}>Rimuovi</button>{/if}
 						{/if}
 					</div>
 					{#if p.description}
@@ -357,7 +358,7 @@
 			{#each loosePlugins as p (p.name)}
 				<PluginNode
 					plugin={p}
-					deletable
+					deletable={$isAdmin}
 					forceOpen={q !== ''}
 					on:delete={(e) => (pendingDelete = { kind: 'plugin', item: e.detail })}
 				/>

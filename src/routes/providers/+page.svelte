@@ -10,6 +10,7 @@
 		resumeProvider,
 		type ProviderSovereignty
 	} from '$lib/api/client';
+	import { isAdmin } from '$lib/stores/capabilities';
 	import { toastSuccess } from '$lib/stores/toasts';
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -243,6 +244,9 @@
 	}
 </script>
 
+{#if !$isAdmin}
+	<div class="status error" style="margin:2rem 0">Accesso riservato agli amministratori dell'istanza.</div>
+{:else}
 <header class="head">
 	<div>
 		<h1>Providers</h1>
@@ -362,6 +366,7 @@
 			</div>
 		</div>
 	</div>
+{/if}
 {/if}
 
 <style>
