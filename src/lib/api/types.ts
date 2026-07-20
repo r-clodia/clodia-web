@@ -233,6 +233,8 @@ export interface Job {
 	/** Agent (kind) che lo scheduler spawna al fire del job. */
 	readonly agent?: string;
 	readonly enabled?: boolean;
+	/** Principal umano proprietario del job (solo lui o un admin può gestirlo). */
+	readonly owner?: string;
 	readonly last_run?: string | null;
 	/** Duration of the last run, in seconds. */
 	readonly durata?: number | null;

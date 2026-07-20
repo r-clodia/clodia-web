@@ -18,6 +18,11 @@
 	 */
 	import { onDestroy, onMount } from 'svelte';
 	import { API_BASE_URL, ApiError, deleteJob, runJob, updateJob } from '$lib/api/client';
+	import { session } from '$lib/auth/session';
+	import { isAdmin } from '$lib/stores/capabilities';
+	// owner-only (o admin): rispecchia _require_job_owner del backend, reattivo.
+	$: canManageJob = (owner?: string | null) =>
+		$isAdmin || (!!owner && owner === $session?.principal);
 	import type { Job, JobStatus } from '$lib/api/types';
 	import StatusDot from '$lib/components/StatusDot.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
@@ -306,6 +311,7 @@
 						<td><StatusDot state={statoOf(job)} /></td>
 						<td class="actions-col">
 							<div class="row-actions">
+								{#if canManageJob(job.owner)}
 								<button
 									type="button"
 									class="r-action run"
@@ -355,6 +361,7 @@
 								>
 									{deleteBusy[job.id] ? '…' : '🗑'}
 								</button>
+								{/if}
 							</div>
 						</td>
 					</tr>
