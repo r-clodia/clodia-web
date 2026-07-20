@@ -16,6 +16,11 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { toastSuccess, toastError, toastInfo } from '$lib/stores/toasts';
 	import { bumpJobs } from '$lib/stores/jobs';
+	import { session } from '$lib/auth/session';
+	import { isAdmin } from '$lib/stores/capabilities';
+	// owner-only (o admin): rispecchia _require_job_owner del backend, reattivo.
+	$: canManageJob = (owner?: string | null) =>
+		$isAdmin || (!!owner && owner === $session?.principal);
 
 	$: id = $page.params.id ?? '';
 
@@ -262,6 +267,7 @@
 		</div>
 	</div>
 	<div class="head-actions">
+		{#if canManageJob(job?.owner)}
 		<button
 			type="button"
 			class="action-run"
@@ -308,6 +314,7 @@
 		>
 			Elimina
 		</button>
+		{/if}
 		<button type="button" on:click={reload} disabled={detail.kind === 'loading'}>
 			{detail.kind === 'loading' ? 'Loading…' : 'Reload'}
 		</button>
