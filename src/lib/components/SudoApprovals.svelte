@@ -7,7 +7,7 @@
 	import { apiGet, apiPost } from '$lib/api/client';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 
-	type Req = { agent: string; instance: string; reason: string; minutes: number; human?: string; age_s: number };
+	type Req = { agent: string; instance: string; reason: string; minutes: number; human?: string; chat?: string; age_s: number };
 	let requests: Req[] = [];
 	let busy = '';
 	let poll: ReturnType<typeof setInterval> | null = null;
@@ -25,7 +25,7 @@
 	async function approve(q: Req) {
 		busy = keyOf(q);
 		try {
-			await apiPost('/api/sudo/approve', { agent: q.agent, instance: q.instance, minutes: q.minutes });
+			await apiPost('/api/sudo/approve', { agent: q.agent, instance: q.instance, minutes: q.minutes, chat: q.chat });
 			toastSuccess('Sudo concesso', `${q.agent} · ${q.minutes} min`);
 			await refresh();
 		} catch (e) {
@@ -35,7 +35,7 @@
 	async function deny(q: Req) {
 		busy = keyOf(q);
 		try {
-			await apiPost('/api/sudo/deny', { agent: q.agent, instance: q.instance });
+			await apiPost('/api/sudo/deny', { agent: q.agent, instance: q.instance, chat: q.chat });
 			toastSuccess('Richiesta negata', q.agent);
 			await refresh();
 		} catch (e) {
