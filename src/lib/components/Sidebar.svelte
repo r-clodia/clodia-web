@@ -9,6 +9,7 @@
 	import { instanceProfile, ensureProfileLoaded, singleTopicHref, term } from '$lib/stores/instance';
 	import { API_BASE_URL } from '$lib/api/client';
 	import { isAdmin } from '$lib/stores/capabilities';
+	import { unread, topicsBump, unreadCount } from '$lib/stores/unread';
 
 	// Icone Unicode per ogni route
 	const ICONS: Record<string, string> = {
@@ -107,6 +108,14 @@
 		void loadRecentTopics();
 	});
 
+	// Nuovo messaggio in un topic (evento channel_message → topicsBump): ricarica i
+	// RECENTS (debounce) così il topic con attività risale in cima alla lista.
+	let _reloadTimer: ReturnType<typeof setTimeout> | null = null;
+	$: if ($topicsBump >= 0) {
+		if (_reloadTimer) clearTimeout(_reloadTimer);
+		_reloadTimer = setTimeout(() => void loadRecentTopics(), 400);
+	}
+
 	function isActive(href: string, pathname: string): boolean {
 		if (href === '/') return pathname === '/';
 		// Le pagine dettaglio skill/rule appartengono alla sezione Packs.
@@ -184,7 +193,11 @@
 						title={t.title || t.name}
 					>
 						<span class="recent-name">{t.title || t.name}</span>
-						<span class="recent-tier">{t.tier}</span>
+						{#if unreadCount($unread, t.tier, t.name) > 0}
+							<span class="recent-badge" title="nuovi messaggi">{unreadCount($unread, t.tier, t.name)}</span>
+						{:else}
+							<span class="recent-tier">{t.tier}</span>
+						{/if}
 					</a>
 				{/each}
 			</div>
@@ -442,6 +455,20 @@
 		font-size: 9px;
 		font-weight: 700;
 		letter-spacing: 0.04em;
+	}
+	/* Badge non-letti: pallino con il numero di nuovi messaggi nel topic. */
+	.recent-badge {
+		flex: 0 0 auto;
+		min-width: 16px;
+		height: 16px;
+		padding: 0 5px;
+		border-radius: 8px;
+		background: var(--accent, #e0a800);
+		color: #1a1208;
+		font-size: 10px;
+		font-weight: 800;
+		line-height: 16px;
+		text-align: center;
 	}
 	.spacer {
 		flex: 1 1 auto;

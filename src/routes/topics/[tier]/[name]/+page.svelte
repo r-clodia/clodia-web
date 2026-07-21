@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
+	import { activeTopic, markSeen, topicKey } from '$lib/stores/unread';
 	import { page } from '$app/stores';
 	import { session } from '$lib/auth/session';
 	import { onEventStream, startEventStream } from '$lib/stores/events-stream';
@@ -32,6 +33,14 @@
 	$: params = $page.params as Record<string, string>;
 	$: tier = params.tier ?? '';
 	$: name = params.name ?? '';
+
+	// Non-letti: mentre guardo questo topic è "attivo" (i suoi messaggi non contano
+	// come non-letti) e azzero il suo badge. Alla chiusura libero il topic attivo.
+	$: if (tier && name) {
+		activeTopic.set(topicKey(tier, name));
+		markSeen(tier, name);
+	}
+	onDestroy(() => activeTopic.set(null));
 
 	let info: ChannelInfo | null = null;
 	let messages: ChannelMessage[] = [];

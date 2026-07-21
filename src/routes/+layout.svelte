@@ -37,6 +37,7 @@
 	import { initPrefs } from '$lib/stores/prefs';
 	import { getAdminState } from '$lib/api/client';
 	import { refreshCapabilities } from '$lib/stores/capabilities';
+	import { noteMessage } from '$lib/stores/unread';
 
 	let releaseStream: (() => void) | null = null;
 	let offHandler: (() => void) | null = null;
@@ -87,6 +88,11 @@
 			// list immediately rather than waiting for the next poll.
 			if (ev.type === 'agent_activity') {
 				bumpJobs();
+			} else if (ev.type === 'channel_message') {
+				// Nuovo messaggio in un topic (umano o AI): aggiorna non-letti +
+				// segnala il riordino RECENTS (il topic con attività risale in cima).
+				const p = (ev.payload || {}) as { tier?: string; name?: string; author?: string };
+				if (p.tier && p.name) noteMessage(p.tier, p.name, p.author, $session?.principal ?? null);
 			}
 		});
 	}
