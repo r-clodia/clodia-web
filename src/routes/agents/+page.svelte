@@ -176,7 +176,7 @@
 			on:click={() => (newAgentOpen = true)}
 			disabled={reloading}
 		>
-			+ Nuovo agente
+			+ Nuovo utente
 		</button>
 		{/if}
 		<button

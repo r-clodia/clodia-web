@@ -30,7 +30,7 @@
 		opencode: ''
 	};
 
-	let type: AgentType = 'normal';
+	let type: AgentType = 'human';
 	let name = '';
 	let displayName = '';
 	let description = '';
@@ -130,7 +130,7 @@
 	}
 
 	function reset() {
-		type = 'normal';
+		type = 'human';
 		name = '';
 		displayName = '';
 		description = '';
@@ -278,21 +278,19 @@
 	{:else}
 	<form on:submit={onSubmit} class="form" id="new-agent-form">
 		<fieldset class="seg" disabled={submitting}>
-			<legend class="legend">Tipo</legend>
+			<legend class="legend">Onboarding utente</legend>
 			<div class="seg-row">
-				<label class="seg-opt" class:active={type === 'normal'}>
-					<input type="radio" bind:group={type} value="normal" />
-					<span class="s-label">Regular agent</span>
-					<span class="s-desc">worker eseguito da un motore, skill/permessi limitati</span>
-				</label>
-				<label class="seg-opt" class:active={type === 'human'}>
-					<input type="radio" bind:group={type} value="human" />
+				<label class="seg-opt active">
+					<input type="radio" bind:group={type} value="human" checked />
 					<span class="s-label">Human agent</span>
 					<span class="s-desc">principal umano (identità PKI), non eseguito</span>
 				</label>
 			</div>
 			<p class="hint-inline">
-				I super-agent (clodia, ophelia) sono nativi e non si creano da qui.
+				Da qui si crea solo un <strong>utente umano</strong> (onboarding).
+				Gli <strong>agenti AI</strong> si installano tramite un <strong>pack</strong>
+				(sezione Packs → Importa): per un nuovo agente, crea un pack che contiene il seed.
+				I super-agent (clodia, ophelia) sono nativi.
 			</p>
 		</fieldset>
 
