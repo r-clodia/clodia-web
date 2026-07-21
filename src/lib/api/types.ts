@@ -514,6 +514,9 @@ export interface Pack {
 	readonly name: string;
 	readonly description: string;
 	readonly version: string;
+	// Versione BUNDLED disponibile (first-party) + flag "aggiornabile".
+	readonly available_version?: string;
+	readonly update_available?: boolean;
 	readonly source: string;
 	readonly agents: ReadonlyArray<PackAgent>;
 	readonly plugins: ReadonlyArray<Plugin | PackPluginMissing>;

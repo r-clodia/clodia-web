@@ -1281,6 +1281,14 @@ export async function deletePack(name: string, opts: RequestOptions = {}): Promi
 	await apiDelete(`/clodia/packs/${encodeURIComponent(name)}`, opts);
 }
 
+/** POST `/clodia/packs/{name}/update` — aggiorna un pack first-party alla versione bundled. */
+export async function updatePack(
+	name: string,
+	opts: RequestOptions = {}
+): Promise<{ updated: string; version: string }> {
+	return apiPost(`/clodia/packs/${encodeURIComponent(name)}/update`, {}, opts);
+}
+
 /** GET `/clodia/rules` — deduplicated rule catalog. */
 export async function listRules(opts: RequestOptions = {}): Promise<ReadonlyArray<Rule>> {
 	const raw = await apiGet<unknown>('/clodia/rules', opts);

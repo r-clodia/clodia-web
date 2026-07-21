@@ -8,7 +8,8 @@
 		importPackUrl,
 		importPackZip,
 		deletePack,
-		deletePlugin
+		deletePlugin,
+		updatePack as apiUpdatePack
 	} from '$lib/api/client';
 	import type { Pack, Plugin } from '$lib/api/types';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -26,6 +27,21 @@
 	let state: State = { kind: 'idle' };
 	let query = '';
 	let expandedPacks = new Set<string>();
+	let updating: string | null = null;
+
+	async function updatePack(p: Pack) {
+		if (updating) return;
+		updating = p.name;
+		try {
+			const r = await apiUpdatePack(p.name);
+			toastSuccess(`${p.name} aggiornato a v${r.version || p.available_version}`);
+			await load();
+		} catch (err) {
+			toastError(errorMessage(err).message);
+		} finally {
+			updating = null;
+		}
+	}
 
 	onMount(() => {
 		void load();
@@ -302,6 +318,10 @@
 							{#if p.license_missing}<span class="warn-badge" title="Licenza non dichiarata su alcune skill — bloccante all'install">⚠ licenza</span>{/if}
 							{#if p.dpa_missing}<span class="warn-badge" title="Provider senza profilo DPA/sovranità completo — bloccante + consenso owner">⚠ DPA</span>{/if}
 						</span>
+						{#if p.update_available}
+							<span class="update-badge" title={`Versione bundled disponibile: v${p.available_version}`}>↑ v{p.available_version}</span>
+							{#if $isAdmin}<button type="button" class="update-btn" disabled={updating === p.name} on:click={() => updatePack(p)}>{updating === p.name ? 'Aggiorno…' : 'Update'}</button>{/if}
+						{/if}
 						{#if p.deletable !== false}
 							{#if $isAdmin}<button type="button" class="danger-ghost" on:click={() => (pendingDelete = { kind: 'pack', item: p })}>Rimuovi</button>{/if}
 						{/if}
@@ -469,6 +489,27 @@
 		font-family: var(--mono);
 		font-size: 11px;
 		color: var(--fg-muted);
+	}
+	.update-badge {
+		font-family: var(--mono);
+		font-size: 11px;
+		color: #16a34a;
+		border: 1px solid #16a34a55;
+		border-radius: 4px;
+		padding: 1px 5px;
+	}
+	.update-btn {
+		font-size: 12px;
+		padding: 2px 10px;
+		border-radius: 5px;
+		border: 1px solid #16a34a;
+		background: #16a34a1a;
+		color: #16a34a;
+		cursor: pointer;
+	}
+	.update-btn:disabled {
+		opacity: 0.6;
+		cursor: default;
 	}
 	.counts {
 		margin-left: auto;
