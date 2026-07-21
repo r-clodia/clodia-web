@@ -1281,11 +1281,19 @@ export async function deletePack(name: string, opts: RequestOptions = {}): Promi
 	await apiDelete(`/clodia/packs/${encodeURIComponent(name)}`, opts);
 }
 
-/** POST `/clodia/packs/{name}/update` — aggiorna un pack first-party alla versione bundled. */
+/** POST `/clodia/packs/{name}/check-update` — controlla su GitHub se c'è una versione più recente. */
+export async function checkPackUpdate(
+	name: string,
+	opts: RequestOptions = {}
+): Promise<{ name: string; installed: string; remote: string; update_available: boolean }> {
+	return apiPost(`/clodia/packs/${encodeURIComponent(name)}/check-update`, {}, opts);
+}
+
+/** POST `/clodia/packs/{name}/update` — aggiorna dal repo upstream (replace + restart agenti). */
 export async function updatePack(
 	name: string,
 	opts: RequestOptions = {}
-): Promise<{ updated: string; version: string }> {
+): Promise<{ updated: string; version: string; agents_restarted: number }> {
 	return apiPost(`/clodia/packs/${encodeURIComponent(name)}/update`, {}, opts);
 }
 

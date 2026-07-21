@@ -9,7 +9,8 @@
 		importPackZip,
 		deletePack,
 		deletePlugin,
-		updatePack as apiUpdatePack
+		updatePack as apiUpdatePack,
+		checkPackUpdate as apiCheckPackUpdate
 	} from '$lib/api/client';
 	import type { Pack, Plugin } from '$lib/api/types';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -28,13 +29,31 @@
 	let query = '';
 	let expandedPacks = new Set<string>();
 	let updating: string | null = null;
+	let checking: string | null = null;
+	// Esito del "Check update" per pack: {remote, update_available}.
+	let checkResults: Record<string, { remote: string; update_available: boolean }> = {};
+
+	async function checkUpdate(p: Pack) {
+		if (checking) return;
+		checking = p.name;
+		try {
+			const r = await apiCheckPackUpdate(p.name);
+			checkResults = { ...checkResults, [p.name]: { remote: r.remote, update_available: r.update_available } };
+			if (!r.update_available) toastSuccess(`${p.name} è aggiornato (v${r.installed})`);
+		} catch (err) {
+			toastError(errorMessage(err).message);
+		} finally {
+			checking = null;
+		}
+	}
 
 	async function updatePack(p: Pack) {
 		if (updating) return;
 		updating = p.name;
 		try {
 			const r = await apiUpdatePack(p.name);
-			toastSuccess(`${p.name} aggiornato a v${r.version || p.available_version}`);
+			toastSuccess(`${p.name} aggiornato a v${r.version} · ${r.agents_restarted} agenti riavviati`);
+			checkResults = { ...checkResults, [p.name]: { remote: r.version, update_available: false } };
 			await load();
 		} catch (err) {
 			toastError(errorMessage(err).message);
@@ -318,9 +337,14 @@
 							{#if p.license_missing}<span class="warn-badge" title="Licenza non dichiarata su alcune skill — bloccante all'install">⚠ licenza</span>{/if}
 							{#if p.dpa_missing}<span class="warn-badge" title="Provider senza profilo DPA/sovranità completo — bloccante + consenso owner">⚠ DPA</span>{/if}
 						</span>
-						{#if p.update_available}
-							<span class="update-badge" title={`Versione bundled disponibile: v${p.available_version}`}>↑ v{p.available_version}</span>
-							{#if $isAdmin}<button type="button" class="update-btn" disabled={updating === p.name} on:click={() => updatePack(p)}>{updating === p.name ? 'Aggiorno…' : 'Update'}</button>{/if}
+						{#if p.has_upstream && $isAdmin}
+							{#if checkResults[p.name]?.update_available}
+								<button type="button" class="update-btn" disabled={updating === p.name} on:click={() => updatePack(p)}>{updating === p.name ? 'Aggiorno…' : `Update v${checkResults[p.name].remote}`}</button>
+							{:else if checkResults[p.name]}
+								<span class="update-badge" title="Sei alla versione più recente">✓ aggiornato</span>
+							{:else}
+								<button type="button" class="check-btn" disabled={checking === p.name} on:click={() => checkUpdate(p)}>{checking === p.name ? 'Controllo…' : 'Check update'}</button>
+							{/if}
 						{/if}
 						{#if p.deletable !== false}
 							{#if $isAdmin}<button type="button" class="danger-ghost" on:click={() => (pendingDelete = { kind: 'pack', item: p })}>Rimuovi</button>{/if}
@@ -508,6 +532,19 @@
 		cursor: pointer;
 	}
 	.update-btn:disabled {
+		opacity: 0.6;
+		cursor: default;
+	}
+	.check-btn {
+		font-size: 12px;
+		padding: 2px 10px;
+		border-radius: 5px;
+		border: 1px solid var(--border);
+		background: transparent;
+		color: var(--fg-muted);
+		cursor: pointer;
+	}
+	.check-btn:disabled {
 		opacity: 0.6;
 		cursor: default;
 	}
