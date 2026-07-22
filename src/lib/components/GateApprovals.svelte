@@ -63,7 +63,11 @@
 	<div class="gate-wrap" role="alertdialog" aria-label="Richieste gate">
 		{#each requests as q (q.id)}
 			<div class="gate-card">
-				<div class="gate-head">🛡️ <b>{q.agent}</b> vuole usare <code>{q.verb}</code></div>
+				{#if q.verb.startsWith('topic-access:')}
+					<div class="gate-head">🛡️ <b>{q.agent}</b> vuole accedere al topic <code>{q.verb.slice('topic-access:'.length)}</code> (non è partecipante)</div>
+				{:else}
+					<div class="gate-head">🛡️ <b>{q.agent}</b> vuole usare <code>{q.verb}</code></div>
+				{/if}
 				{#if q.reason}<div class="gate-reason">{q.reason}</div>{/if}
 				<div class="gate-meta">
 					verbo sotto supervisione umana{#if q.human} · nel contesto di <b>{q.human}</b>{/if}

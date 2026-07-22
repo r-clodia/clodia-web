@@ -26,7 +26,6 @@
 	import LoginScreen from '$lib/components/LoginScreen.svelte';
 	import SetupScreen from '$lib/components/SetupScreen.svelte';
 	import ChatWidget from '$lib/components/ChatWidget.svelte';
-	import SudoApprovals from '$lib/components/SudoApprovals.svelte';
 	import GateApprovals from '$lib/components/GateApprovals.svelte';
 	import {
 		onEventStream,
@@ -160,7 +159,6 @@
 {/if}
 
 <Toaster />
-{#if loggedIn}<SudoApprovals />{/if}
 {#if loggedIn}<GateApprovals />{/if}
 
 <style>
