@@ -66,7 +66,7 @@
 		<div class="children" role="group">
 			{#if plugin.skills.length}
 				<div class="group-label">Skills</div>
-				{#each plugin.skills as s (s.name)}
+				{#each plugin.skills as s, i (s.name + '#' + i)}
 					<a class="child" href={`/skills/${encodeURIComponent(s.name)}`}>
 						<span class="child-kind kind-skill">skill</span>
 						<span class="child-name">{s.name}</span>
@@ -76,7 +76,7 @@
 			{/if}
 			{#if plugin.rules.length}
 				<div class="group-label">Rules</div>
-				{#each plugin.rules as r (r.name)}
+				{#each plugin.rules as r, i (r.name + '#' + i)}
 					<a class="child" href={`/rules/${encodeURIComponent(r.name)}`}>
 						<span class="child-kind kind-rule">rule</span>
 						<span class="child-name">{r.name}</span>
@@ -86,7 +86,7 @@
 			{/if}
 			{#if plugin.mcp_servers.length}
 				<div class="group-label">MCP servers</div>
-				{#each plugin.mcp_servers as s (s.name)}
+				{#each plugin.mcp_servers as s, i (s.name + '#' + i)}
 					<div class="child mcp">
 						<button type="button" class="mcp-row" on:click={() => toggleMcp(s.name)}>
 							<span class="child-kind kind-mcp">mcp</span>
