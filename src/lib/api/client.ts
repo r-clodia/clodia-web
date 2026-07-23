@@ -1712,6 +1712,20 @@ export async function downloadProfileFile(name: string, filename: string): Promi
 	URL.revokeObjectURL(url);
 }
 
+/** Scarica uno ZIP con TUTTI i file del topic (summary, meta, minute, files/). */
+export async function downloadTopicZip(tier: string, name: string): Promise<void> {
+	const res = await fetch(
+		joinUrl(`/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/download-all`),
+		{ headers: { ...authHeaders() } }
+	);
+	if (!res.ok) throw await parseError(res);
+	const blob = await res.blob();
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url; a.download = `${name}.zip`; a.click();
+	URL.revokeObjectURL(url);
+}
+
 /** POST `/api/topics/{tier}/{name}/archive` — imposta status=archived. */
 export async function archiveTopic(tier: string, name: string, opts: RequestOptions = {}): Promise<{ archived: boolean }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/archive`, {}, opts);

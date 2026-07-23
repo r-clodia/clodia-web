@@ -22,6 +22,7 @@
 		getChannelEligibility,
 		getChannelFiles,
 		uploadChannelFile,
+		downloadTopicZip,
 		channelFileUrl,
 		signedChannelFileUrl,
 		type ChannelInfo,
@@ -48,6 +49,18 @@
 	// Browser file navigabile: subpath corrente relativo a files/ ('' = radice).
 	let filePath = '';
 	let filesLoading = false;
+	let zipping = false;
+	async function downloadZip() {
+		if (zipping) return;
+		zipping = true;
+		try {
+			await downloadTopicZip(tier, name);
+		} catch (e) {
+			loadErr = e instanceof Error ? e.message : String(e);
+		} finally {
+			zipping = false;
+		}
+	}
 	$: crumbs = filePath ? filePath.split('/') : [];
 
 	// --- Remote (git/drive): storage sempre locale + sync opzionale ----------
@@ -1311,6 +1324,9 @@
 			<section>
 				<h3 class="sec-head">
 					<span>File</span>
+					<button type="button" class="zip-all" disabled={zipping}
+						title="Scarica uno ZIP con tutti i file del topic"
+						on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
 					{#if remoteMeta}{@const ru = remoteUrl()}
 						{#if ru}
 							<a class="remote-goto" href={ru} target="_blank" rel="noopener"
@@ -1516,6 +1532,12 @@
 	.recap-timeline time { font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--fg-muted); }
 	.recap-timeline .recap-text { color: var(--fg-muted); }
 	.err { color: var(--danger); font-size: 12px; margin: 8px 0; }
+	.zip-all {
+		font-size: 11px; padding: 1px 8px; margin-left: 8px;
+		border: 1px solid var(--border); border-radius: 5px;
+		background: transparent; color: var(--fg-muted); cursor: pointer;
+	}
+	.zip-all:disabled { opacity: 0.6; cursor: default; }
 	.tier-warn-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); padding: 16px; }
 	.tier-warn { background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid var(--warn, #e0a800); border-radius: 12px; max-width: 460px; width: 100%; padding: 18px 20px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
 	.tw-head { display: flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 8px; }
