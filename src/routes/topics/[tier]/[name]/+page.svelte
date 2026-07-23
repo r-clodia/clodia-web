@@ -19,6 +19,7 @@
 		type RemoteStatus,
 		setChannelParticipant,
 		decideJobProposal,
+		apiPost,
 		getChannelEligibility,
 		getChannelFiles,
 		uploadChannelFile,
@@ -440,8 +441,36 @@
 			jobDeciding = false;
 		}
 	}
+	// Marker GATE (M-gate): un verbo gated innescato da un agente in questo canale →
+	//   <!-- gate=agent|instance|verb -->
+	// card Approva/Nega INLINE nella conversazione (come job-proposal), al posto
+	// del popup staccato. L'id codifica agent|instance|verb per approve/deny.
+	const _GATE_RE = /<!--\s*gate\s*=\s*([^>]+?)\s*-->/i;
+	function msgGate(text: string): { id: string; agent: string; instance: string; verb: string } | null {
+		const m = (text || '').match(_GATE_RE);
+		if (!m) return null;
+		const id = m[1].trim();
+		const parts = id.split('|');
+		if (parts.length < 3) return null;
+		return { id, agent: parts[0], instance: parts[1], verb: parts.slice(2).join('|') };
+	}
+	let gateDeciding = false;
+	let gateDecided: Record<string, string> = {};
+	async function decideGate(g: { id: string; agent: string; instance: string; verb: string }, approve: boolean) {
+		if (gateDeciding) return;
+		gateDeciding = true;
+		try {
+			await apiPost(approve ? '/api/gate/approve' : '/api/gate/deny',
+				{ agent: g.agent, instance: g.instance, verb: g.verb });
+			gateDecided = { ...gateDecided, [g.id]: approve ? 'approvato' : 'negato' };
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			gateDeciding = false;
+		}
+	}
 	function stripChoices(text: string): string {
-		return (text || '').replace(_CH_RE, '').replace(_INV_RE, '').replace(_JOB_RE, '').trim();
+		return (text || '').replace(_CH_RE, '').replace(_INV_RE, '').replace(_JOB_RE, '').replace(_GATE_RE, '').trim();
 	}
 	// Agenti deselezionati nel widget di invito (default: tutti selezionati).
 	let inviteSkip = new Set<string>();
@@ -1142,6 +1171,22 @@
 											on:click={() => decideJob(jp, 'Annulla')}>Annulla</button>
 									{:else}
 										<span class="invite-note">solo l'owner può approvare un job</span>
+									{/if}
+								</div>
+							{/if}
+							{@const g = msgGate(m.text)}
+							{#if g !== null}
+								<div class="jobprop">
+									{#if gateDecided[g.id]}
+										<span class="jobprop-done">Gate {gateDecided[g.id]}.</span>
+									{:else if isOwner}
+										<span class="jobprop-q">🛡️ <b>{g.agent}</b> {g.verb.startsWith('topic-access:') ? 'vuole accedere al topic ' : 'vuole usare '}<code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code> — approvi?</span>
+										<button type="button" class="jobprop-ok" disabled={gateDeciding}
+											on:click={() => decideGate(g, true)}>{gateDeciding ? '…' : '✓ Approva'}</button>
+										<button type="button" class="jobprop-no" disabled={gateDeciding}
+											on:click={() => decideGate(g, false)}>Nega</button>
+									{:else}
+										<span class="invite-note">solo l'owner può approvare</span>
 									{/if}
 								</div>
 							{/if}

@@ -20,7 +20,10 @@
 	async function refresh() {
 		try {
 			const r = await apiGet<{ requests: Req[] }>('/api/gate/pending');
-			requests = r?.requests ?? [];
+			// FALLBACK popup: solo i gate SENZA contesto-canale. Quelli innescati da
+			// un'azione in un topic (chat=chan:…) sono resi come card INLINE nella
+			// conversazione (marker <!-- gate=… -->), non nel popup.
+			requests = (r?.requests ?? []).filter((q) => !(q.chat || '').startsWith('chan:'));
 		} catch {
 			requests = [];
 		}
