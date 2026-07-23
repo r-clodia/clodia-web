@@ -1324,9 +1324,6 @@
 			<section>
 				<h3 class="sec-head">
 					<span>File</span>
-					<button type="button" class="zip-all" disabled={zipping}
-						title="Scarica uno ZIP con tutti i file del topic"
-						on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
 					{#if remoteMeta}{@const ru = remoteUrl()}
 						{#if ru}
 							<a class="remote-goto" href={ru} target="_blank" rel="noopener"
@@ -1425,9 +1422,14 @@
 			{/if}
 
 			<section class="remote-panel">
-				<h3>Remote</h3>
+				<h3 class="sec-head">
+					<span>Remote</span>
+					<button type="button" class="zip-all" disabled={zipping}
+						title="Esporta: scarica uno ZIP con tutti i file del topic su questo dispositivo"
+						on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
+				</h3>
 				{#if !remoteMeta}
-					<p class="muted">Storage locale. Attiva un remote per sincronizzare i file.</p>
+					<p class="muted">Storage locale. Attiva un remote per sincronizzare i file, o esporta uno ZIP.</p>
 					{#if remoteForm}
 						<form class="remote-form" on:submit|preventDefault={submitRemoteForm}>
 							<input class="remote-url-input" type="text" bind:value={remoteInput}
