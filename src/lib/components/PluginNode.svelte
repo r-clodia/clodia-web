@@ -41,6 +41,7 @@
 		if (p.counts.mcp_servers) parts.push(`${p.counts.mcp_servers} MCP`);
 		if (p.counts.workflows) parts.push(`${p.counts.workflows} workflow`);
 		if (p.counts.datastores) parts.push(`${p.counts.datastores} datastore`);
+		if (p.counts.rag_collections) parts.push(`${p.counts.rag_collections} RAG`);
 		return parts.join(' · ') || 'vuoto';
 	}
 </script>
@@ -122,7 +123,19 @@
 					</div>
 				{/each}
 			{/if}
-			{#if !plugin.skills.length && !plugin.rules.length && !plugin.mcp_servers.length && !plugin.workflows?.length && !plugin.datastores?.length}
+			{#if plugin.rag_collections?.length}
+				{#each plugin.rag_collections as c, ci (c.name + '#' + ci)}
+					<div class="group-label">RAG · {c.name} <span class="rag-tier">{c.tier}</span> ({c.resources.length} risorse)</div>
+					{#each c.resources as r, ri (r.doc_name + '#' + ri)}
+						<div class="child rag">
+							<span class="child-kind kind-rag">rag</span>
+							<span class="child-name">{r.doc_name || r.url || r.path}</span>
+							<span class="child-desc">{r.version || ''}{r.type ? ' · ' + r.type : ''}{r.url ? ' · url' : (r.path ? ' · file' : '')}</span>
+						</div>
+					{/each}
+				{/each}
+			{/if}
+			{#if !plugin.skills.length && !plugin.rules.length && !plugin.mcp_servers.length && !plugin.workflows?.length && !plugin.datastores?.length && !plugin.rag_collections?.length}
 				<div class="child empty-child">plugin vuoto</div>
 			{/if}
 		</div>

@@ -452,13 +452,29 @@ export interface Plugin {
 	readonly mcp_servers: ReadonlyArray<PluginMcpServer>;
 	readonly workflows?: ReadonlyArray<PluginWorkflow>;
 	readonly datastores?: ReadonlyArray<PluginDatastore>;
+	readonly rag_collections?: ReadonlyArray<PluginRagCollection>;
 	readonly counts: {
 		readonly skills: number;
 		readonly rules: number;
 		readonly mcp_servers: number;
 		readonly workflows?: number;
 		readonly datastores?: number;
+		readonly rag_collections?: number;
 	};
+}
+
+/** Collection RAG dichiarata da un plugin (provisioning al setup). */
+export interface PluginRagCollection {
+	readonly name: string;
+	readonly description: string;
+	readonly tier: string;
+	readonly resources: ReadonlyArray<{
+		readonly doc_name: string;
+		readonly url: string;
+		readonly path: string;
+		readonly version: string;
+		readonly type: string;
+	}>;
 }
 
 /** Workflow dichiarato da un plugin (composizione di skill in lane). */
