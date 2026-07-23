@@ -1000,15 +1000,13 @@
 			} else if (ev.type === 'tool_use') {
 				const tool = String(p.tool ?? '');
 				const inp = p.input_summary ? `: ${String(p.input_summary)}` : '';
-				const current = liveFor(liveAgent);
-				updateLive(liveAgent, { tools: [...current.tools, `🔧 ${tool}${inp}`].slice(-8) });
+				updateLive(liveAgent, { tools: [`🔧 ${tool}${inp}`] });
 			} else if (ev.type === 'task_progress') {
 				// progresso di un SUBAGENT (tool Task): senza questo la chat sembra
 				// ferma mentre il subagent lavora (es. un download).
 				const tool = p.last_tool_name ? ` · ${String(p.last_tool_name)}` : '';
 				const desc = p.description ? `: ${String(p.description)}` : '';
-				const current = liveFor(liveAgent);
-				updateLive(liveAgent, { tools: [...current.tools, `🤖 subagent${tool}${desc}`.slice(0, 120)].slice(-8) });
+				updateLive(liveAgent, { tools: [`🤖 subagent${tool}${desc}`.slice(0, 120)] });
 			}
 		});
 	});
