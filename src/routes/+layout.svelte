@@ -145,7 +145,8 @@
 			<slot />
 		</main>
 		{#if $instanceProfile.features.helpdesk}
-			{@const hdAgent = $instanceProfile.helpdesk?.agent || 'janitor'}
+			{@const hdAgent = $instanceProfile.helpdesk?.agent || 'sysadmin'}
+			{@const _tp = $page.route.id === '/topics/[tier]/[name]' ? $page.params : null}
 			<ChatWidget
 				agent={hdAgent}
 				tier="SEAL-1"
@@ -153,6 +154,8 @@
 				title={`Assistenza — ${hdAgent.charAt(0).toUpperCase() + hdAgent.slice(1)}`}
 				launcherLabel={`help - parla con ${hdAgent}`}
 				initialMessage={`Ciao ${hdAgent.charAt(0).toUpperCase() + hdAgent.slice(1)}, ho bisogno di aiuto con questa sezione.`}
+				contextTier={_tp?.tier ?? ''}
+				contextName={_tp?.name ?? ''}
 			/>
 		{/if}
 	</div>

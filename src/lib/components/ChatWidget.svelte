@@ -6,7 +6,7 @@
 	import { authToken, restoreSession, session, validateSession } from '$lib/auth/session';
 	import { helpdeskRequest } from '$lib/stores/helpdesk';
 	import {
-		createChannel, getChannelMessages, postChannelMessage,
+		createChannel, getChannelMessages, postChannelMessage, resetChannelContext,
 		type ChannelMessage
 	} from '$lib/api/client';
 
@@ -18,6 +18,10 @@
 	export let title = 'Assistenza';
 	export let initialMessage = '';
 	export let launcherLabel = 'help - parla con wainston';
+	// Topic da cui l'utente sta chiamando l'agente (se è su una pagina topic):
+	// glielo comunichiamo così può ispezionarlo (runtime.inspect_topic, entro clearance).
+	export let contextTier = '';
+	export let contextName = '';
 
 	let open = false;
 	let started = false;
@@ -33,9 +37,27 @@
 	// <!-- goto=/tools|Integrazioni --> → bottone "Vai a …" che porta l'utente
 	// alla pagina giusta senza uscire dal widget.
 	const _GOTO_RE = /<!--\s*goto\s*=(.*?)-->/gi;
+	// Qualunque commento HTML (incluso il marker di contesto ctx) è solo per
+	// l'agente: non va mostrato nella bolla.
+	const _COMMENT_RE = /<!--[\s\S]*?-->/g;
 	const me = () => $session?.principal ?? '';
 	function stripChoices(t: string) {
-		return (t || '').replace(_CH_RE, '').replace(_GOTO_RE, '').trim();
+		return (t || '').replace(_COMMENT_RE, '').trim();
+	}
+	// Contesto-topic: lo iniettiamo UNA volta per (apertura, topic) come commento
+	// nascosto in testa al primo messaggio → l'agente sa da dove lo chiami e può
+	// ispezionare il topic entro la sua clearance. Il commento è invisibile in UI.
+	let _ctxSent = '';
+	function ctxPrefix(): string {
+		const key = contextTier && contextName ? `${contextTier}/${contextName}` : '';
+		if (key && _ctxSent !== key) {
+			_ctxSent = key;
+			return `<!-- L'utente ti sta scrivendo dal topic ${contextTier}/${contextName}. ` +
+				`Se utile per assisterlo, ispezionalo con ` +
+				`runtime.inspect_topic(tier="${contextTier}", name="${contextName}"): ` +
+				`vedrai metadati, agenti e ultimi messaggi entro la tua clearance. -->\n`;
+		}
+		return '';
 	}
 	function choices(t: string): string[] {
 		const m = (t || '').match(_CH_RE);
@@ -78,7 +100,7 @@
 			try {
 				await ensureStarted();
 				if (initialMessage && messages.length === 0) {
-					await postChannelMessage(tier, name, initialMessage);
+					await postChannelMessage(tier, name, ctxPrefix() + initialMessage);
 					await refresh();
 				}
 				await scrollDown();
@@ -102,7 +124,7 @@
 		try {
 			await ensureStarted();
 			if (message) {
-				await postChannelMessage(tier, name, message);
+				await postChannelMessage(tier, name, ctxPrefix() + message);
 				await refresh();
 			}
 			await scrollDown();
@@ -119,10 +141,26 @@
 		sending = true; draft = '';
 		try {
 			await ensureLoggedIn();
-			await postChannelMessage(tier, name, body);
+			await postChannelMessage(tier, name, ctxPrefix() + body);
 			await refresh(); await scrollDown();
 		} catch (e) { err = errText(e); draft = body; }
 		finally { sending = false; }
+	}
+
+	// Azzera il contesto della chat con l'agente (nuova sessione da zero): la
+	// history resta visibile ma il prossimo turno riparte pulito. Ri-inietteremo
+	// il contesto-topic al primo messaggio successivo.
+	let resetting = false;
+	async function resetCtx() {
+		if (resetting) return;
+		resetting = true;
+		try {
+			await ensureLoggedIn();
+			await resetChannelContext(tier, name);
+			_ctxSent = '';
+			await refresh();
+		} catch (e) { err = errText(e); }
+		finally { resetting = false; }
 	}
 
 	onDestroy(() => { _unsub(); if (poll) clearInterval(poll); });
@@ -141,6 +179,10 @@
 		<header class="cw-head">
 			<AgentAvatar name={agent} size={22} />
 			<span class="cw-title">{title}</span>
+			<button class="cw-reset" on:click={resetCtx} disabled={resetting || !started}
+				title="Azzera il contesto della conversazione (riparte pulita)" aria-label="Azzera contesto">
+				{resetting ? '…' : '⟳'}
+			</button>
 			<button class="cw-x" on:click={toggle} aria-label="Chiudi">×</button>
 		</header>
 		<div class="cw-stream" bind:this={streamEl}>
@@ -237,6 +279,9 @@
 	.cw-head { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 12px;
 		background: var(--card-bg); border-bottom: 1px solid var(--border); }
 	.cw-title { font-weight: 700; font-size: 14px; flex: 1 1 auto; }
+	.cw-reset { background: transparent; border: none; color: var(--fg-muted); font-size: 16px; cursor: pointer; line-height: 1; padding: 0 2px; }
+	.cw-reset:hover:not(:disabled) { color: var(--fg); }
+	.cw-reset:disabled { opacity: .4; cursor: default; }
 	.cw-x { background: transparent; border: none; color: var(--fg-muted); font-size: 20px; cursor: pointer; line-height: 1; }
 	.cw-stream { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 	.cw-err { color: #e85d75; font-size: 12px; }
