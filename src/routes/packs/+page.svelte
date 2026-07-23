@@ -18,6 +18,18 @@
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import { isAdmin } from '$lib/stores/capabilities';
+	import { askWainston } from '$lib/stores/helpdesk';
+
+	// Apre il widget di assistenza (steward/sysadmin) chiedendo il setup del pack:
+	// deps + MCP + provisioning RAG (rag_collections) seguendo il SETUP.md. Le
+	// mutazioni sono gated → l'owner conferma in contesto.
+	function setupPack(name: string): void {
+		askWainston(
+			`Esegui il setup del pack \`${name}\` sul server MCP seguendo il suo SETUP.md: ` +
+			`installa le dipendenze dichiarate, monta i server MCP e fai il provisioning ` +
+			`delle collection RAG (rag_collections). Chiedimi conferma prima di ogni mutazione gated.`
+		);
+	}
 
 	type State =
 		| { kind: 'idle' }
@@ -346,6 +358,7 @@
 								<button type="button" class="check-btn" disabled={checking === p.name} on:click={() => checkUpdate(p)}>{checking === p.name ? 'Controllo…' : 'Check update'}</button>
 							{/if}
 						{/if}
+						{#if $isAdmin}<button type="button" class="setup-btn" title="Chiedi allo steward (sysadmin) di fare il setup del pack sul server MCP" on:click={() => setupPack(p.name)}>Setup</button>{/if}
 						{#if p.deletable !== false}
 							{#if $isAdmin}<button type="button" class="danger-ghost" on:click={() => (pendingDelete = { kind: 'pack', item: p })}>Rimuovi</button>{/if}
 						{/if}
@@ -547,6 +560,15 @@
 	.check-btn:disabled {
 		opacity: 0.6;
 		cursor: default;
+	}
+	.setup-btn {
+		font-size: 12px;
+		padding: 2px 10px;
+		border-radius: 5px;
+		border: 1px solid var(--accent, var(--border));
+		background: transparent;
+		color: var(--accent, var(--fg-muted));
+		cursor: pointer;
 	}
 	.counts {
 		margin-left: auto;
