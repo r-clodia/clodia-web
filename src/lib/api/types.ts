@@ -533,6 +533,10 @@ export interface Pack {
 	// first-party con upstream dichiarato → la UI mostra "Check update".
 	readonly first_party?: boolean;
 	readonly has_upstream?: boolean;
+	// Setup: il pack ha roba da provisionare (MCP/RAG/datastore) e non è ancora
+	// stato fatto → la UI mostra il bottone "Finish setup".
+	readonly needs_setup?: boolean;
+	readonly setup_pending?: boolean;
 	readonly source: string;
 	readonly agents: ReadonlyArray<PackAgent>;
 	readonly plugins: ReadonlyArray<Plugin | PackPluginMissing>;

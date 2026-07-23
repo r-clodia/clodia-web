@@ -349,16 +349,18 @@
 							{#if p.license_missing}<span class="warn-badge" title="Licenza non dichiarata su alcune skill — bloccante all'install">⚠ licenza</span>{/if}
 							{#if p.dpa_missing}<span class="warn-badge" title="Provider senza profilo DPA/sovranità completo — bloccante + consenso owner">⚠ DPA</span>{/if}
 						</span>
-						{#if p.has_upstream && $isAdmin}
-							{#if checkResults[p.name]?.update_available}
+						{#if $isAdmin}
+							<!-- Bottone multi-stato: Check update → Update vX.Y.Z → Finish setup -->
+							{#if p.has_upstream && checkResults[p.name]?.update_available}
 								<button type="button" class="update-btn" disabled={updating === p.name} on:click={() => updatePack(p)}>{updating === p.name ? 'Aggiorno…' : `Update v${checkResults[p.name].remote}`}</button>
-							{:else if checkResults[p.name]}
+							{:else if p.setup_pending}
+								<button type="button" class="setup-btn" title="Apri la chat con lo steward (sysadmin) ed esegui il setup del pack sul server MCP" on:click={() => setupPack(p.name)}>Finish setup</button>
+							{:else if p.has_upstream && checkResults[p.name]}
 								<span class="update-badge" title="Sei alla versione più recente">✓ aggiornato</span>
-							{:else}
+							{:else if p.has_upstream}
 								<button type="button" class="check-btn" disabled={checking === p.name} on:click={() => checkUpdate(p)}>{checking === p.name ? 'Controllo…' : 'Check update'}</button>
 							{/if}
 						{/if}
-						{#if $isAdmin}<button type="button" class="setup-btn" title="Chiedi allo steward (sysadmin) di fare il setup del pack sul server MCP" on:click={() => setupPack(p.name)}>Setup</button>{/if}
 						{#if p.deletable !== false}
 							{#if $isAdmin}<button type="button" class="danger-ghost" on:click={() => (pendingDelete = { kind: 'pack', item: p })}>Rimuovi</button>{/if}
 						{/if}
