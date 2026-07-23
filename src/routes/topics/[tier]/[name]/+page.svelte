@@ -1422,12 +1422,7 @@
 			{/if}
 
 			<section class="remote-panel">
-				<h3 class="sec-head">
-					<span>Remote</span>
-					<button type="button" class="zip-all" disabled={zipping}
-						title="Esporta: scarica uno ZIP con tutti i file del topic su questo dispositivo"
-						on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
-				</h3>
+				<h3>Remote</h3>
 				{#if !remoteMeta}
 					<p class="muted">Storage locale. Attiva un remote per sincronizzare i file, o esporta uno ZIP.</p>
 					{#if remoteForm}
@@ -1447,6 +1442,9 @@
 						<div class="remote-actions">
 							<button type="button" on:click={() => openRemoteForm('git')} disabled={remoteBusy}>{@html SVG_GITHUB} git</button>
 							<button type="button" on:click={() => openRemoteForm('drive')} disabled={remoteBusy}>{@html SVG_DRIVE} Drive</button>
+							<button type="button" class="zip-all" disabled={zipping}
+								title="Esporta: scarica uno ZIP con tutti i file del topic su questo dispositivo"
+								on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
 						</div>
 					{/if}
 				{:else}
@@ -1465,6 +1463,9 @@
 							on:click={() => remoteMeta.type === 'git' ? doRemote('commit').then(() => doRemote('push')) : doRemote('push')}
 							disabled={remoteBusy}>⬆︎ push</button>
 						<button type="button" on:click={loadRemoteStatus} disabled={remoteBusy}>↻</button>
+						<button type="button" class="zip-all" disabled={zipping}
+							title="Esporta: scarica uno ZIP con tutti i file del topic su questo dispositivo"
+							on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
 						<button type="button" class="danger"
 							on:click={() => confirm('Disattivare il remote? I file locali restano.') && doRemote('disable')}
 							disabled={remoteBusy}>disattiva</button>
