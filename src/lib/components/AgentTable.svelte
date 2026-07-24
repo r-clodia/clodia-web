@@ -377,12 +377,17 @@
 		max-width: 340px;
 	}
 	.desc {
-		display: block;
 		color: var(--fg-muted);
 		font-size: 12px;
-		white-space: nowrap;
+		/* va a capo invece di allungare la riga oltre lo schermo; clampata a 2
+		   righe (testo completo nel tooltip title). */
+		white-space: normal;
+		overflow-wrap: anywhere;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
 		overflow: hidden;
-		text-overflow: ellipsis;
 	}
 	.row-actions {
 		display: inline-flex;
