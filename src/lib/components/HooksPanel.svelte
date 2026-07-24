@@ -124,8 +124,24 @@
 						{#each agents as a}<option value={a}>@{a}</option>{/each}
 					</select>
 				</label>
-				<span class="hi-uses">{hook.uses} usi{#if hook.last_source} · da {hook.last_source}{/if}</span>
+				<span class="hi-uses">{hook.uses} usi · max {hook.rate_per_min}/min{#if hook.last_source} · ultimo da {hook.last_source}{/if}</span>
 			</div>
+			{#if hook.events?.length}
+				<details class="hook-log">
+					<summary>Attività recente ({hook.events.length})</summary>
+					<ul>
+						{#each [...hook.events].reverse().slice(0, 8) as ev}
+							<li class="ev ev-{ev.status}">
+								<span class="ev-ts">{new Date(ev.ts).toLocaleString()}</span>
+								<span class="ev-st">{ev.status}</span>
+								{#if ev.authority}<span class="ev-auth">{ev.authority}{#if ev.principal} · {ev.principal}{/if}</span>{/if}
+								{#if ev.source}<span class="ev-src">{ev.source}</span>{/if}
+								{#if ev.note}<span class="ev-note" title={ev.note}>{ev.note}</span>{/if}
+							</li>
+						{/each}
+					</ul>
+				</details>
+			{/if}
 			<div class="hi-actions">
 				<button class="mini" on:click={createOrRotate} disabled={busy} title="Genera un nuovo segreto (invalida il precedente)">Rigenera segreto</button>
 				<button class="mini danger" on:click={remove} disabled={busy}>Elimina</button>
@@ -207,4 +223,14 @@
 	.enroll input, .enroll textarea { background: rgba(0,0,0,.25); border: 1px solid var(--border); color: var(--fg); border-radius: 7px; padding: 6px 8px; font: inherit; font-size: 12px; }
 	.enroll textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 	.enroll .primary { align-self: flex-start; }
+	.hook-log { font-size: 11px; }
+	.hook-log summary { color: var(--fg-muted); cursor: pointer; }
+	.hook-log ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+	.ev { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; font-family: var(--mono); font-size: 10.5px; color: var(--fg-muted); }
+	.ev-ts { opacity: .8; }
+	.ev-st { font-weight: 700; }
+	.ev-ok .ev-st { color: #4ade80; }
+	.ev-bad_signature .ev-st, .ev-rate_limited .ev-st { color: var(--danger); }
+	.ev-auth { color: var(--accent); }
+	.ev-note { font-style: italic; }
 </style>

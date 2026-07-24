@@ -583,6 +583,15 @@ export async function interruptChannel(
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/interrupt`, {}, opts);
 }
 
+/** Evento di audit di un hook (ultimi ingress). */
+export interface HookEvent {
+	ts: string;
+	status: string; // ok | bad_signature | rate_limited
+	source: string | null;
+	authority: string | null; // identity | untrusted
+	principal: string | null;
+	note: string | null;
+}
 /** Chat Hook: capability per iniettare messaggi in una chat via webhook. */
 export interface ChatHook {
 	id: string;
@@ -597,6 +606,8 @@ export interface ChatHook {
 	last_used: string | null;
 	last_source: string | null;
 	uses: number;
+	rate_per_min: number;
+	events: HookEvent[];
 }
 export async function listHooks(tier: string, name: string): Promise<{ hooks: ChatHook[] }> {
 	return apiGet(`/clodia/chats/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/hooks`);
