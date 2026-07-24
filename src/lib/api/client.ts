@@ -614,6 +614,17 @@ export async function revokeHook(id: string): Promise<{ revoked: boolean }> {
 export async function deleteHook(id: string): Promise<{ deleted: boolean }> {
 	return apiDelete(`/clodia/hooks/${encodeURIComponent(id)}`);
 }
+/** Identità firmatarie (F2): emette/revoca un cert CA per una pubkey esterna. */
+export async function enrollHookIdentity(
+	name: string,
+	pubkey_pem: string,
+	force = false
+): Promise<{ ok: boolean; name: string }> {
+	return apiPost('/clodia/hook-identities', { name, pubkey_pem, force });
+}
+export async function revokeHookIdentity(name: string): Promise<{ ok: boolean; revoked: string }> {
+	return apiDelete(`/clodia/hook-identities/${encodeURIComponent(name)}`);
+}
 
 /** Stato del remote di un topic (git/drive). */
 export interface RemoteStatus {

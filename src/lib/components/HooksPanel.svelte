@@ -4,7 +4,7 @@
 	// volta (alla creazione/rigenerazione). L'URL è assoluto (host:port navigabile).
 	import { onMount } from 'svelte';
 	import {
-		API_BASE_URL, listHooks, createHook, deleteHook, type ChatHook
+		API_BASE_URL, listHooks, createHook, deleteHook, enrollHookIdentity, type ChatHook
 	} from '$lib/api/client';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 
@@ -79,6 +79,26 @@
 		return `curl -X POST ${url} \\\n  -H 'X-Hook-Secret: ${secret}' \\\n  -d 'Il tuo messaggio'`;
 	}
 
+	// F2 — enrollment identità firmataria (autorità piena). Solo emissione cert:
+	// la firma delle richieste avviene lato mittente con la sua privkey.
+	let showEnroll = false;
+	let eName = '';
+	let ePem = '';
+	let enrolling = false;
+	async function enroll() {
+		if (!eName.trim() || !ePem.trim() || enrolling) return;
+		enrolling = true;
+		try {
+			await enrollHookIdentity(eName.trim(), ePem.trim());
+			toastSuccess('Identità emessa', eName.trim());
+			eName = ''; ePem = ''; showEnroll = false;
+		} catch (e) {
+			toastError('Enrollment', e instanceof Error ? e.message : String(e));
+		} finally {
+			enrolling = false;
+		}
+	}
+
 	onMount(load);
 </script>
 
@@ -137,6 +157,25 @@
 			</div>
 		</div>
 	{/if}
+
+	<button class="enroll-toggle" on:click={() => (showEnroll = !showEnroll)}>
+		{showEnroll ? '▾' : '▸'} 🔐 Identità firmatarie (autorità piena)
+	</button>
+	{#if showEnroll}
+		<div class="enroll">
+			<p class="hooks-note">
+				Un messaggio <b>firmato</b> con un'identità emessa dalla CA della colony entra con
+				<b>autorità piena</b> (non gated). Qui emetti il cert per una pubkey esterna; la
+				richiesta va poi firmata lato mittente (header <code>X-Hook-Identity/Signature/Timestamp</code>
+				sulla stringa <code>id.timestamp.body</code>).
+			</p>
+			<input placeholder="nome identità (es. github-ci)" bind:value={eName} />
+			<textarea rows="4" placeholder="-----BEGIN PUBLIC KEY-----&#10;… pubkey Ed25519 PEM …&#10;-----END PUBLIC KEY-----" bind:value={ePem}></textarea>
+			<button class="mini primary" on:click={enroll} disabled={enrolling || !eName.trim() || !ePem.trim()}>
+				{enrolling ? '…' : 'Emetti cert'}
+			</button>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -162,4 +201,10 @@
 	.fresh-field code { font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 4px; overflow-wrap: anywhere; flex: 1 1 auto; }
 	.fresh-curl { font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.3); padding: 6px 8px; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 	.hooks-empty { font-size: 12px; color: var(--fg-muted); }
+	.enroll-toggle { margin-top: 10px; background: transparent; border: none; color: var(--fg-muted); font: inherit; font-size: 11px; cursor: pointer; padding: 2px 0; }
+	.enroll-toggle:hover { color: var(--fg); }
+	.enroll { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+	.enroll input, .enroll textarea { background: rgba(0,0,0,.25); border: 1px solid var(--border); color: var(--fg); border-radius: 7px; padding: 6px 8px; font: inherit; font-size: 12px; }
+	.enroll textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
+	.enroll .primary { align-self: flex-start; }
 </style>
