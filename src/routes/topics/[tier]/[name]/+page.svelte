@@ -22,6 +22,7 @@
 		decideJobProposal,
 		apiPost,
 		getChannelEligibility,
+		voteRouting,
 		getChannelFiles,
 		uploadChannelFile,
 		downloadTopicZip,
@@ -331,6 +332,19 @@
 	};
 	let lastRouting: RoutingTrace | null = null;
 	let routingOpen = false;
+	let routingVoted: 'up' | 'down' | null = null;
+	async function voteRoute(verdict: 'up' | 'down') {
+		if (!lastRouting || routingVoted) return;
+		routingVoted = verdict; // ottimistico
+		try {
+			await voteRouting(tier, name, {
+				chosen: lastRouting.chosen, verdict, mode: lastRouting.mode,
+				candidates: lastRouting.candidates ?? []
+			});
+		} catch {
+			routingVoted = null; // ripristina su errore
+		}
+	}
 	const routingReason: Record<string, string> = {
 		tagged: 'richiesto esplicitamente con @menzione',
 		relevance: 'dominio più pertinente al messaggio (embedding)',
@@ -989,6 +1003,7 @@
 			if (ev.type === 'routing_decision') {
 				if (p.tier !== tier || p.name !== name) return;
 				lastRouting = p as unknown as RoutingTrace;
+				routingVoted = null; // nuova decisione → riapri il voto
 				void tick().then(scrollDown);
 				return;
 			}
@@ -1216,6 +1231,14 @@
 						<span class="routing-why">{routingReason[lastRouting.reason] ?? lastRouting.reason}</span>
 						<span class="think-hint">{routingOpen ? 'comprimi' : 'dettagli'}</span>
 					</button>
+					<span class="routing-vote" title="La scelta era corretta?">
+						{#if routingVoted}
+							<span class="rv-done">{routingVoted === 'up' ? '👍 grazie' : '👎 annotato'}</span>
+						{:else}
+							<button type="button" class="rv-btn" on:click|stopPropagation={() => voteRoute('up')} aria-label="Routing corretto">👍</button>
+							<button type="button" class="rv-btn" on:click|stopPropagation={() => voteRoute('down')} aria-label="Routing sbagliato">👎</button>
+						{/if}
+					</span>
 					{#if routingOpen}
 						<div class="routing-body">
 							{#if lastRouting.candidates && lastRouting.candidates.length}
@@ -1633,8 +1656,12 @@
 	.msg:hover .reply-btn { opacity: 1; }
 	.reply-btn:hover { background: rgba(255,107,61,.12); color: var(--accent); }
 	/* blocco Routing (quale agente risponde e perché) */
-	.routing { margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-subtle, rgba(127,127,127,.06)); font-size: 12px; }
-	.routing-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; background: none; border: 0; cursor: pointer; color: var(--fg); text-align: left; }
+	.routing { position: relative; margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-subtle, rgba(127,127,127,.06)); font-size: 12px; }
+	.routing-vote { position: absolute; top: 4px; right: 8px; display: inline-flex; align-items: center; gap: 2px; }
+	.rv-btn { background: none; border: 0; cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 6px; opacity: .75; }
+	.rv-btn:hover { opacity: 1; background: color-mix(in srgb, var(--card-bg) 70%, #000); }
+	.rv-done { font-size: 11px; color: var(--fg-muted); }
+	.routing-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 74px 6px 10px; background: none; border: 0; cursor: pointer; color: var(--fg); text-align: left; }
 	.routing-head .caret { transition: transform .15s; color: var(--fg-muted); }
 	.routing-head .caret.open { transform: rotate(90deg); }
 	.routing-title { font-weight: 500; }

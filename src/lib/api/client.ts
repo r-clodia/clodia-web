@@ -672,6 +672,14 @@ export interface AgentEligibility {
 	warn: boolean;
 	context: AgentContext | null;
 }
+/** Voto 👍/👎 su una decisione di routing (feedback per il tuning). */
+export async function voteRouting(
+	tier: string,
+	name: string,
+	body: { chosen: string; verdict: 'up' | 'down'; mode?: string; candidates?: AgentContext[] | unknown[] }
+): Promise<{ ok: boolean }> {
+	return apiPost('/clodia/routing/vote', { tier, name, ...body });
+}
 export async function getChannelEligibility(
 	tier: string,
 	name: string,
