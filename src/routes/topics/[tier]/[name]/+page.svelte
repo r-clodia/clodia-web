@@ -7,6 +7,7 @@
 	import { renderMarkdown } from '$lib/markdown';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import ArtifactCanvas from '$lib/components/ArtifactCanvas.svelte';
+	import HooksPanel from '$lib/components/HooksPanel.svelte';
 	import {
 		ApiError,
 		getAgents,
@@ -1362,6 +1363,9 @@
 							{/if}
 						</div>
 					</div>
+				{/if}
+				{#if isOwner}
+					<HooksPanel {tier} {name} agents={info?.meta?.participants ?? []} />
 				{/if}
 			</section>
 			<section>

@@ -582,6 +582,39 @@ export async function interruptChannel(
 ): Promise<{ interrupted: string[] }> {
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/interrupt`, {}, opts);
 }
+
+/** Chat Hook: capability per iniettare messaggi in una chat via webhook. */
+export interface ChatHook {
+	id: string;
+	tier: string;
+	name: string;
+	label: string;
+	author: string;
+	trigger_agent: string | null;
+	enabled: boolean;
+	created_by: string;
+	created_at: string;
+	last_used: string | null;
+	last_source: string | null;
+	uses: number;
+}
+export async function listHooks(tier: string, name: string): Promise<{ hooks: ChatHook[] }> {
+	return apiGet(`/clodia/chats/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/hooks`);
+}
+export async function createHook(
+	tier: string,
+	name: string,
+	body: { label: string; trigger_agent?: string | null; author?: string | null }
+): Promise<{ hook: ChatHook; secret: string; path: string; url: string }> {
+	return apiPost(`/clodia/chats/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/hooks`, body);
+}
+export async function revokeHook(id: string): Promise<{ revoked: boolean }> {
+	return apiPost(`/clodia/hooks/${encodeURIComponent(id)}/revoke`, {});
+}
+export async function deleteHook(id: string): Promise<{ deleted: boolean }> {
+	return apiDelete(`/clodia/hooks/${encodeURIComponent(id)}`);
+}
+
 /** Stato del remote di un topic (git/drive). */
 export interface RemoteStatus {
 	type?: 'git' | 'drive' | string;
