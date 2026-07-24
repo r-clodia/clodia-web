@@ -672,13 +672,13 @@ export interface AgentEligibility {
 	warn: boolean;
 	context: AgentContext | null;
 }
-/** Voto 👍/👎 su una decisione di routing (feedback per il tuning). */
-export async function voteRouting(
+/** Correzione del routing: indica l'agente che avresti usato → il router impara. */
+export async function correctRouting(
 	tier: string,
 	name: string,
-	body: { chosen: string; verdict: 'up' | 'down'; mode?: string; candidates?: AgentContext[] | unknown[] }
-): Promise<{ ok: boolean }> {
-	return apiPost('/clodia/routing/vote', { tier, name, ...body });
+	body: { correct_agent: string; chosen?: string }
+): Promise<{ ok: boolean; learned: string }> {
+	return apiPost('/clodia/routing/correct', { tier, name, ...body });
 }
 export async function getChannelEligibility(
 	tier: string,
