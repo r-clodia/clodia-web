@@ -259,16 +259,21 @@
 	// Idoneità degli AeI al tier del topic: name → {eligible, warn}. I non idonei
 	// (clearance/provider sotto il tier) spariscono dalla lista partecipanti e dal
 	// dropdown invito; i super sotto tier restano ma con ⚠️.
-	let eligibility: Record<string, { eligible: boolean; warn: boolean }> = {};
+	type Elig = { eligible: boolean; warn: boolean; context: import('$lib/api/client').AgentContext | null };
+	let eligibility: Record<string, Elig> = {};
 	async function loadEligibility(t: string, n: string) {
 		try {
 			const r = await getChannelEligibility(t, n);
-			const m: Record<string, { eligible: boolean; warn: boolean }> = {};
-			for (const a of r.agents) m[a.name] = { eligible: a.eligible, warn: a.warn };
+			const m: Record<string, Elig> = {};
+			for (const a of r.agents) m[a.name] = { eligible: a.eligible, warn: a.warn, context: a.context };
 			eligibility = m;
 		} catch {
 			/* ignore: in assenza di dati non filtriamo nulla */
 		}
+	}
+	// Colore del "termometro" di contesto: verde <50%, arancione <80%, rosso oltre.
+	function ctxColor(pct: number): string {
+		return pct < 0.5 ? '#4ade80' : pct < 0.8 ? '#f59e0b' : '#ef4444';
 	}
 	let tierWarning: TierWarning | null = null;
 	let draft = '';
@@ -1328,10 +1333,18 @@
 				<h3>Partecipanti</h3>
 				<ul class="parts">
 					{#each shownParticipants as p}
+						{@const c = eligibility[p]?.context}
 						<li>
 							<span class="part-id">
 								<AgentAvatar name={p} size={22} />
-								<span class="part-name">{p}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
+								<span class="part-col">
+									<span class="part-name">{p}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
+									{#if c}
+										<span class="ctx-bar" title={`Contesto ${Math.round(c.pct * 100)}% — ${c.used.toLocaleString()}/${c.window.toLocaleString()} token`}>
+											<span class="ctx-fill" style="width:{Math.min(100, c.pct * 100)}%; background:{ctxColor(c.pct)}"></span>
+										</span>
+									{/if}
+								</span>
 								{#if eligibility[p]?.warn}
 									<span class="part-warn" title="Provider sotto il tier del topic: attiva un provider con SEAL ≥ tier">⚠️</span>
 								{/if}
@@ -1833,7 +1846,11 @@
 	.parts, .files { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
 	.parts li { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12.5px; }
 	.part-id { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+	.part-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 	.part-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	/* Termometro di contesto: occupazione della finestra del modello dell'agente. */
+	.ctx-bar { display: block; width: 84px; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
+	.ctx-fill { display: block; height: 100%; border-radius: 2px; transition: width .3s ease, background .3s ease; }
 	.part-warn { flex-shrink: 0; font-size: 12px; cursor: help; margin-left: 2px; }
 	.parts em { color: var(--fg-muted); font-style: normal; font-size: 11px; }
 	.x { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 15px; }

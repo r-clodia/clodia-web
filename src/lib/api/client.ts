@@ -660,11 +660,17 @@ export async function topicRemote(
 		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/remote`,
 		{ action, ...params }, opts);
 }
+export interface AgentContext {
+	used: number;
+	window: number;
+	pct: number; // 0..1 occupazione della finestra di contesto
+}
 export interface AgentEligibility {
 	name: string;
 	type: string;
 	eligible: boolean;
 	warn: boolean;
+	context: AgentContext | null;
 }
 export async function getChannelEligibility(
 	tier: string,
