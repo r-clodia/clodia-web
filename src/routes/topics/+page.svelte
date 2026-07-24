@@ -582,6 +582,13 @@
 			{@const status = topicStatus(t)}
 			<article class="topic-card" class:expanded={expanded[keyOf(t)]} class:pinned={isPinned(t)}>
 				<div class="topic-actions" aria-label="Azioni topic">
+					<a
+						class="topic-action open-mini"
+						href={`/topics/${t.tier}/${t.name}`}
+						title="Apri il canale"
+						aria-label={`Apri il canale di ${t.title || t.name}`}
+						on:click|stopPropagation
+					>💬</a>
 					{#if !isArchived(t) && canManage(t.owner)}
 						<button
 							type="button"
@@ -943,6 +950,7 @@
 		cursor: pointer;
 	}
 	.topic-action:hover { background: color-mix(in srgb, var(--card-bg) 78%, #000); }
+	.open-mini { font-size: 14px; text-decoration: none; }
 	.archive-btn { font-size: 14px; }
 	.archive-btn:hover { color: var(--danger); }
 	.confirm { display: flex; flex-direction: column; gap: 12px; }
