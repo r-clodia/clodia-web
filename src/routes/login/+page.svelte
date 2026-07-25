@@ -147,8 +147,7 @@
 <div class="login-wrap">
 	<div class="card">
 		<div class="brand">
-			<span class="brand-mark">●</span>
-			<span class="brand-name">Clodia</span>
+			<img src="/clodia-brand-banner.png" alt="Clodia Colony" />
 			<span class="brand-tag">v2</span>
 		</div>
 
@@ -249,18 +248,14 @@
 
 	.brand {
 		display: flex;
-		align-items: baseline;
+		align-items: center;
 		gap: 8px;
 		margin-bottom: 22px;
 	}
-	.brand-mark {
-		color: var(--accent);
-		font-size: 16px;
-		line-height: 1;
-	}
-	.brand-name {
-		font-weight: 600;
-		letter-spacing: 0.02em;
+	.brand img {
+		width: min(300px, calc(100% - 36px));
+		height: auto;
+		border-radius: 8px;
 	}
 	.brand-tag {
 		font-size: 11px;

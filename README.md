@@ -56,7 +56,10 @@ webui-v2/
 ├─ preview/
 │  ├─ gen-previews.mjs            # static HTML preview generator
 │  └─ out/                        # generated previews (git-ignored)
-├─ static/favicon.svg
+├─ static/
+│  ├─ clodia-brand-banner.png    # header/login branding
+│  ├─ clodia-colony-social.png   # Open Graph preview
+│  └─ clodia-icon-192.png        # favicon
 ├─ svelte.config.js             # adapter-static, SPA fallback
 ├─ vite.config.ts               # dev server on :7843
 ├─ tsconfig.json
