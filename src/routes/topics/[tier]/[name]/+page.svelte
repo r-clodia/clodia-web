@@ -397,7 +397,10 @@
 	$: hasLive = liveEntries.length > 0;
 	function visibleMessages(items: ChannelMessage[]): ChannelMessage[] {
 		const resetIdx = items.findLastIndex((m) => m.kind === 'system' && m.text === '__CLODIA_CONTEXT_RESET__');
-		return resetIdx >= 0 ? items.slice(resetIdx + 1) : items.filter((m) => m.kind !== 'system');
+		const current = resetIdx >= 0 ? items.slice(resetIdx + 1) : items;
+		return current.filter(
+			(m) => !(m.kind === 'system' && m.text === '__CLODIA_CONTEXT_RESET__')
+		);
 	}
 	$: shownMessages = visibleMessages(messages);
 
@@ -1175,10 +1178,15 @@
 		<main class="stream-wrap">
 			<div class="stream" bind:this={stream} on:scroll={updateScrollPosition} on:click={handleStreamClick} role="presentation">
 				{#each shownMessages as m, i (m.id)}
-					<div class="msg" class:ai={m.kind === 'ai'} class:mine={m.author === me}>
+					<div class="msg" class:ai={m.kind === 'ai'} class:system={m.kind === 'system'} class:mine={m.author === me}>
 						<div class="msg-head">
-							<AgentAvatar name={m.author} size={22} />
-							<span class="author">{m.author}</span>
+							{#if m.kind === 'system'}
+								<span class="system-icon" aria-hidden="true">ℹ</span>
+								<span class="author">Sistema</span>
+							{:else}
+								<AgentAvatar name={m.author} size={22} />
+								<span class="author">{m.author}</span>
+							{/if}
 							<time class="ts">{fmtTs(m.ts)}</time>
 							{#if m.kind === 'ai'}
 								<button type="button" class="copy-btn" class:copied={copiedMessageId === m.id}
@@ -1188,8 +1196,10 @@
 									{copiedMessageId === m.id ? '✓' : '📋'}
 								</button>
 							{/if}
-							<button type="button" class="reply-btn" title={`Rispondi a ${m.author}`}
-								on:click={() => replyTo(m)}>↩</button>
+							{#if m.kind !== 'system'}
+								<button type="button" class="reply-btn" title={`Rispondi a ${m.author}`}
+									on:click={() => replyTo(m)}>↩</button>
+							{/if}
 						</div>
 						{#if splitQuote(m.text).quote}
 							<blockquote class="quote">{splitQuote(m.text).quote}</blockquote>
@@ -1745,6 +1755,14 @@
 	.msg.mine { align-self: flex-end; }
 	.msg:not(.mine) { align-self: flex-start; }
 	.msg.ai { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+	.msg.system {
+		align-self: center;
+		max-width: 92%;
+		background: color-mix(in srgb, var(--accent) 7%, var(--card-bg));
+		border-style: dashed;
+		color: var(--muted);
+	}
+	.system-icon { font-size: 0.9rem; }
 	.msg-head { display: flex; gap: 7px; align-items: center; }
 	.author { font-weight: 700; font-size: 12.5px; }
 	.reply-btn, .copy-btn { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 5px; opacity: 0; transition: opacity .12s ease, background .12s ease; }
