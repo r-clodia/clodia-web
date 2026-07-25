@@ -87,7 +87,12 @@ export default defineConfig({
 		allowedHosts: ALLOWED_HOSTS,
 		proxy: {
 			'/api': { target: API, changeOrigin: true },
-			'/clodia': { target: API, changeOrigin: true },
+			// Chiave REGEX (non prefisso): matcha solo le path API reali `/clodia/<...>`.
+			// Un prefisso semplice `/clodia` catturerebbe anche gli asset statici del
+			// rebrand (`/clodia-icon-192.png`, `/clodia-brand-banner.png`, …) proxandoli
+			// all'agent-server → 404. Con `^/clodia/` gli asset (senza slash) cadono sul
+			// serving statico, le route API (`/clodia/packs`, `/clodia/channels`, …) no.
+			'^/clodia/': { target: API, changeOrigin: true },
 			// Ingress dei Chat Hook (webhook pubblico, auth = segreto hook): proxato
 			// all'agent-server così l'URL raggiungibile è lo stesso origin della webui.
 			'/hooks': { target: API, changeOrigin: true },
