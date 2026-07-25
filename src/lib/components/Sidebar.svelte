@@ -143,10 +143,10 @@
 	<div class="brand">
 		{#if brandLogo}
 			<img class="brand-logo" src={brandLogo} alt={brandName} />
+			<span class="brand-name">{brandName}</span>
 		{:else}
-			<span class="brand-mark">●</span>
+			<img class="brand-banner" src="/clodia-brand-banner.png" alt="Clodia Colony" />
 		{/if}
-		<span class="brand-name">{brandName}</span>
 		<span class="brand-tag">{APP_VERSION}</span>
 		<button
 			class="collapse-btn"
@@ -294,11 +294,12 @@
 		min-width: 0;
 	}
 	.brand-logo { width: 20px; height: 20px; flex-shrink: 0; object-fit: contain; border-radius: 4px; }
-	.brand-mark {
-		color: var(--accent);
-		font-size: 15px;
-		line-height: 1;
-		flex-shrink: 0;
+	.brand-banner {
+		width: 126px;
+		height: 42px;
+		flex: 0 1 auto;
+		object-fit: contain;
+		border-radius: 5px;
 	}
 	.brand-name {
 		font-weight: 600;
