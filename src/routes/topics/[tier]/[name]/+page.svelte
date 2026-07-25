@@ -461,9 +461,18 @@
 
 	async function rateMessage(m: ChannelMessage, rating: 'thumbs_up' | 'thumbs_down') {
 		if (feedbackBusy) return;
-		let comment = '';
-		if (rating === 'thumbs_down') {
-			comment = window.prompt('Cosa non ha funzionato? (opzionale)', '') ?? '';
+		const question = rating === 'thumbs_up'
+			? 'Cosa è stato utile in questa risposta?'
+			: 'Cosa non ha funzionato in questa risposta?';
+		const answer = window.prompt(
+			`${question}\n\nIl testo sarà conservato verbatim nella memoria dell’agente e riutilizzato nei topic futuri. Non inserire dati riservati.`,
+			''
+		);
+		if (answer === null) return;
+		const comment = answer.trim();
+		if (!comment) {
+			loadErr = 'Inserisci un commento per registrare il feedback.';
+			return;
 		}
 		feedbackBusy = m.id;
 		try {
