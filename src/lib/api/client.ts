@@ -731,13 +731,13 @@ export interface AgentEligibility {
 	warn: boolean;
 	context: AgentContext | null;
 }
-/** Correzione del routing: indica l'agente che avresti usato → il router impara. */
-export async function correctRouting(
+/** Feedback sulla scelta del router, distinto dal feedback sulla risposta. */
+export async function recordRoutingFeedback(
 	tier: string,
 	name: string,
-	body: { correct_agent: string; chosen?: string }
-): Promise<{ ok: boolean; learned: string }> {
-	return apiPost('/clodia/routing/correct', { tier, name, ...body });
+	body: { kind: 'confirm' | 'correction'; chosen: string; correct_agent?: string }
+): Promise<{ ok: boolean; kind: 'confirm' | 'correction'; learned: string }> {
+	return apiPost('/clodia/routing/feedback', { tier, name, ...body });
 }
 export async function getChannelEligibility(
 	tier: string,

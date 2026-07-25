@@ -25,7 +25,7 @@
 		decideJobProposal,
 		apiPost,
 		getChannelEligibility,
-		correctRouting,
+		recordRoutingFeedback,
 		getChannelFiles,
 		uploadChannelFile,
 		downloadTopicZip,
@@ -345,6 +345,7 @@
 	let lastRouting: RoutingTrace | null = null;
 	let routingOpen = false;
 	let routingCorrected: string | null = null;
+	let routingConfirmed = false;
 	// agenti selezionabili per la correzione: gli idonei del topic diversi dallo scelto
 	$: correctOptions = lastRouting
 		? (lastRouting.eligible?.length
@@ -353,12 +354,28 @@
 			).filter((n) => n !== lastRouting?.chosen)
 		: [];
 	async function correctRoute(agent: string) {
-		if (!lastRouting || !agent || routingCorrected) return;
+		if (!lastRouting || !agent || routingCorrected || routingConfirmed) return;
 		routingCorrected = agent; // ottimistico
 		try {
-			await correctRouting(tier, name, { correct_agent: agent, chosen: lastRouting.chosen });
+			await recordRoutingFeedback(tier, name, {
+				kind: 'correction',
+				correct_agent: agent,
+				chosen: lastRouting.chosen
+			});
 		} catch {
 			routingCorrected = null; // ripristina su errore
+		}
+	}
+	async function confirmRoute() {
+		if (!lastRouting || routingCorrected || routingConfirmed) return;
+		routingConfirmed = true; // ottimistico
+		try {
+			await recordRoutingFeedback(tier, name, {
+				kind: 'confirm',
+				chosen: lastRouting.chosen
+			});
+		} catch {
+			routingConfirmed = false;
 		}
 	}
 	const routingReason: Record<string, string> = {
@@ -1124,6 +1141,7 @@
 				// correzione dietro un collapse impediva la raccolta di exemplar.
 				routingOpen = lastRouting.reason === 'fallback-rank';
 				routingCorrected = null; // nuova decisione → riapri la correzione
+				routingConfirmed = false;
 				void tick().then(() => scrollDown());
 				return;
 			}
@@ -1388,7 +1406,7 @@
 					</button>
 					{#if routingOpen}
 						<div class="routing-body">
-							{#if lastRouting.reason === 'fallback-rank' && !routingCorrected}
+							{#if lastRouting.reason === 'fallback-rank' && !routingCorrected && !routingConfirmed}
 								<p class="routing-feedback-prompt">
 									Nessuno specialista ha superato la soglia. Indica chi avrebbe dovuto rispondere:
 									il router userà la correzione per messaggi simili.
@@ -1411,9 +1429,16 @@
 								<div class="routing-meta">Nessun punteggio disponibile (tag esplicito o embedder non raggiungibile).</div>
 							{/if}
 							<div class="routing-correct">
-								{#if routingCorrected}
+								{#if routingConfirmed}
+									<span class="rc-done">✓ scelta confermata: <b>{lastRouting.chosen}</b></span>
+								{:else if routingCorrected}
 									<span class="rc-done">✓ imparato: i messaggi simili andranno a <b>{routingCorrected}</b></span>
-								{:else if correctOptions.length}
+								{:else}
+									<button type="button" class="rc-chip rc-confirm" on:click={confirmRoute}>
+										✓ Scelta corretta
+									</button>
+								{/if}
+								{#if !routingConfirmed && !routingCorrected && correctOptions.length}
 									<span class="rc-label">Avresti usato:</span>
 									{#each correctOptions as a}
 										<button type="button" class="rc-chip" on:click={() => correctRoute(a)}>{a}</button>
@@ -1886,6 +1911,7 @@
 	.rc-label { font-size: 11px; color: var(--fg-muted); }
 	.rc-chip { font: inherit; font-size: 11px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--fg); cursor: pointer; }
 	.rc-chip:hover { border-color: var(--accent); color: var(--accent); }
+	.rc-confirm { border-color: color-mix(in srgb, #22c55e 60%, var(--border)); color: #22c55e; }
 	.rc-done { font-size: 11px; color: #4ade80; }
 	.routing-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; background: none; border: 0; cursor: pointer; color: var(--fg); text-align: left; }
 	.routing-head .caret { transition: transform .15s; color: var(--fg-muted); }
