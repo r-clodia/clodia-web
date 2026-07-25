@@ -512,6 +512,19 @@ export interface ChannelMessage {
 	attachments: string[];
 	ts: string;
 }
+export interface FeedbackLesson {
+	id: string;
+	created_at: string;
+	agent: string;
+	message_id: string;
+	topic: string;
+	rating: 'thumbs_up' | 'thumbs_down';
+	comment?: string;
+	by: string;
+	status: 'pending' | 'learned' | 'error';
+	lesson?: string | null;
+	error?: string;
+}
 export interface ChannelInfo {
 	tier: string;
 	name: string;
@@ -566,6 +579,36 @@ export async function postChannelMessage(
 	opts: RequestOptions = {}
 ): Promise<{ responder: string | null; reply?: string; queued?: boolean; error?: string; note?: string; warning?: import('./types').TierWarning | null }> {
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/post`, { content }, opts);
+}
+export async function sendMessageFeedback(
+	tier: string,
+	name: string,
+	messageId: string,
+	rating: 'thumbs_up' | 'thumbs_down',
+	comment = ''
+): Promise<{ accepted: boolean; feedback: FeedbackLesson }> {
+	return apiPost(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/messages/${encodeURIComponent(messageId)}/feedback`,
+		{ rating, comment }
+	);
+}
+export async function getFeedbackLessons(
+	tier: string,
+	name: string
+): Promise<FeedbackLesson[]> {
+	const data = await apiGet<{ lessons: FeedbackLesson[] }>(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/feedback-lessons`
+	);
+	return data.lessons ?? [];
+}
+export async function deleteFeedbackLesson(
+	tier: string,
+	name: string,
+	lessonId: string
+): Promise<void> {
+	await apiDelete(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/feedback-lessons/${encodeURIComponent(lessonId)}`
+	);
 }
 export async function resetChannelContext(
 	tier: string,

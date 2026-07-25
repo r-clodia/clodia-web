@@ -14,6 +14,9 @@
 		getChannel,
 		getChannelMessages,
 		postChannelMessage,
+		sendMessageFeedback,
+		getFeedbackLessons,
+		deleteFeedbackLesson,
 		resetChannelContext,
 		interruptChannel,
 		topicRemote,
@@ -30,6 +33,7 @@
 		signedChannelFileUrl,
 		type ChannelInfo,
 		type ChannelMessage,
+		type FeedbackLesson,
 		type ChannelFile
 	} from '$lib/api/client';
 	import type { TierWarning } from '$lib/api/types';
@@ -49,6 +53,10 @@
 	let info: ChannelInfo | null = null;
 	let messages: ChannelMessage[] = [];
 	let files: ChannelFile[] = [];
+	let feedbackByMessage: Record<string, 'thumbs_up' | 'thumbs_down'> = {};
+	let feedbackBusy = '';
+	let feedbackLessons: FeedbackLesson[] = [];
+	let feedbackLessonsKey = '';
 	const BOTTOM_THRESHOLD_PX = 64;
 	let isNearBottom = true;
 	let showNewMessages = false;
@@ -451,6 +459,43 @@
 		}, 1600);
 	}
 
+	async function rateMessage(m: ChannelMessage, rating: 'thumbs_up' | 'thumbs_down') {
+		if (feedbackBusy) return;
+		let comment = '';
+		if (rating === 'thumbs_down') {
+			comment = window.prompt('Cosa non ha funzionato? (opzionale)', '') ?? '';
+		}
+		feedbackBusy = m.id;
+		try {
+			await sendMessageFeedback(tier, name, m.id, rating, comment);
+			feedbackByMessage = { ...feedbackByMessage, [m.id]: rating };
+			if (isOwner) {
+				feedbackLessons = await getFeedbackLessons(tier, name);
+			}
+		} catch (e) {
+			loadErr = e instanceof Error ? e.message : String(e);
+		} finally {
+			feedbackBusy = '';
+		}
+	}
+
+	async function loadFeedbackLessons() {
+		try {
+			feedbackLessons = await getFeedbackLessons(tier, name);
+		} catch {
+			feedbackLessons = [];
+		}
+	}
+
+	async function removeFeedbackLesson(id: string) {
+		try {
+			await deleteFeedbackLesson(tier, name, id);
+			feedbackLessons = feedbackLessons.filter((l) => l.id !== id);
+		} catch (e) {
+			loadErr = e instanceof Error ? e.message : String(e);
+		}
+	}
+
 	// Pills di scelta: un agente può includere nel testo un marcatore invisibile
 	//   singola:  <!-- choices=a,b,c -->        → click su una pill → invia subito
 	//   multipla: <!-- choices-multi=a,b,c -->  → pill toggle + pill "✓ Conferma" (=enter)
@@ -627,6 +672,10 @@
 
 	$: me = $session?.principal ?? null;
 	$: isOwner = !!me && info?.meta?.owner === me;
+	$: if (isOwner && tier && name && feedbackLessonsKey !== `${tier}/${name}`) {
+		feedbackLessonsKey = `${tier}/${name}`;
+		void loadFeedbackLessons();
+	}
 	$: participants = info?.meta?.participants ?? [];
 	// Partecipanti mostrati: nascondi i non idonei al tier (eligible=false). I super
 	// sotto tier restano (eligible=true) e li marchiamo con ⚠️ via eligibility[p].warn.
@@ -762,7 +811,12 @@
 		}
 	}
 	async function refreshLive() {
-		await Promise.all([refreshMessages(), loadFiles(true), refreshInfo()]);
+		await Promise.all([
+			refreshMessages(),
+			loadFiles(true),
+			refreshInfo(),
+			isOwner ? loadFeedbackLessons() : Promise.resolve()
+		]);
 	}
 
 	let _lastMsgId = '';
@@ -1205,6 +1259,19 @@
 							<blockquote class="quote">{splitQuote(m.text).quote}</blockquote>
 						{/if}
 						<div class="text md">{@html renderMarkdown(linkifyFiles(stripChoices(splitQuote(m.text).body)))}</div>
+						{#if m.kind === 'ai'}
+							<div class="message-feedback" aria-label="Valuta la risposta">
+								<button type="button" class:on={feedbackByMessage[m.id] === 'thumbs_up'}
+									disabled={feedbackBusy === m.id}
+									title="Risposta utile"
+									on:click={() => rateMessage(m, 'thumbs_up')}>👍</button>
+								<button type="button" class:on={feedbackByMessage[m.id] === 'thumbs_down'}
+									disabled={feedbackBusy === m.id}
+									title="Risposta da migliorare"
+									on:click={() => rateMessage(m, 'thumbs_down')}>👎</button>
+								{#if feedbackBusy === m.id}<span>salvataggio…</span>{/if}
+							</div>
+						{/if}
 						{#if i === shownMessages.length - 1}
 							{@const ch = msgChoices(m.text)}
 							{#if ch}
@@ -1439,6 +1506,34 @@
 
 		<aside class="side" style="flex: 0 0 {sideWidth}px; width: {sideWidth}px;">
 			<ArtifactCanvas {tier} {name} />
+			{#if isOwner}
+				<section>
+					<h3>Lesson learned</h3>
+					{#if feedbackLessons.length}
+						<ul class="feedback-lessons">
+							{#each feedbackLessons as lesson (lesson.id)}
+								<li>
+									<div class="lesson-head">
+										<span>{lesson.rating === 'thumbs_up' ? '👍' : '👎'} {lesson.agent}</span>
+										<button type="button" title="Cancella lesson"
+											on:click={() => removeFeedbackLesson(lesson.id)}>×</button>
+									</div>
+									{#if lesson.status === 'pending'}
+										<span class="muted">Elaborazione…</span>
+									{:else if lesson.status === 'error'}
+										<span class="lesson-error">Errore: {lesson.error ?? 'lesson non generata'}</span>
+									{:else}
+										<p>{lesson.lesson}</p>
+									{/if}
+									{#if lesson.comment}<small>“{lesson.comment}”</small>{/if}
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<p class="muted">Nessuna lesson registrata.</p>
+					{/if}
+				</section>
+			{/if}
 			<section>
 				<h3>Partecipanti</h3>
 				<ul class="parts">
@@ -1764,6 +1859,11 @@
 	}
 	.system-icon { font-size: 0.9rem; }
 	.msg-head { display: flex; gap: 7px; align-items: center; }
+	.message-feedback { display: flex; align-items: center; gap: 3px; margin-top: 5px; min-height: 24px; }
+	.message-feedback button { border: 0; border-radius: 999px; padding: 2px 6px; background: transparent; opacity: .55; cursor: pointer; filter: grayscale(1); }
+	.message-feedback button:hover, .message-feedback button.on { opacity: 1; filter: none; background: rgba(127,127,127,.12); }
+	.message-feedback button:disabled { cursor: wait; }
+	.message-feedback span { margin-left: 4px; color: var(--fg-muted); font-size: 10px; }
 	.author { font-weight: 700; font-size: 12.5px; }
 	.reply-btn, .copy-btn { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 5px; opacity: 0; transition: opacity .12s ease, background .12s ease; }
 	.copy-btn { margin-left: auto; }
@@ -1988,6 +2088,13 @@
 	.side-resizer.active::before { background: var(--accent); width: 3px; }
 	.side h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); margin: 0 0 6px; }
 	.parts, .files { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+	.feedback-lessons { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 7px; }
+	.feedback-lessons li { padding: 7px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--card-bg); font-size: 11px; }
+	.lesson-head { display: flex; justify-content: space-between; gap: 6px; font-weight: 700; }
+	.lesson-head button { border: 0; background: transparent; color: var(--fg-muted); cursor: pointer; font-size: 15px; line-height: 1; }
+	.feedback-lessons p { margin: 5px 0 0; line-height: 1.4; white-space: pre-wrap; }
+	.feedback-lessons small { display: block; margin-top: 5px; color: var(--fg-muted); font-style: italic; }
+	.lesson-error { color: var(--danger); }
 	.parts li { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12.5px; }
 	.part-id { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 	.part-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
