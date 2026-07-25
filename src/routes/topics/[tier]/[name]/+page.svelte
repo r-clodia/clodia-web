@@ -424,6 +424,30 @@
 		replyingTo = null;
 	}
 
+	let copiedMessageId = '';
+	let copyResetTimer: ReturnType<typeof setTimeout> | null = null;
+	async function copyMessageMarkdown(m: ChannelMessage) {
+		try {
+			await navigator.clipboard.writeText(m.text);
+		} catch {
+			// Fallback per browser/contesti che non espongono Clipboard API.
+			const area = document.createElement('textarea');
+			area.value = m.text;
+			area.style.position = 'fixed';
+			area.style.opacity = '0';
+			document.body.appendChild(area);
+			area.select();
+			document.execCommand('copy');
+			area.remove();
+		}
+		copiedMessageId = m.id;
+		if (copyResetTimer) clearTimeout(copyResetTimer);
+		copyResetTimer = setTimeout(() => {
+			if (copiedMessageId === m.id) copiedMessageId = '';
+			copyResetTimer = null;
+		}, 1600);
+	}
+
 	// Pills di scelta: un agente può includere nel testo un marcatore invisibile
 	//   singola:  <!-- choices=a,b,c -->        → click su una pill → invia subito
 	//   multipla: <!-- choices-multi=a,b,c -->  → pill toggle + pill "✓ Conferma" (=enter)
@@ -1062,6 +1086,7 @@
 		offEvt?.();
 		stopStream?.();
 		for (const t of Object.values(typingTimers)) clearTimeout(t);
+		if (copyResetTimer) clearTimeout(copyResetTimer);
 	});
 
 	function fmtTs(ts: string): string {
@@ -1151,6 +1176,14 @@
 							<AgentAvatar name={m.author} size={22} />
 							<span class="author">{m.author}</span>
 							<time class="ts">{fmtTs(m.ts)}</time>
+							{#if m.kind === 'ai'}
+								<button type="button" class="copy-btn" class:copied={copiedMessageId === m.id}
+									title={copiedMessageId === m.id ? 'Markdown copiato' : 'Copia markdown'}
+									aria-label={copiedMessageId === m.id ? 'Markdown copiato' : 'Copia markdown'}
+									on:click={() => copyMessageMarkdown(m)}>
+									{copiedMessageId === m.id ? '✓' : '📋'}
+								</button>
+							{/if}
 							<button type="button" class="reply-btn" title={`Rispondi a ${m.author}`}
 								on:click={() => replyTo(m)}>↩</button>
 						</div>
@@ -1704,9 +1737,10 @@
 	.msg.ai { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 	.msg-head { display: flex; gap: 7px; align-items: center; }
 	.author { font-weight: 700; font-size: 12.5px; }
-	.reply-btn { margin-left: 4px; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 5px; opacity: 0; transition: opacity .12s ease, background .12s ease; }
-	.msg:hover .reply-btn { opacity: 1; }
-	.reply-btn:hover { background: rgba(255,107,61,.12); color: var(--accent); }
+	.reply-btn, .copy-btn { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 5px; opacity: 0; transition: opacity .12s ease, background .12s ease; }
+	.copy-btn { margin-left: auto; }
+	.msg:hover .reply-btn, .msg:hover .copy-btn, .copy-btn.copied { opacity: 1; }
+	.reply-btn:hover, .copy-btn:hover { background: rgba(255,107,61,.12); color: var(--accent); }
 	/* blocco Routing (quale agente risponde e perché) */
 	.routing { margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-subtle, rgba(127,127,127,.06)); font-size: 12px; }
 	.routing-correct { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
