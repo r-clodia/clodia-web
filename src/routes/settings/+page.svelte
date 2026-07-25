@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DelegationsPanel from '$lib/components/DelegationsPanel.svelte';
 	import { onMount } from 'svelte';
 	import QRCode from 'qrcode';
 	import {
@@ -181,6 +182,10 @@
 			<button class="btn" on:click={doTest} disabled={testing || !status?.configured}>{testing ? 'Test…' : 'Restore-test'}</button>
 		</div>
 	{/if}
+</section>
+
+<section class="card">
+	<DelegationsPanel />
 </section>
 
 {#if $instanceProfile.features.pwa}

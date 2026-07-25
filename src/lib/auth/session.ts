@@ -101,6 +101,33 @@ export async function signToken(
 	return { token: `${PREFIX}.${body}.${b64urlBytes(sig)}`, exp };
 }
 
+/** Firma una DELEGA (async·A) con la masterkey salvata ("Ricordami"): stessa firma
+ *  del session token ma payload typ="delegation" + scope. Il gateway la verifica
+ *  (firma vs cert CA) e la usa per sbloccare i gate che coprono lo scope. */
+export async function signDelegation(
+	scope: { verb: string; agent?: string; job?: number },
+	ttlSeconds: number
+): Promise<string> {
+	if (!globalThis.crypto?.subtle) {
+		throw new Error('WebCrypto non disponibile (serve https o localhost)');
+	}
+	if (typeof localStorage === 'undefined') throw new Error('storage non disponibile');
+	const raw = localStorage.getItem(LS_REMEMBER);
+	if (!raw) {
+		throw new Error('Attiva "Ricordami" al login: serve la masterkey per firmare la delega.');
+	}
+	const { principal, mk } = JSON.parse(raw) as { principal: string; mk: string };
+	const pkcs8 = bytesFromB64(extractKeyB64(mk));
+	const key = await crypto.subtle.importKey(
+		'pkcs8', pkcs8 as unknown as BufferSource, { name: 'Ed25519' }, false, ['sign']);
+	const now = Math.floor(Date.now() / 1000);
+	const payload = { agent: principal, typ: 'delegation', scope, iat: now, exp: now + ttlSeconds, aud: AUD };
+	const body = b64urlStr(JSON.stringify(payload));
+	const sig = await crypto.subtle.sign(
+		{ name: 'Ed25519' }, key, new TextEncoder().encode(body) as unknown as BufferSource);
+	return `${PREFIX}.${body}.${b64urlBytes(sig)}`;
+}
+
 /** Chiede al server CHI è il possessore di questa chiave (identificazione dalla
  *  firma: prova i cert dei principal umani). 401 se nessuno combacia. */
 async function whoami(token: string): Promise<{ principal: string }> {

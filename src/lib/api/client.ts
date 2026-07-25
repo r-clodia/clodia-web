@@ -592,6 +592,22 @@ export interface HookEvent {
 	principal: string | null;
 	note: string | null;
 }
+/** Delega permanente (async·A): sblocca i gate che coprono lo scope. */
+export interface Delegation {
+	principal: string;
+	scope: { verb: string; agent?: string; job?: number };
+	exp: number;
+}
+export async function listDelegations(): Promise<{ delegations: Delegation[] }> {
+	return apiGet('/clodia/delegations');
+}
+export async function registerDelegation(token: string): Promise<{ ok: boolean; principal: string; scope: unknown; exp: number }> {
+	return apiPost('/clodia/delegations', { token });
+}
+export async function revokeDelegation(principal: string, verb: string): Promise<{ revoked: boolean }> {
+	return apiPost('/clodia/delegations/revoke', { principal, verb });
+}
+
 /** Chat Hook: capability per iniettare messaggi in una chat via webhook. */
 export interface ChatHook {
 	id: string;
