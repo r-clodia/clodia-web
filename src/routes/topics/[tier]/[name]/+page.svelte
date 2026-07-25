@@ -49,6 +49,9 @@
 	let info: ChannelInfo | null = null;
 	let messages: ChannelMessage[] = [];
 	let files: ChannelFile[] = [];
+	const BOTTOM_THRESHOLD_PX = 64;
+	let isNearBottom = true;
+	let showNewMessages = false;
 	// Browser file navigabile: subpath corrente relativo a files/ ('' = radice).
 	let filePath = '';
 	let filesLoading = false;
@@ -700,6 +703,7 @@
 				getChannelMessages(t, n),
 				getChannelFiles(t, n)
 			]);
+			_lastMsgId = messages[messages.length - 1]?.id ?? '';
 			// turno in corso al caricamento (re-mount a metà turno) → mostra l'indicatore
 			workingResponders = info?.active_responders ?? [];
 			// Prima si renderizza lo stream (initialLoading=false), POI si scrolla:
@@ -737,6 +741,8 @@
 	let _lastMsgId = '';
 	async function refreshMessages() {
 		try {
+			const wasNearBottom = isNearBottom;
+			const previousLastId = _lastMsgId;
 			messages = await getChannelMessages(tier, name);
 			// se l'ultimo messaggio è di un agente, smetti di mostrarlo "scrivendo"
 			const last = messages[messages.length - 1];
@@ -750,13 +756,28 @@
 				// l'attesa dei subagent il live resta visibile.
 				if (last.kind === 'ai') resetLive(last.author);
 			}
+			if (last && previousLastId && last.id !== previousLastId) {
+				await tick();
+				if (wasNearBottom) scrollDown();
+				else showNewMessages = true;
+			}
 		} catch {
 			/* ignore poll errors */
 		}
 	}
 
-	function scrollDown() {
-		if (stream) stream.scrollTop = stream.scrollHeight;
+	function updateScrollPosition() {
+		if (!stream) return;
+		isNearBottom =
+			stream.scrollHeight - stream.scrollTop - stream.clientHeight <= BOTTOM_THRESHOLD_PX;
+		if (isNearBottom) showNewMessages = false;
+	}
+
+	function scrollDown(smooth = false) {
+		if (!stream) return;
+		stream.scrollTo({ top: stream.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+		isNearBottom = true;
+		showNewMessages = false;
 	}
 
 	async function send() {
@@ -1002,14 +1023,14 @@
 			}
 			if (ev.type === 'channel_message') {
 				if (p.tier !== tier || p.name !== name) return;
-				void refreshMessages().then(() => tick().then(scrollDown));
+				void refreshMessages();
 				return;
 			}
 			if (ev.type === 'routing_decision') {
 				if (p.tier !== tier || p.name !== name) return;
 				lastRouting = p as unknown as RoutingTrace;
 				routingCorrected = null; // nuova decisione → riapri la correzione
-				void tick().then(scrollDown);
+				void tick().then(() => scrollDown());
 				return;
 			}
 			// eventi del turno del risponditore di QUESTO canale
@@ -1123,7 +1144,7 @@
 	{:else}
 	<div class="body">
 		<main class="stream-wrap">
-			<div class="stream" bind:this={stream} on:click={handleStreamClick} role="presentation">
+			<div class="stream" bind:this={stream} on:scroll={updateScrollPosition} on:click={handleStreamClick} role="presentation">
 				{#each shownMessages as m, i (m.id)}
 					<div class="msg" class:ai={m.kind === 'ai'} class:mine={m.author === me}>
 						<div class="msg-head">
@@ -1227,6 +1248,12 @@
 					<p class="empty">Nessun messaggio. Scrivi qualcosa per iniziare.</p>
 				{/each}
 			</div>
+			{#if showNewMessages}
+				<button type="button" class="new-messages" on:click={() => scrollDown(true)}
+					aria-label="Vai ai nuovi messaggi">
+					↓ Nuovi messaggi
+				</button>
+			{/if}
 			{#if lastRouting}
 				<div class="routing" class:open={routingOpen}>
 					<button type="button" class="routing-head" on:click={() => (routingOpen = !routingOpen)}
@@ -1649,8 +1676,26 @@
 	.initial-spinner { width: 28px; height: 28px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .75s linear infinite; flex: none; }
 	@keyframes spin { to { transform: rotate(360deg); } }
 	.body { display: flex; gap: 16px; flex: 1 1 auto; min-height: 0; margin-top: 12px; }
-	.stream-wrap { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+	.stream-wrap { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
 	.stream { flex: 1 1 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px; }
+	.new-messages {
+		position: absolute;
+		left: 50%;
+		bottom: 64px;
+		z-index: 24;
+		transform: translateX(-50%);
+		border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+		border-radius: 999px;
+		padding: 7px 14px;
+		background: var(--card-bg);
+		color: var(--fg);
+		font: inherit;
+		font-size: 12px;
+		font-weight: 700;
+		box-shadow: 0 6px 22px rgba(0,0,0,.35);
+		cursor: pointer;
+	}
+	.new-messages:hover { border-color: var(--accent); color: var(--accent); }
 	.msg { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; max-width: 80%; }
 	/* Allineamento per AUTORE: i miei a destra, la controparte a sinistra
 	   (vale per DM e canali di gruppo). Il bordo accent resta segnale per gli AI. */
