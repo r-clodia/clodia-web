@@ -1029,6 +1029,10 @@
 			if (ev.type === 'routing_decision') {
 				if (p.tier !== tier || p.name !== name) return;
 				lastRouting = p as unknown as RoutingTrace;
+				// Il fallback per rango è proprio il caso in cui il router ha
+				// bisogno di supervisione. Apri subito il pannello: nascondere la
+				// correzione dietro un collapse impediva la raccolta di exemplar.
+				routingOpen = lastRouting.reason === 'fallback-rank';
 				routingCorrected = null; // nuova decisione → riapri la correzione
 				void tick().then(() => scrollDown());
 				return;
@@ -1255,7 +1259,7 @@
 				</button>
 			{/if}
 			{#if lastRouting}
-				<div class="routing" class:open={routingOpen}>
+				<div class="routing" class:open={routingOpen} class:fallback={lastRouting.reason === 'fallback-rank'}>
 					<button type="button" class="routing-head" on:click={() => (routingOpen = !routingOpen)}
 						aria-expanded={routingOpen}>
 						<span class="caret" class:open={routingOpen}>▸</span>
@@ -1265,6 +1269,12 @@
 					</button>
 					{#if routingOpen}
 						<div class="routing-body">
+							{#if lastRouting.reason === 'fallback-rank' && !routingCorrected}
+								<p class="routing-feedback-prompt">
+									Nessuno specialista ha superato la soglia. Indica chi avrebbe dovuto rispondere:
+									il router userà la correzione per messaggi simili.
+								</p>
+							{/if}
 							{#if lastRouting.candidates && lastRouting.candidates.length}
 								<div class="routing-meta">
 									Punteggi di pertinenza (soglia {lastRouting.threshold ?? '—'}, margine {lastRouting.margin ?? '—'}):
@@ -1709,6 +1719,8 @@
 	.reply-btn:hover { background: rgba(255,107,61,.12); color: var(--accent); }
 	/* blocco Routing (quale agente risponde e perché) */
 	.routing { margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-subtle, rgba(127,127,127,.06)); font-size: 12px; }
+	.routing.fallback { border-color: color-mix(in srgb, #f59e0b 65%, var(--border)); background: color-mix(in srgb, #f59e0b 7%, var(--card-bg)); }
+	.routing-feedback-prompt { margin: 0 0 8px; padding: 7px 9px; border-radius: 6px; background: color-mix(in srgb, #f59e0b 12%, transparent); color: var(--fg); line-height: 1.4; }
 	.routing-correct { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 	.rc-label { font-size: 11px; color: var(--fg-muted); }
 	.rc-chip { font: inherit; font-size: 11px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--fg); cursor: pointer; }
