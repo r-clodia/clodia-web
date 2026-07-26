@@ -409,6 +409,13 @@
 	function updateLive(agent: string, patch: Partial<LiveAgentState>) {
 		liveAgents = { ...liveAgents, [agent]: { ...liveFor(agent), ...patch } };
 	}
+	function keepScrolledToEnd(node: HTMLElement, _value: string) {
+		const scroll = () => requestAnimationFrame(() => {
+			node.scrollTop = node.scrollHeight;
+		});
+		scroll();
+		return { update(_next: string) { scroll(); } };
+	}
 	function resetLive(agent?: string) {
 		if (!agent) {
 			liveAgents = {};
@@ -1477,9 +1484,14 @@
 							{#each live.tools as t}<li>{t}</li>{/each}
 						</ul>
 					{/if}
-					<!-- Risposta in streaming: sempre visibile -->
+					<!-- Risposta in streaming: finestra stabile di tre righe, ancorata alla coda. -->
 					{#if live.reply}
-						<div class="think-reply md">{@html renderMarkdown(stripChoices(live.reply))}</div>
+						<section class="streaming-window" aria-live="polite" aria-label={`Risposta in arrivo da ${agent}`}>
+							<div class="streaming-head">Risposta in arrivo · {agent}</div>
+							<div class="streaming-body md" use:keepScrolledToEnd={live.reply}>
+								{@html renderMarkdown(stripChoices(live.reply))}
+							</div>
+						</section>
 					{/if}
 				{/each}
 			{/if}
@@ -1904,7 +1916,7 @@
 	.msg:hover .reply-btn, .msg:hover .copy-btn, .copy-btn.copied { opacity: 1; }
 	.reply-btn:hover, .copy-btn:hover { background: rgba(255,107,61,.12); color: var(--accent); }
 	/* blocco Routing (quale agente risponde e perché) */
-	.routing { margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-subtle, rgba(127,127,127,.06)); font-size: 12px; }
+	.routing { order: 5; margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-subtle, rgba(127,127,127,.06)); font-size: 12px; }
 	.routing.fallback { border-color: color-mix(in srgb, #f59e0b 65%, var(--border)); background: color-mix(in srgb, #f59e0b 7%, var(--card-bg)); }
 	.routing-feedback-prompt { margin: 0 0 8px; padding: 7px 9px; border-radius: 6px; background: color-mix(in srgb, #f59e0b 12%, transparent); color: var(--fg); line-height: 1.4; }
 	.routing-correct { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
@@ -1932,7 +1944,7 @@
 	.rs-val { text-align: right; font-variant-numeric: tabular-nums; color: var(--fg-muted); }
 
 	/* "sta scrivendo…" */
-	.typing { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12px; color: var(--fg-muted); font-style: italic; }
+	.typing { order: 2; display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12px; color: var(--fg-muted); font-style: italic; }
 	.typing-dots { display: inline-flex; gap: 3px; }
 	.typing-dots span { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); opacity: .4; animation: td 1s infinite; }
 	.typing-dots span:nth-child(2) { animation-delay: .2s; }
@@ -1940,7 +1952,7 @@
 	@keyframes td { 0%,60%,100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 
 	/* Pannello "Ragionamento" live (comprimibile, di default chiuso) */
-	.think { margin: 2px 8px 8px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(255,255,255,.02); }
+	.think { order: 3; margin: 2px 8px 8px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(255,255,255,.02); }
 	.think.open { border-style: solid; }
 	.think-head { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font: inherit; font-size: 11.5px; padding: 7px 10px; }
 	.think-head:hover { color: var(--fg); }
@@ -1954,9 +1966,13 @@
 	.think-tools { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
 	.think-tools li { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	/* Barra tool/subagent sempre visibile (indipendente dal collapse del ragionamento) */
-	.live-tools { margin: 6px 0 0; padding: 6px 10px; list-style: none; display: flex; flex-direction: column; gap: 2px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; }
+	.live-tools { order: 4; margin: 6px 0 0; padding: 6px 10px; list-style: none; display: flex; flex-direction: column; gap: 2px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; }
 	.live-tools li { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.think-reply { font-size: 13px; border-top: 1px solid var(--border); padding-top: 8px; }
+	.streaming-window { order: 1; flex: none; min-width: 0; margin: 6px 8px 4px; border: 1px solid var(--border); border-radius: 8px; background: var(--card-bg); overflow: hidden; }
+	.streaming-head { padding: 5px 9px; border-bottom: 1px solid var(--border); color: var(--fg-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+	.streaming-body { height: calc(4.35em + 10px); overflow-x: hidden; overflow-y: auto; padding: 5px 9px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; scrollbar-width: thin; }
+	.streaming-body :global(p) { margin: 0 0 .35em; }
+	.streaming-body :global(p:last-child) { margin-bottom: 0; }
 	.ts { font-size: 10.5px; color: var(--fg-muted); }
 	.text { font-size: 13.5px; margin-top: 2px; }
 	/* markdown renderizzato nei messaggi */
@@ -2006,7 +2022,7 @@
 	.atts { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
 	.att, .files a { font-size: 12px; color: var(--accent); text-decoration: none; }
 	.empty { color: var(--fg-muted); font-size: 13px; text-align: center; margin-top: 24px; }
-	.composer { position: relative; flex: none; display: flex; align-items: flex-end; gap: 8px; padding-top: 8px; border-radius: 8px; }
+	.composer { order: 6; position: relative; flex: none; display: flex; align-items: flex-end; gap: 8px; padding-top: 8px; border-radius: 8px; }
 	.composer.drag { outline: 2px dashed var(--accent); outline-offset: 3px; }
 	.drop-hint { position: absolute; inset: 8px 0 0; z-index: 25; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent) 12%, var(--card-bg)); border-radius: 8px; font-size: 13px; font-weight: 700; color: var(--accent); pointer-events: none; }
 	.composer textarea { flex: 1 1 auto; background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 8px; resize: none; }
