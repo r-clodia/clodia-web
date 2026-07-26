@@ -1136,10 +1136,6 @@
 			if (ev.type === 'routing_decision') {
 				if (p.tier !== tier || p.name !== name) return;
 				lastRouting = p as unknown as RoutingTrace;
-				// Il fallback per rango è proprio il caso in cui il router ha
-				// bisogno di supervisione. Apri subito il pannello: nascondere la
-				// correzione dietro un collapse impediva la raccolta di exemplar.
-				routingOpen = lastRouting.reason === 'fallback-rank';
 				routingCorrected = null; // nuova decisione → riapri la correzione
 				routingConfirmed = false;
 				void tick().then(() => scrollDown());
