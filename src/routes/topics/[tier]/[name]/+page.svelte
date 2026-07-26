@@ -482,7 +482,7 @@
 			? 'Cosa è stato utile in questa risposta?'
 			: 'Cosa non ha funzionato in questa risposta?';
 		const answer = window.prompt(
-			`${question}\n\nIl testo sarà conservato verbatim nella memoria dell’agente e riutilizzato nei topic futuri. Non inserire dati riservati.`,
+			`${question}\n\nDal tuo commento l’agente ricava una lezione astratta (un metodo da ripetere o evitare), depurata dai dati, riusata nei topic futuri. Il testo grezzo è conservato per audit: evita comunque dati riservati.`,
 			''
 		);
 		if (answer === null) return;
