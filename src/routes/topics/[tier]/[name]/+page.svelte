@@ -1563,13 +1563,16 @@
 			on:pointerdown={onSideResizeStart}
 		></div>
 
-		<aside class="side" style="flex: 0 0 {sideWidth}px; width: {sideWidth}px;">
-			<ArtifactCanvas {tier} {name} />
-			{#if isOwner}
-				<section>
-					<h3>Lesson learned</h3>
-					{#if feedbackLessons.length}
-						<ul class="feedback-lessons">
+			<aside class="side" style="flex: 0 0 {sideWidth}px; width: {sideWidth}px;">
+				<ArtifactCanvas {tier} {name} />
+				{#if isOwner}
+					<details class="side-section" open>
+						<summary>
+							<span>Lessons</span>
+							<span class="section-count">{feedbackLessons.length}</span>
+						</summary>
+						{#if feedbackLessons.length}
+							<ul class="feedback-lessons">
 							{#each feedbackLessons as lesson (lesson.id)}
 								<li>
 									<div class="lesson-head">
@@ -1588,14 +1591,17 @@
 								</li>
 							{/each}
 						</ul>
-					{:else}
-						<p class="muted">Nessuna lesson registrata.</p>
-					{/if}
-				</section>
-			{/if}
-			<section>
-				<h3>Partecipanti</h3>
-				<ul class="parts">
+						{:else}
+							<p class="muted">Nessuna lesson registrata.</p>
+						{/if}
+					</details>
+				{/if}
+				<details class="side-section" open>
+					<summary>
+						<span>Partecipanti</span>
+						<span class="section-count">{shownParticipants.length}</span>
+					</summary>
+					<ul class="parts">
 					{#each shownParticipants as p}
 						{@const c = eligibility[p]?.context}
 						<li>
@@ -1639,23 +1645,29 @@
 								</ul>
 							{/if}
 						</div>
-					</div>
-				{/if}
+						</div>
+					{/if}
+				</details>
 				{#if isOwner}
-					<HooksPanel {tier} {name} agents={info?.meta?.participants ?? []} />
+					<details class="side-section webhook-section" open>
+						<summary>Webhook</summary>
+						<HooksPanel {tier} {name} agents={info?.meta?.participants ?? []} showHeading={false} />
+					</details>
 				{/if}
-			</section>
-			<section>
-				<h3 class="sec-head">
-					<span>File</span>
+				<details class="side-section" open>
+					<summary>
+						<span>File</span>
+						<span class="section-count">{files.length}</span>
+					</summary>
 					{#if remoteMeta}{@const ru = remoteUrl()}
 						{#if ru}
-							<a class="remote-goto" href={ru} target="_blank" rel="noopener"
-								title={`Apri il remote (${remoteMeta.type})${remoteName ? ` — ${remoteName}` : ''}`}>{@html remoteIconSvg()} {remoteName || `apri ${remoteMeta.type}`}</a>
+							<div class="file-remote">
+								<a class="remote-goto" href={ru} target="_blank" rel="noopener"
+									title={`Apri il remote (${remoteMeta.type})${remoteName ? ` — ${remoteName}` : ''}`}>{@html remoteIconSvg()} {remoteName || `apri ${remoteMeta.type}`}</a>
+							</div>
 						{/if}
 					{/if}
-				</h3>
-				<nav class="crumbs" aria-label="Percorso file">
+					<nav class="crumbs" aria-label="Percorso file">
 					<button type="button" class="crumb" on:click={() => gotoCrumb(-1)}>/</button>
 					{#each crumbs as seg, i}
 						<span class="crumb-sep">/</span>
@@ -1705,14 +1717,17 @@
 					{:else}
 						<li class="muted">{filesLoading ? 'caricamento…' : 'cartella vuota'}</li>
 					{/each}
-				</ul>
-				<p class="files-hint">Carica i file dall'input della chat: 📎, trascinamento o incolla (⌘/Ctrl+V) di immagini.</p>
-			</section>
+					</ul>
+					<p class="files-hint">Carica i file dall'input della chat: 📎, trascinamento o incolla (⌘/Ctrl+V) di immagini.</p>
+				</details>
 
-			{#if remoteMeta && syncGroups.length}
-				<section class="sync-status" aria-label="Sync status">
-					<h3>Sync status</h3>
-					{#each syncGroups as g (g.state)}
+				{#if remoteMeta && syncGroups.length}
+					<details class="side-section sync-status" open>
+						<summary>
+							<span>Sync status</span>
+							<span class="section-count">{syncGroups.reduce((total, group) => total + group.paths.length, 0)}</span>
+						</summary>
+						{#each syncGroups as g (g.state)}
 						<div class="ss-group">
 							<div class="ss-title st-{g.state}">
 								<span class="ss-dot st-{g.state}"></span>{g.label}
@@ -1740,14 +1755,17 @@
 									</li>
 								{/each}
 							</ul>
-						</div>
-					{/each}
-				</section>
-			{/if}
+							</div>
+						{/each}
+					</details>
+				{/if}
 
-			<section class="remote-panel">
-				<h3>Remote</h3>
-				{#if !remoteMeta}
+				<details class="side-section remote-panel" open>
+					<summary>
+						<span>Remote</span>
+						{#if remoteMeta}<span class="section-status">{remoteMeta.type}</span>{/if}
+					</summary>
+					{#if !remoteMeta}
 					<p class="muted">Storage locale. Attiva un remote per sincronizzare i file, o esporta uno ZIP.</p>
 					{#if remoteForm}
 						<form class="remote-form" on:submit|preventDefault={submitRemoteForm}>
@@ -1804,10 +1822,10 @@
 					{/if}
 					<p class="remote-filter-hint">
 						Filtra la sync con <code>remoteinclude</code> / <code>remoteignore</code> nella root dei file (stile <code>.gitignore</code>).
-					</p>
-				{/if}
-			</section>
-		</aside>
+						</p>
+					{/if}
+				</details>
+			</aside>
 	</div>
 	{/if}
 </div>
@@ -2082,8 +2100,7 @@
 	.files a.st-none { color: var(--accent); }
 
 	/* Sync status — l'equivalente del git status sotto la vista file */
-	.sync-status { margin-top: 12px; }
-	.sync-status h3 { margin: 0 0 6px; }
+	.sync-status { margin-top: 0; }
 	.ss-group { margin: 0 0 8px; }
 	.ss-title { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700;
 		text-transform: uppercase; letter-spacing: .05em; padding: 2px 0; }
@@ -2096,7 +2113,7 @@
 		text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
 	.artifact-open { margin-left: 4px; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; padding: 0 3px; border-radius: 5px; }
 	.artifact-open:hover { color: var(--accent); background: rgba(255,107,61,.12); }
-	.remote-panel { margin-top: 14px; }
+	.remote-panel { margin-top: 0; }
 	.sync-report { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 8px 0 0; }
 	.sr-action { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-muted); }
 	.sr-chip { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: rgba(120,144,156,.16); color: var(--fg-muted); white-space: nowrap; }
@@ -2128,7 +2145,36 @@
 	/* Larghezza via inline style (resize); flex:0 0 evita che venga compressa.
 	   height:100% + min-height:0 → occupa tutta l'altezza del .body e scrolla
 	   internamente invece di allungare la pagina. */
-	.side { flex: 0 0 220px; width: 220px; height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
+	.side { flex: 0 0 220px; width: 220px; height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+	.side-section { flex: none; min-width: 0; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+	.side-section > summary {
+		min-height: 30px;
+		padding: 6px 2px;
+		color: var(--fg-muted);
+		cursor: pointer;
+		font-size: 11px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: .06em;
+		user-select: none;
+	}
+	.side-section > summary::marker { color: var(--fg-muted); }
+	.side-section > summary:hover { color: var(--fg); }
+	.side-section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+	.side-section[open] > summary { margin-bottom: 6px; }
+	.section-count, .section-status {
+		float: right;
+		margin-left: 6px;
+		padding: 1px 6px;
+		border-radius: 999px;
+		background: rgba(127,127,127,.14);
+		color: var(--fg-muted);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0;
+		text-transform: none;
+	}
+	.file-remote { display: flex; justify-content: flex-end; min-width: 0; margin: -2px 0 6px; }
 
 	/* Divisore trascinabile tra chat e pannello destro. Sta nel gap del .body;
 	   l'area cliccabile è più larga della barretta visibile (::before). */
@@ -2152,7 +2198,6 @@
 	}
 	.side-resizer:hover::before,
 	.side-resizer.active::before { background: var(--accent); width: 3px; }
-	.side h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); margin: 0 0 6px; }
 	.parts, .files { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
 	.feedback-lessons { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 7px; }
 	.feedback-lessons li { padding: 7px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--card-bg); font-size: 11px; }
