@@ -409,6 +409,24 @@
 	function updateLive(agent: string, patch: Partial<LiveAgentState>) {
 		liveAgents = { ...liveAgents, [agent]: { ...liveFor(agent), ...patch } };
 	}
+	function keepScrolledToEnd(node: HTMLElement, _value: string) {
+		let frame = 0;
+		const scroll = () => {
+			cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(() => {
+				node.scrollTop = node.scrollHeight;
+			});
+		};
+		scroll();
+		return {
+			update(_next: string) {
+				scroll();
+			},
+			destroy() {
+				cancelAnimationFrame(frame);
+			}
+		};
+	}
 	function resetLive(agent?: string) {
 		if (!agent) {
 			liveAgents = {};
@@ -1395,6 +1413,56 @@
 					↓ Nuovi messaggi
 				</button>
 			{/if}
+			{#if hasLive || typingLabel}
+				<!-- La risposta parziale è separata dagli altri stati live: la sua
+				     finestra resta alta tre righe mentre i token continuano ad arrivare. -->
+				{#each liveEntries as [agent, live] (agent)}
+					{#if live.reply}
+						<section class="streaming-window" aria-label={`Risposta in arrivo da ${agent}`}>
+							<header class="streaming-head">
+								<span class="streaming-dot" aria-hidden="true"></span>
+								<span>Risposta in arrivo · {agent}</span>
+							</header>
+							<div class="streaming-body md" aria-live="polite" aria-atomic="false"
+								use:keepScrolledToEnd={live.reply}>
+								{@html renderMarkdown(stripChoices(live.reply))}
+							</div>
+						</section>
+					{/if}
+				{/each}
+				{#if typingLabel}
+					<div class="typing" aria-live="polite">
+						<span class="typing-dots"><span></span><span></span><span></span></span>
+						{typingLabel}
+					</div>
+				{/if}
+				<!-- Ragionamento: collassabile (default chiuso), distinto dallo streaming. -->
+				{#each liveEntries as [agent, live] (agent)}
+					<div class="think" class:open={thinkOpen}>
+						<button type="button" class="think-head" on:click={toggleThink}
+							aria-expanded={thinkOpen}>
+							<span class="caret" class:open={thinkOpen}>▸</span>
+							<span class="think-title">Ragionamento · {agent}</span>
+							<span class="think-live">● live</span>
+							<span class="think-hint">{thinkOpen ? 'comprimi' : 'espandi'}</span>
+						</button>
+						{#if thinkOpen}
+							<div class="think-body"><pre class="think-text">{live.think || '…'}</pre></div>
+						{/if}
+					</div>
+				{/each}
+				<!-- Tool e subagent in uso: sempre visibili sotto il ragionamento. -->
+				{#each liveEntries as [agent, live] (agent)}
+					{#if live.tools.length}
+						<div class="live-tools">
+							<span class="live-tools-agent">{agent}</span>
+							<ul>
+								{#each live.tools as t}<li>{t}</li>{/each}
+							</ul>
+						</div>
+					{/if}
+				{/each}
+			{/if}
 			{#if lastRouting}
 				<div class="routing" class:open={routingOpen} class:fallback={lastRouting.reason === 'fallback-rank'}>
 					<button type="button" class="routing-head" on:click={() => (routingOpen = !routingOpen)}
@@ -1448,40 +1516,6 @@
 						</div>
 					{/if}
 				</div>
-			{/if}
-			{#if typingLabel}
-				<div class="typing" aria-live="polite">
-					<span class="typing-dots"><span></span><span></span><span></span></span>
-					{typingLabel}
-				</div>
-			{/if}
-			{#if hasLive || typingLabel}
-				<!-- Ragionamento: collassabile (default chiuso), header SEMPRE visibile
-				     mentre l'agente lavora — anche prima che arrivi il primo thinking. -->
-				{#each liveEntries as [agent, live] (agent)}
-					<div class="think" class:open={thinkOpen}>
-						<button type="button" class="think-head" on:click={toggleThink}
-							aria-expanded={thinkOpen}>
-							<span class="caret" class:open={thinkOpen}>▸</span>
-							<span class="think-title">Ragionamento · {agent}</span>
-							<span class="think-live">● live</span>
-							<span class="think-hint">{thinkOpen ? 'comprimi' : 'espandi'}</span>
-						</button>
-						{#if thinkOpen}
-							<div class="think-body"><pre class="think-text">{live.think || '…'}</pre></div>
-						{/if}
-					</div>
-					<!-- Tool e subagent in uso: SEMPRE visibili (anche col thinking collassato) -->
-					{#if live.tools.length}
-						<ul class="live-tools">
-							{#each live.tools as t}<li>{t}</li>{/each}
-						</ul>
-					{/if}
-					<!-- Risposta in streaming: sempre visibile -->
-					{#if live.reply}
-						<div class="think-reply md">{@html renderMarkdown(stripChoices(live.reply))}</div>
-					{/if}
-				{/each}
 			{/if}
 			<div class="composer" class:drag={dragOver}
 				role="group"
@@ -1939,6 +1973,16 @@
 	.typing-dots span:nth-child(3) { animation-delay: .4s; }
 	@keyframes td { 0%,60%,100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 
+	/* Coda della risposta live: tre righe fisse, scrollata sempre all'ultimo token. */
+	.streaming-window { flex: none; min-width: 0; margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card-bg); overflow: hidden; }
+	.streaming-head { display: flex; align-items: center; gap: 7px; min-height: 25px; padding: 4px 9px; border-bottom: 1px solid var(--border); color: var(--fg-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+	.streaming-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--accent); animation: stream-pulse 1.2s ease-in-out infinite; }
+	@keyframes stream-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+	.streaming-body { box-sizing: border-box; height: calc(4.35em + 10px); overflow-x: hidden; overflow-y: auto; padding: 5px 9px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; scrollbar-width: thin; }
+	.streaming-body :global(p) { margin: 0 0 .35em; }
+	.streaming-body :global(p:last-child) { margin-bottom: 0; }
+	.streaming-body :global(pre) { margin: 0; white-space: pre-wrap; }
+
 	/* Pannello "Ragionamento" live (comprimibile, di default chiuso) */
 	.think { margin: 2px 8px 8px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(255,255,255,.02); }
 	.think.open { border-style: solid; }
@@ -1951,12 +1995,11 @@
 	.think-hint { margin-left: auto; font-size: 10px; opacity: .7; }
 	.think-body { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
 	.think-text { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--fg-muted); }
-	.think-tools { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
-	.think-tools li { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	/* Barra tool/subagent sempre visibile (indipendente dal collapse del ragionamento) */
-	.live-tools { margin: 6px 0 0; padding: 6px 10px; list-style: none; display: flex; flex-direction: column; gap: 2px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; }
+	.live-tools { min-width: 0; margin: 2px 8px 6px; padding: 5px 9px; display: flex; align-items: baseline; gap: 8px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; }
+	.live-tools-agent { flex: none; color: var(--fg-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+	.live-tools ul { min-width: 0; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
 	.live-tools li { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.think-reply { font-size: 13px; border-top: 1px solid var(--border); padding-top: 8px; }
 	.ts { font-size: 10.5px; color: var(--fg-muted); }
 	.text { font-size: 13.5px; margin-top: 2px; }
 	/* markdown renderizzato nei messaggi */
@@ -2009,7 +2052,7 @@
 	.composer { position: relative; flex: none; display: flex; align-items: flex-end; gap: 8px; padding-top: 8px; border-radius: 8px; }
 	.composer.drag { outline: 2px dashed var(--accent); outline-offset: 3px; }
 	.drop-hint { position: absolute; inset: 8px 0 0; z-index: 25; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--accent) 12%, var(--card-bg)); border-radius: 8px; font-size: 13px; font-weight: 700; color: var(--accent); pointer-events: none; }
-	.composer textarea { flex: 1 1 auto; background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 8px; resize: none; }
+	.composer textarea { flex: 1 1 auto; min-width: 0; background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 8px; resize: none; }
 	.composer button { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font-weight: 700; padding: 0 16px; border-radius: 8px; cursor: pointer; }
 	.composer button:disabled { opacity: .5; cursor: not-allowed; }
 	.composer button.stop-btn { background: var(--danger); border-color: var(--danger); color: #fff; }
