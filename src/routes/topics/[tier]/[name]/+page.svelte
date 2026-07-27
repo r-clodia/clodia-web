@@ -1651,7 +1651,7 @@
 				{#if isOwner}
 					<details class="side-section webhook-section" open>
 						<summary>Webhook</summary>
-						<HooksPanel {tier} {name} agents={info?.meta?.participants ?? []} showHeading={false} />
+						<HooksPanel {tier} {name} showHeading={false} />
 					</details>
 				{/if}
 				<details class="side-section" open>

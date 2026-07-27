@@ -4,19 +4,17 @@
 	// volta (alla creazione/rigenerazione). L'URL è assoluto (host:port navigabile).
 	import { onMount } from 'svelte';
 	import {
-		API_BASE_URL, listHooks, createHook, deleteHook, enrollHookIdentity, type ChatHook
+		API_BASE_URL, listHooks, createHook, deleteHook, type ChatHook
 	} from '$lib/api/client';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 
 	export let tier: string;
 	export let name: string;
-	export let agents: string[] = []; // partecipanti selezionabili come trigger
 	export let showHeading = true;
 
 	let hook: ChatHook | null = null;
 	let loading = false;
 	let busy = false;
-	let fTrigger = '';
 	// segreto+url appena creati, mostrati una sola volta
 	let fresh: { secret: string; url: string } | null = null;
 
@@ -34,7 +32,6 @@
 		loading = true;
 		try {
 			hook = (await listHooks(tier, name)).hooks?.[0] ?? null;
-			fTrigger = hook?.trigger_agent ?? '';
 		} catch (e) {
 			toastError('Hook', e instanceof Error ? e.message : String(e));
 		} finally {
@@ -46,7 +43,7 @@
 		if (busy) return;
 		busy = true;
 		try {
-			const r = await createHook(tier, name, { label: name, trigger_agent: fTrigger || null });
+			const r = await createHook(tier, name, { label: name });
 			fresh = { secret: r.secret, url: hookUrl(r.hook.id) };
 			await load();
 		} catch (e) {
@@ -57,7 +54,7 @@
 	}
 
 	async function remove() {
-		if (!hook || !confirm('Eliminare il webhook di questo topic?')) return;
+		if (!hook || !confirm('Disattivare il webhook di questo topic?')) return;
 		busy = true;
 		try {
 			await deleteHook(hook.id);
@@ -80,26 +77,6 @@
 		return `curl -X POST ${url} \\\n  -H 'X-Hook-Secret: ${secret}' \\\n  -d 'Il tuo messaggio'`;
 	}
 
-	// F2 — enrollment identità firmataria (autorità piena). Solo emissione cert:
-	// la firma delle richieste avviene lato mittente con la sua privkey.
-	let showEnroll = false;
-	let eName = '';
-	let ePem = '';
-	let enrolling = false;
-	async function enroll() {
-		if (!eName.trim() || !ePem.trim() || enrolling) return;
-		enrolling = true;
-		try {
-			await enrollHookIdentity(eName.trim(), ePem.trim());
-			toastSuccess('Identità emessa', eName.trim());
-			eName = ''; ePem = ''; showEnroll = false;
-		} catch (e) {
-			toastError('Enrollment', e instanceof Error ? e.message : String(e));
-		} finally {
-			enrolling = false;
-		}
-	}
-
 	onMount(load);
 </script>
 
@@ -116,17 +93,15 @@
 		<p class="hooks-empty">Carico…</p>
 	{:else if hook}
 		<div class="hook-card" class:disabled={!hook.enabled}>
-			<label class="fresh-field">URL
-				<code>{hookUrl(hook.id)}</code>
-				<button class="mini" on:click={() => copy(hookUrl(hook.id))}>Copia</button>
-			</label>
-			<div class="hook-row">
-				<label class="trig-inline">Trigger
-					<select bind:value={fTrigger} on:change={createOrRotate} title="Agente svegliato al messaggio">
-						<option value="">— nessuno (solo iniezione) —</option>
-						{#each agents as a}<option value={a}>@{a}</option>{/each}
-					</select>
+			{#if hook.enabled}
+				<label class="fresh-field">URL
+					<code>{hookUrl(hook.id)}</code>
+					<button class="mini" on:click={() => copy(hookUrl(hook!.id))}>Copia</button>
 				</label>
+			{:else}
+				<span class="hooks-empty">Webhook disattivato per questo topic.</span>
+			{/if}
+			<div class="hook-row">
 				<span class="hi-uses">{hook.uses} usi · max {hook.rate_per_min}/min{#if hook.last_source} · ultimo da {hook.last_source}{/if}</span>
 			</div>
 			{#if hook.events?.length}
@@ -146,19 +121,16 @@
 				</details>
 			{/if}
 			<div class="hi-actions">
-				<button class="mini" on:click={createOrRotate} disabled={busy} title="Genera un nuovo segreto (invalida il precedente)">Rigenera segreto</button>
-				<button class="mini danger" on:click={remove} disabled={busy}>Elimina</button>
+				<button class="mini" on:click={createOrRotate} disabled={busy} title="Genera un nuovo segreto (invalida il precedente)">{hook.enabled ? 'Rigenera segreto' : 'Attiva webhook'}</button>
+				{#if hook.enabled}
+					<button class="mini danger" on:click={remove} disabled={busy}>Disattiva</button>
+				{/if}
 			</div>
 		</div>
 	{:else}
 		<div class="hook-form">
-			<label class="trig-inline">Trigger
-				<select bind:value={fTrigger} title="Agente da svegliare al messaggio (opzionale)">
-					<option value="">— nessuno (solo iniezione) —</option>
-					{#each agents as a}<option value={a}>@{a}</option>{/each}
-				</select>
-			</label>
-			<button class="mini primary" on:click={createOrRotate} disabled={busy}>{busy ? '…' : 'Crea webhook'}</button>
+			<span class="hooks-empty">Webhook disattivato per questo topic.</span>
+			<button class="mini primary" on:click={createOrRotate} disabled={busy}>{busy ? '…' : 'Attiva webhook'}</button>
 		</div>
 	{/if}
 
@@ -167,34 +139,16 @@
 			<div class="fresh-row"><b>Segreto generato.</b> Copialo ORA: non sarà più mostrato.</div>
 			<label class="fresh-field">Segreto
 				<code>{fresh.secret}</code>
-				<button class="mini" on:click={() => copy(fresh.secret)}>Copia</button>
+				<button class="mini" on:click={() => copy(fresh!.secret)}>Copia</button>
 			</label>
 			<pre class="fresh-curl">{curlExample(fresh.url, fresh.secret)}</pre>
 			<div class="hi-actions">
-				<button class="mini" on:click={() => copy(curlExample(fresh.url, fresh.secret))}>Copia curl</button>
+				<button class="mini" on:click={() => copy(curlExample(fresh!.url, fresh!.secret))}>Copia curl</button>
 				<button class="mini" on:click={() => (fresh = null)}>Chiudi</button>
 			</div>
 		</div>
 	{/if}
 
-	<button class="enroll-toggle" on:click={() => (showEnroll = !showEnroll)}>
-		{showEnroll ? '▾' : '▸'} 🔐 Identità firmatarie (autorità piena)
-	</button>
-	{#if showEnroll}
-		<div class="enroll">
-			<p class="hooks-note">
-				Un messaggio <b>firmato</b> con un'identità emessa dalla CA della colony entra con
-				<b>autorità piena</b> (non gated). Qui emetti il cert per una pubkey esterna; la
-				richiesta va poi firmata lato mittente (header <code>X-Hook-Identity/Signature/Timestamp</code>
-				sulla stringa <code>id.timestamp.body</code>).
-			</p>
-			<input placeholder="nome identità (es. github-ci)" bind:value={eName} />
-			<textarea rows="4" placeholder="-----BEGIN PUBLIC KEY-----&#10;… pubkey Ed25519 PEM …&#10;-----END PUBLIC KEY-----" bind:value={ePem}></textarea>
-			<button class="mini primary" on:click={enroll} disabled={enrolling || !eName.trim() || !ePem.trim()}>
-				{enrolling ? '…' : 'Emetti cert'}
-			</button>
-		</div>
-	{/if}
 </div>
 
 <style>
@@ -211,8 +165,6 @@
 	.hook-card { display: flex; flex-direction: column; gap: 8px; }
 	.hook-card.disabled { opacity: .55; }
 	.hook-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-	.trig-inline { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--fg-muted); }
-	.trig-inline select { background: rgba(0,0,0,.25); border: 1px solid var(--border); color: var(--fg); border-radius: 7px; padding: 4px 8px; font: inherit; font-size: 12px; }
 	.hi-uses { font-size: 10.5px; color: var(--fg-muted); margin-left: auto; }
 	.hi-actions { display: flex; gap: 6px; }
 	.hook-fresh { border: 1px solid var(--accent); border-radius: 8px; padding: 8px 10px; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
@@ -221,12 +173,6 @@
 	.fresh-field code { font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 4px; overflow-wrap: anywhere; flex: 1 1 auto; }
 	.fresh-curl { font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.3); padding: 6px 8px; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 	.hooks-empty { font-size: 12px; color: var(--fg-muted); }
-	.enroll-toggle { margin-top: 10px; background: transparent; border: none; color: var(--fg-muted); font: inherit; font-size: 11px; cursor: pointer; padding: 2px 0; }
-	.enroll-toggle:hover { color: var(--fg); }
-	.enroll { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
-	.enroll input, .enroll textarea { background: rgba(0,0,0,.25); border: 1px solid var(--border); color: var(--fg); border-radius: 7px; padding: 6px 8px; font: inherit; font-size: 12px; }
-	.enroll textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
-	.enroll .primary { align-self: flex-start; }
 	.hook-log { font-size: 11px; }
 	.hook-log summary { color: var(--fg-muted); cursor: pointer; }
 	.hook-log ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
