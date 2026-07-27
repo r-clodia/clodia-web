@@ -407,25 +407,20 @@
 		return liveAgents[agent] ?? { think: '', reply: '', tools: [] };
 	}
 	function updateLive(agent: string, patch: Partial<LiveAgentState>) {
+		const replyWillGrow = typeof patch.reply === 'string' && patch.reply !== liveFor(agent).reply;
+		const shouldFollow = replyWillGrow && isNearBottom;
 		liveAgents = { ...liveAgents, [agent]: { ...liveFor(agent), ...patch } };
-	}
-	function keepScrolledToEnd(node: HTMLElement, _value: string) {
-		let frame = 0;
-		const scroll = () => {
-			cancelAnimationFrame(frame);
-			frame = requestAnimationFrame(() => {
-				node.scrollTop = node.scrollHeight;
+		if (replyWillGrow) {
+			void tick().then(() => {
+				// La crescita della bubble segue solo chi era già in fondo. Se
+				// l'utente sta rileggendo, non spostare la viewport sotto i suoi occhi.
+				if (shouldFollow && isNearBottom) {
+					scrollDown();
+				} else if (!isNearBottom) {
+					showNewMessages = true;
+				}
 			});
-		};
-		scroll();
-		return {
-			update(_next: string) {
-				scroll();
-			},
-			destroy() {
-				cancelAnimationFrame(frame);
-			}
-		};
+		}
 	}
 	function resetLive(agent?: string) {
 		if (!agent) {
@@ -437,6 +432,7 @@
 		liveAgents = next;
 	}
 	$: liveEntries = Object.entries(liveAgents).filter(([, l]) => l.think || l.reply || l.tools.length);
+	$: liveReplies = liveEntries.filter(([, l]) => l.reply);
 	$: hasLive = liveEntries.length > 0;
 	function visibleMessages(items: ChannelMessage[]): ChannelMessage[] {
 		const resetIdx = items.findLastIndex((m) => m.kind === 'system' && m.text === '__CLODIA_CONTEXT_RESET__');
@@ -935,8 +931,6 @@
 			const res = await postChannelMessage(tier, name, text);
 			tierWarning = res?.warning ?? null;
 			await refreshMessages();
-			await tick();
-			scrollDown();
 		} catch (e) {
 			// Se l'utente ha premuto Stop, la POST fallisce (turno cancellato): non è
 			// un errore da mostrare, e non ripristino il testo.
@@ -1156,7 +1150,6 @@
 				lastRouting = p as unknown as RoutingTrace;
 				routingCorrected = null; // nuova decisione → riapri la correzione
 				routingConfirmed = false;
-				void tick().then(() => scrollDown());
 				return;
 			}
 			// eventi del turno del risponditore di QUESTO canale
@@ -1271,8 +1264,9 @@
 	{:else}
 	<div class="body">
 		<main class="stream-wrap">
-			<div class="stream" bind:this={stream} on:scroll={updateScrollPosition} on:click={handleStreamClick} role="presentation">
-				{#each shownMessages as m, i (m.id)}
+			<div class="timeline">
+				<div class="stream" bind:this={stream} on:scroll={updateScrollPosition} on:click={handleStreamClick} role="presentation">
+					{#each shownMessages as m, i (m.id)}
 					<div class="msg" class:ai={m.kind === 'ai'} class:system={m.kind === 'system'} class:mine={m.author === me}>
 						<div class="msg-head">
 							{#if m.kind === 'system'}
@@ -1398,34 +1392,35 @@
 								{/each}
 							</div>
 						{/if}
-					</div>
-				{:else}
-					<p class="empty">Nessun messaggio. Scrivi qualcosa per iniziare.</p>
-				{/each}
-			</div>
-			{#if showNewMessages}
-				<button type="button" class="new-messages" on:click={() => scrollDown(true)}
-					aria-label="Vai ai nuovi messaggi">
-					↓ Nuovi messaggi
-				</button>
-			{/if}
-			{#if hasLive || typingLabel}
-				<!-- La risposta parziale è separata dagli altri stati live: la sua
-				     finestra resta alta tre righe mentre i token continuano ad arrivare. -->
-				{#each liveEntries as [agent, live] (agent)}
-					{#if live.reply}
-						<section class="streaming-window" aria-label={`Risposta in arrivo da ${agent}`}>
-							<header class="streaming-head">
-								<span class="streaming-dot" aria-hidden="true"></span>
-								<span>Risposta in arrivo · {agent}</span>
-							</header>
-							<div class="streaming-body md" aria-live="polite" aria-atomic="false"
-								use:keepScrolledToEnd={live.reply}>
-								{@html renderMarkdown(stripChoices(live.reply))}
+						</div>
+					{/each}
+					{#each liveReplies as [agent, live] (agent)}
+						<div class="msg ai live-message" aria-label={`Risposta in arrivo da ${agent}`} aria-busy="true">
+							<div class="msg-head">
+								<AgentAvatar name={agent} size={22} />
+								<span class="author">{agent}</span>
+								<span class="live-badge">
+									<span class="streaming-dot" aria-hidden="true"></span>
+									sta rispondendo
+								</span>
 							</div>
-						</section>
+							<div class="text md" aria-live="polite" aria-atomic="false">
+								{@html renderMarkdown(linkifyFiles(stripChoices(live.reply)))}
+							</div>
+						</div>
+					{/each}
+					{#if shownMessages.length === 0 && liveReplies.length === 0}
+						<p class="empty">Nessun messaggio. Scrivi qualcosa per iniziare.</p>
 					{/if}
-				{/each}
+				</div>
+				{#if showNewMessages}
+					<button type="button" class="new-messages" on:click={() => scrollDown(true)}
+						aria-label="Vai al nuovo contenuto">
+						↓ Nuovo contenuto
+					</button>
+				{/if}
+			</div>
+			{#if hasLive || typingLabel}
 				{#if typingLabel}
 					<div class="typing" aria-live="polite">
 						<span class="typing-dots"><span></span><span></span><span></span></span>
@@ -1889,11 +1884,12 @@
 	@keyframes spin { to { transform: rotate(360deg); } }
 	.body { display: flex; gap: 16px; flex: 1 1 auto; min-height: 0; margin-top: 12px; }
 	.stream-wrap { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
-	.stream { flex: 1 1 auto; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px; }
+	.timeline { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
+	.stream { flex: 1 1 auto; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px; }
 	.new-messages {
 		position: absolute;
 		left: 50%;
-		bottom: 64px;
+		bottom: 10px;
 		z-index: 24;
 		transform: translateX(-50%);
 		border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
@@ -1969,15 +1965,11 @@
 	.typing-dots span:nth-child(3) { animation-delay: .4s; }
 	@keyframes td { 0%,60%,100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 
-	/* Coda della risposta live: tre righe fisse, scrollata sempre all'ultimo token. */
-	.streaming-window { flex: none; min-width: 0; margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card-bg); overflow: hidden; }
-	.streaming-head { display: flex; align-items: center; gap: 7px; min-height: 25px; padding: 4px 9px; border-bottom: 1px solid var(--border); color: var(--fg-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
+	/* La risposta live usa la stessa bubble AI della timeline e cresce naturalmente. */
+	.live-message { flex: none; }
+	.live-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--fg-muted); font-size: 10px; font-weight: 600; }
 	.streaming-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--accent); animation: stream-pulse 1.2s ease-in-out infinite; }
 	@keyframes stream-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-	.streaming-body { box-sizing: border-box; height: calc(4.35em + 10px); overflow-x: hidden; overflow-y: auto; padding: 5px 9px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; scrollbar-width: thin; }
-	.streaming-body :global(p) { margin: 0 0 .35em; }
-	.streaming-body :global(p:last-child) { margin-bottom: 0; }
-	.streaming-body :global(pre) { margin: 0; white-space: pre-wrap; }
 
 	/* Pannello "Ragionamento" live (comprimibile, di default chiuso) */
 	.think { margin: 2px 8px 8px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(255,255,255,.02); }
