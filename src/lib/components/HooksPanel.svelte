@@ -11,6 +11,7 @@
 	export let tier: string;
 	export let name: string;
 	export let agents: string[] = []; // partecipanti selezionabili come trigger
+	export let showHeading = true;
 
 	let hook: ChatHook | null = null;
 	let loading = false;
@@ -102,8 +103,10 @@
 	onMount(load);
 </script>
 
-<div class="hooks">
-	<div class="hooks-head"><span class="hooks-title">🪝 Webhook del topic</span></div>
+<div class="hooks" class:embedded={!showHeading}>
+	{#if showHeading}
+		<div class="hooks-head"><span class="hooks-title">🪝 Webhook del topic</span></div>
+	{/if}
 	<p class="hooks-note">
 		Un URL segreto per iniettare un messaggio in questo topic dall'esterno. Il messaggio
 		arriva come input <b>non fidato</b>: le azioni fuori-topic restano da approvare.
@@ -196,6 +199,7 @@
 
 <style>
 	.hooks { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--card-bg); margin-top: 10px; }
+	.hooks.embedded { margin-top: 0; }
 	.hooks-head { display: flex; align-items: center; justify-content: space-between; }
 	.hooks-title { font-weight: 700; font-size: 13px; }
 	.hooks-note { font-size: 11px; color: var(--fg-muted); margin: 4px 0 8px; }
