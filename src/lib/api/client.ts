@@ -558,6 +558,7 @@ export async function createChannel(
 		/** Storage dei file del topic: assente/local = default; drive = Google Drive
 		 *  (folder = link/id di una cartella esistente, oppure vuoto per crearne una). */
 		storage_config?: { type: 'drive'; folder?: string; account?: string };
+		hook_enabled?: boolean;
 	},
 	opts: RequestOptions = {}
 ): Promise<{ tier: string; name: string }> {
@@ -658,7 +659,6 @@ export interface ChatHook {
 	name: string;
 	label: string;
 	author: string;
-	trigger_agent: string | null;
 	enabled: boolean;
 	created_by: string;
 	created_at: string;
@@ -674,7 +674,7 @@ export async function listHooks(tier: string, name: string): Promise<{ hooks: Ch
 export async function createHook(
 	tier: string,
 	name: string,
-	body: { label: string; trigger_agent?: string | null; author?: string | null }
+	body: { label: string; author?: string | null }
 ): Promise<{ hook: ChatHook; secret: string; path: string; url: string }> {
 	return apiPost(`/clodia/chats/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/hooks`, body);
 }
@@ -683,17 +683,6 @@ export async function revokeHook(id: string): Promise<{ revoked: boolean }> {
 }
 export async function deleteHook(id: string): Promise<{ deleted: boolean }> {
 	return apiDelete(`/clodia/hooks/${encodeURIComponent(id)}`);
-}
-/** Identità firmatarie (F2): emette/revoca un cert CA per una pubkey esterna. */
-export async function enrollHookIdentity(
-	name: string,
-	pubkey_pem: string,
-	force = false
-): Promise<{ ok: boolean; name: string }> {
-	return apiPost('/clodia/hook-identities', { name, pubkey_pem, force });
-}
-export async function revokeHookIdentity(name: string): Promise<{ ok: boolean; revoked: string }> {
-	return apiDelete(`/clodia/hook-identities/${encodeURIComponent(name)}`);
 }
 
 /** Stato del remote di un topic (git/drive). */
