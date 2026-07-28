@@ -7,7 +7,7 @@
 	import { renderMarkdown } from '$lib/markdown';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import ArtifactCanvas from '$lib/components/ArtifactCanvas.svelte';
-	import HooksPanel from '$lib/components/HooksPanel.svelte';
+	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import {
 		ApiError,
 		getAgents,
@@ -979,6 +979,8 @@
 
 	// Autocomplete invito: solo agent/utenti registrati (no partecipanti inesistenti).
 	let allAgents: string[] = [];
+	let aiAgents: string[] = [];
+	$: triggerAgents = shownParticipants.filter((participant) => aiAgents.includes(participant));
 	// Non proporre agent il cui tier è insufficiente per il topic (eligible=false).
 	// Gli agent senza record di idoneità (es. umani) restano proponibili.
 	$: inviteMatches = newParticipant.trim()
@@ -1130,8 +1132,14 @@
 		} catch {}
 		poll = setInterval(refreshLive, 5000);
 		getAgents()
-			.then((as) => (allAgents = as.map((a) => a.name)))
-			.catch(() => (allAgents = []));
+			.then((as) => {
+				allAgents = as.map((a) => a.name);
+				aiAgents = as.filter((a) => a.type !== 'human').map((a) => a.name);
+			})
+			.catch(() => {
+				allAgents = [];
+				aiAgents = [];
+			});
 		stopStream = startEventStream();
 		offEvt = onEventStream((ev) => {
 			const p = (ev.payload ?? {}) as Record<string, unknown>;
@@ -1649,9 +1657,11 @@
 					{/if}
 				</details>
 				{#if isOwner}
-					<details class="side-section webhook-section" open>
-						<summary>Webhook</summary>
-						<HooksPanel {tier} {name} showHeading={false} />
+					<details class="side-section trigger-section" open>
+						<summary>Trigger</summary>
+						{#key `${tier}/${name}`}
+							<TopicTriggersPanel {tier} {name} agents={triggerAgents} />
+						{/key}
 					</details>
 				{/if}
 				<details class="side-section" open>

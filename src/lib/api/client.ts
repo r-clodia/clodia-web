@@ -685,6 +685,39 @@ export async function deleteHook(id: string): Promise<{ deleted: boolean }> {
 	return apiDelete(`/clodia/hooks/${encodeURIComponent(id)}`);
 }
 
+/** Singolo trigger cron associato a un topic. */
+export interface TopicCronTrigger {
+	id: number;
+	cron_expr: string;
+	prompt: string;
+	agent: string;
+	enabled: boolean;
+	last_run_at: string | null;
+	last_status: string | null;
+}
+function topicCronPath(tier: string, name: string): string {
+	return `/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/cron-trigger`;
+}
+export async function getTopicCronTrigger(
+	tier: string,
+	name: string
+): Promise<{ trigger: TopicCronTrigger | null }> {
+	return apiGet(topicCronPath(tier, name));
+}
+export async function putTopicCronTrigger(
+	tier: string,
+	name: string,
+	body: { cron_expr: string; prompt: string; agent?: string | null }
+): Promise<{ trigger: TopicCronTrigger }> {
+	return apiPut(topicCronPath(tier, name), body);
+}
+export async function deleteTopicCronTrigger(
+	tier: string,
+	name: string
+): Promise<{ deleted: boolean }> {
+	return apiDelete(topicCronPath(tier, name));
+}
+
 /** Stato del remote di un topic (git/drive). */
 export interface RemoteStatus {
 	type?: 'git' | 'drive' | string;

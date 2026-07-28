@@ -81,13 +81,16 @@
 </script>
 
 <div class="hooks" class:embedded={!showHeading}>
-	{#if showHeading}
-		<div class="hooks-head"><span class="hooks-title">🪝 Webhook del topic</span></div>
-	{/if}
-	<p class="hooks-note">
-		Un URL segreto per iniettare un messaggio in questo topic dall'esterno. Il messaggio
-		arriva come input <b>non fidato</b>: le azioni fuori-topic restano da approvare.
-	</p>
+	<div class="hooks-head">
+		<span class="hooks-title">{showHeading ? 'Webhook del topic' : 'Webhook'}</span>
+		<button type="button" class="info" aria-label="Informazioni sul webhook">
+			<span aria-hidden="true">ⓘ</span>
+			<span class="tooltip" role="tooltip">
+				Un URL segreto inietta messaggi dall'esterno. L'input non è fidato:
+				le azioni fuori-topic restano da approvare.
+			</span>
+		</button>
+	</div>
 
 	{#if loading}
 		<p class="hooks-empty">Carico…</p>
@@ -152,22 +155,29 @@
 </div>
 
 <style>
-	.hooks { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--card-bg); margin-top: 10px; }
-	.hooks.embedded { margin-top: 0; }
+	.hooks { min-width: 0; }
 	.hooks-head { display: flex; align-items: center; justify-content: space-between; }
 	.hooks-title { font-weight: 700; font-size: 13px; }
-	.hooks-note { font-size: 11px; color: var(--fg-muted); margin: 4px 0 8px; }
+	.info { position: relative; border: 0; padding: 0; background: none; color: var(--fg-muted); cursor: help; font: inherit; line-height: 1; outline: none; }
+	.info:hover, .info:focus { color: var(--accent); }
+	.tooltip {
+		position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: none;
+		width: min(240px, 70vw); padding: 7px 8px; border: 1px solid var(--border);
+		border-radius: 6px; background: var(--card-bg); color: var(--fg);
+		font-size: 11px; font-weight: 400; line-height: 1.35; box-shadow: 0 6px 18px rgba(0,0,0,.28);
+	}
+	.info:hover .tooltip, .info:focus .tooltip { display: block; }
 	.mini { font: inherit; font-size: 11px; padding: 3px 8px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--fg); cursor: pointer; }
 	.mini.primary { background: var(--accent); border-color: var(--accent); color: #1a1208; font-weight: 700; }
 	.mini.danger:hover { border-color: var(--danger); color: var(--danger); }
 	.mini:disabled { opacity: .5; }
 	.hook-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-	.hook-card { display: flex; flex-direction: column; gap: 8px; }
+	.hook-card { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 	.hook-card.disabled { opacity: .55; }
 	.hook-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 	.hi-uses { font-size: 10.5px; color: var(--fg-muted); margin-left: auto; }
 	.hi-actions { display: flex; gap: 6px; }
-	.hook-fresh { border: 1px solid var(--accent); border-radius: 8px; padding: 8px 10px; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+	.hook-fresh { border-left: 2px solid var(--accent); padding: 4px 0 4px 8px; margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 	.fresh-row { font-size: 12px; }
 	.fresh-field { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--fg-muted); }
 	.fresh-field code { font-family: var(--mono); font-size: 11px; background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 4px; overflow-wrap: anywhere; flex: 1 1 auto; }
