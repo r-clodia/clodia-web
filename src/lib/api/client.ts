@@ -726,6 +726,8 @@ export interface RemoteStatus {
 	dirty?: number;
 	folder?: string | null;
 	account?: string | null;
+	mode?: 'live' | string;
+	last_write_wins?: boolean;
 	synced?: number;
 	pending?: number;
 }

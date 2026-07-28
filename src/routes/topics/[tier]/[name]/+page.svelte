@@ -77,10 +77,11 @@
 	}
 	$: crumbs = filePath ? filePath.split('/') : [];
 
-	// --- Remote (git/drive): storage sempre locale + sync opzionale ----------
+	// --- Remote: git usa il sync; Drive è il filesystem live del topic. -------
 	let remoteStatus: RemoteStatus | null = null;
 	let remoteBusy = false;
 	$: remoteMeta = (info?.meta as Record<string, any> | undefined)?.remote ?? null;
+	$: isDriveRemote = remoteMeta?.type === 'drive';
 	// Nome umano del remote (cartella Drive / repo git): dal backend
 	// (config.name, gateway ≥0.90) con fallback client-side sul basename
 	// dell'URL git per i topic non ancora backfillati.
@@ -128,8 +129,7 @@
 		if (!remoteMeta) { remoteStatus = null; return; }
 		try { remoteStatus = (await topicRemote(tier, name, 'status')) as RemoteStatus; } catch { /* ignore */ }
 	}
-	// --- Stato sync PER-FILE (gateway ≥0.92): rel → synced|modified|staged|unsynced.
-	// Vocabolario git-like comune a git e drive; colora i nomi file e guida il (+).
+	// --- Stato sync PER-FILE Git: rel → synced|modified|staged|unsynced. -------
 	$: syncFiles = ((remoteStatus as unknown as { files?: Record<string, string> })?.files ?? {}) as Record<string, string>;
 	const relOf = (path: string) => path.replace(/^files\//, '');
 	function fileState(path: string): string | null {
@@ -1684,12 +1684,12 @@
 						<button type="button" class="crumb" on:click={() => gotoCrumb(i)}>{seg}</button>
 					{/each}
 					{#if filesLoading}<span class="files-spinner" aria-label="Caricamento…" title="Caricamento…"></span>{/if}
-					{#if remoteMeta && folderAddable.length}
+					{#if remoteMeta?.type === 'git' && folderAddable.length}
 						<button type="button" class="sync-add stage-all" disabled={remoteBusy}
 							title={`Metti in sync tutti i file di questa cartella (${folderAddable.length})`}
 							on:click={() => stageMany(folderAddable)}>⊕ tutti</button>
 					{/if}
-					{#if remoteMeta && folderStaged.length}
+					{#if remoteMeta?.type === 'git' && folderStaged.length}
 						<button type="button" class="sync-add stage-all" class:solo-unstage={!folderAddable.length} disabled={remoteBusy}
 							title={`Togli dallo staging tutti i file di questa cartella (${folderStaged.length})`}
 							on:click={() => unstageMany(folderStaged)}>⊖ tutti</button>
@@ -1712,12 +1712,12 @@
 										on:click={() => openArtifact(f.path)}>🔎</button>
 								{/if}
 							{/if}
-							{#if remoteMeta && f.kind !== 'dir' && !f.remote && ADDABLE.includes(st ?? '')}
+							{#if remoteMeta?.type === 'git' && f.kind !== 'dir' && !f.remote && ADDABLE.includes(st ?? '')}
 								<button type="button" class="sync-add"
 									title={st === 'modified' ? 'Metti in staging la modifica' : 'Aggiungi al sync'}
 									on:click={() => stageMany([relOf(f.path)])}
 									disabled={remoteBusy}>⊕</button>
-							{:else if remoteMeta && f.kind !== 'dir' && !f.remote && st === 'staged'}
+							{:else if remoteMeta?.type === 'git' && f.kind !== 'dir' && !f.remote && st === 'staged'}
 								<button type="button" class="sync-add"
 									title="Togli dallo staging"
 									on:click={() => unstageMany([relOf(f.path)])}
@@ -1731,7 +1731,7 @@
 					<p class="files-hint">Carica i file dall'input della chat: 📎, trascinamento o incolla (⌘/Ctrl+V) di immagini.</p>
 				</details>
 
-				{#if remoteMeta && syncGroups.length}
+				{#if remoteMeta?.type === 'git' && syncGroups.length}
 					<details class="side-section sync-status" open>
 						<summary>
 							<span>Sync status</span>
@@ -1805,21 +1805,28 @@
 							<span class="remote-name" title={remoteName}>{remoteName}</span>{/if}
 						{#if remoteStatus}
 							{#if remoteStatus.type === 'git'}<span class="muted"> · {remoteStatus.dirty ?? 0} da committare</span>
-							{:else}<span class="muted"> · {remoteStatus.synced ?? 0} in sync, {remoteStatus.pending ?? 0} da pushare</span>{/if}
+							{:else}<span class="muted"> · live · last-write-wins</span>{/if}
 						{/if}
 						{#if remoteBusy}<span class="files-spinner" style="margin-left:6px"></span>{/if}
 					</p>
 					<div class="remote-actions">
-						<button type="button" on:click={() => doRemote('pull')} disabled={remoteBusy}>⬇︎ pull</button>
-						<button type="button"
-							on:click={() => remoteMeta.type === 'git' ? doRemote('commit').then(() => doRemote('push')) : doRemote('push')}
-							disabled={remoteBusy}>⬆︎ push</button>
+						{#if !isDriveRemote}
+							<button type="button" on:click={() => doRemote('pull')} disabled={remoteBusy}>⬇︎ pull</button>
+							<button type="button" on:click={() => doRemote('commit').then(() => doRemote('push'))}
+								disabled={remoteBusy}>⬆︎ push</button>
+						{:else if remoteUrl()}
+							<a class="remote-open" href={remoteUrl() ?? '#'} target="_blank" rel="noopener">
+								{@html SVG_DRIVE} apri
+							</a>
+						{/if}
 						<button type="button" on:click={loadRemoteStatus} disabled={remoteBusy}>↻</button>
 						<button type="button" class="zip-all" disabled={zipping}
 							title="Esporta: scarica uno ZIP con tutti i file del topic su questo dispositivo"
 							on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
 						<button type="button" class="danger"
-							on:click={() => confirm('Disattivare il remote? I file locali restano.') && doRemote('disable')}
+							on:click={() => confirm(isDriveRemote
+								? 'Disattivare Drive live? I file remoti verranno copiati nel topic locale.'
+								: 'Disattivare il remote? I file locali restano.') && doRemote('disable')}
 							disabled={remoteBusy}>disattiva</button>
 					</div>
 					{#if syncReportEntries.length}
@@ -1830,9 +1837,15 @@
 							{/each}
 						</div>
 					{/if}
-					<p class="remote-filter-hint">
-						Filtra la sync con <code>remoteinclude</code> / <code>remoteignore</code> nella root dei file (stile <code>.gitignore</code>).
+					{#if isDriveRemote}
+						<p class="remote-filter-hint">
+							I file sono letti e salvati direttamente su Drive. Le scritture concorrenti usano last-write-wins.
 						</p>
+					{:else}
+						<p class="remote-filter-hint">
+							Filtra la sync con <code>remoteinclude</code> / <code>remoteignore</code> nella root dei file (stile <code>.gitignore</code>).
+						</p>
+					{/if}
 					{/if}
 				</details>
 			</aside>
@@ -2139,8 +2152,9 @@
 		border: 1px solid var(--border); background: transparent; color: var(--fg); border-radius: 7px; }
 	.remote-url-input:focus { outline: none; border-color: var(--accent); }
 	.remote-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-	.remote-actions button { font-size: 12px; padding: 4px 9px; border: 1px solid var(--border); background: transparent; color: var(--fg); border-radius: 7px; cursor: pointer; }
-	.remote-actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+	.remote-actions button, .remote-open { font-size: 12px; padding: 4px 9px; border: 1px solid var(--border); background: transparent; color: var(--fg); border-radius: 7px; cursor: pointer; }
+	.remote-open { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+	.remote-actions button:hover:not(:disabled), .remote-open:hover { border-color: var(--accent); color: var(--accent); }
 	.remote-actions button:disabled { opacity: .5; cursor: default; }
 	.remote-actions button.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 	.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-bottom: 6px; font-size: 11.5px; }
