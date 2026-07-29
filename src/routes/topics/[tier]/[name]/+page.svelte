@@ -335,6 +335,7 @@
 	type RoutingCand = { name: string; score: number; super?: boolean };
 	type RoutingTrace = {
 		chosen: string;
+		chosen_agents?: string[];
 		reason: string;
 		mode: string;
 		threshold?: number;
@@ -346,15 +347,19 @@
 	let routingOpen = false;
 	let routingCorrected: string | null = null;
 	let routingConfirmed = false;
+	$: chosenAgents = lastRouting
+		? (lastRouting.chosen_agents?.length ? lastRouting.chosen_agents : [lastRouting.chosen])
+		: [];
+	$: multiRouting = chosenAgents.length > 1;
 	// agenti selezionabili per la correzione: gli idonei del topic diversi dallo scelto
 	$: correctOptions = lastRouting
 		? (lastRouting.eligible?.length
 				? lastRouting.eligible
 				: (lastRouting.candidates ?? []).map((c) => c.name)
-			).filter((n) => n !== lastRouting?.chosen)
+			).filter((n) => !chosenAgents.includes(n))
 		: [];
 	async function correctRoute(agent: string) {
-		if (!lastRouting || !agent || routingCorrected || routingConfirmed) return;
+		if (!lastRouting || multiRouting || !agent || routingCorrected || routingConfirmed) return;
 		routingCorrected = agent; // ottimistico
 		try {
 			await recordRoutingFeedback(tier, name, {
@@ -367,7 +372,7 @@
 		}
 	}
 	async function confirmRoute() {
-		if (!lastRouting || routingCorrected || routingConfirmed) return;
+		if (!lastRouting || multiRouting || routingCorrected || routingConfirmed) return;
 		routingConfirmed = true; // ottimistico
 		try {
 			await recordRoutingFeedback(tier, name, {
@@ -381,6 +386,7 @@
 	const routingReason: Record<string, string> = {
 		tagged: 'richiesto esplicitamente con @menzione',
 		relevance: 'dominio più pertinente al messaggio (embedding)',
+		'multi-match fallback': 'più specialisti pertinenti coinvolti in parallelo',
 		'fallback-rank': 'nessuno abbastanza pertinente → fallback per rango',
 		rank: 'per rango (routing per rilevanza disattivato)'
 	};
@@ -1469,7 +1475,7 @@
 						<span class="caret" class:open={routingOpen}>▸</span>
 						<span class="routing-title">🧭 Routing → <b>{lastRouting.chosen}</b></span>
 						<span class="routing-why">{routingReason[lastRouting.reason] ?? lastRouting.reason}</span>
-						<span class="think-hint">{routingOpen ? 'comprimi' : 'correggi'}</span>
+						<span class="think-hint">{routingOpen ? 'comprimi' : multiRouting ? 'dettagli' : 'correggi'}</span>
 					</button>
 					{#if routingOpen}
 						<div class="routing-body">
@@ -1485,7 +1491,7 @@
 								</div>
 								<ul class="routing-scores">
 									{#each lastRouting.candidates as c}
-										<li class:winner={c.name === lastRouting.chosen}>
+										<li class:winner={chosenAgents.includes(c.name)}>
 											<span class="rs-name">{c.name}{#if c.super}<span class="rs-tag">super</span>{/if}</span>
 											<span class="rs-bar"><span class="rs-fill" style="width:{Math.min(100, Math.round(c.score * 100))}%"></span></span>
 											<span class="rs-val">{c.score.toFixed(3)}</span>
@@ -1495,7 +1501,10 @@
 							{:else}
 								<div class="routing-meta">Nessun punteggio disponibile (tag esplicito o embedder non raggiungibile).</div>
 							{/if}
-							<div class="routing-correct">
+							{#if multiRouting}
+								<div class="routing-meta">Richiesta distribuita tra {chosenAgents.join(', ')}.</div>
+							{:else}
+								<div class="routing-correct">
 								{#if routingConfirmed}
 									<span class="rc-done">✓ scelta confermata: <b>{lastRouting.chosen}</b></span>
 								{:else if routingCorrected}
@@ -1511,7 +1520,8 @@
 										<button type="button" class="rc-chip" on:click={() => correctRoute(a)}>{a}</button>
 									{/each}
 								{/if}
-							</div>
+								</div>
+							{/if}
 						</div>
 					{/if}
 				</div>
