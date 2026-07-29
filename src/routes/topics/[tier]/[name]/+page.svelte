@@ -31,6 +31,9 @@
 		downloadTopicZip,
 		channelFileUrl,
 		signedChannelFileUrl,
+		setTopicStatus,
+		setTopicDeadline,
+		TOPIC_STATUSES,
 		type ChannelInfo,
 		type ChannelMessage,
 		type FeedbackLesson,
@@ -718,6 +721,50 @@
 
 	$: me = $session?.principal ?? null;
 	$: isOwner = !!me && info?.meta?.owner === me;
+	const topicStatusOptions = TOPIC_STATUSES;
+	let metaBusy = false;
+	let metaDeadlineDraft = '';
+	$: metaStatus = normalizeTopicStatus(info?.meta?.status);
+	$: if (info) metaDeadlineDraft = info.meta?.deadline ?? '';
+
+	function normalizeTopicStatus(status?: string | null): string {
+		const raw = String(status ?? 'active').trim().toLowerCase().replace(/[\s-]+/g, '_');
+		if (!raw || raw === 'attivo' || raw === 'idle' || raw === 'urgent') return 'active';
+		if (raw === 'await' || raw === 'waiting' || raw === 'awaiting' || raw === 'pending' || raw === 'in_attesa') return 'on-hold';
+		if (raw === 'done' || raw === 'completed' || raw === 'completato') return 'done';
+		if (raw === 'archived' || raw === 'archiviato') return 'archived';
+		return raw.replace(/_/g, '-');
+	}
+
+	async function saveTopicStatus(status: string) {
+		if (!isOwner || metaBusy || status === metaStatus) return;
+		metaBusy = true;
+		try {
+			const r = await setTopicStatus(tier, name, status);
+			if (info) info = { ...info, meta: { ...info.meta, status: r.status } };
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			metaBusy = false;
+		}
+	}
+
+	async function saveTopicDeadline(deadline = metaDeadlineDraft) {
+		if (!isOwner || metaBusy) return;
+		const next = deadline.trim() || null;
+		if (next === (info?.meta?.deadline ?? null)) return;
+		metaBusy = true;
+		try {
+			const r = await setTopicDeadline(tier, name, next);
+			if (info) info = { ...info, meta: { ...info.meta, deadline: r.deadline } };
+			metaDeadlineDraft = r.deadline ?? '';
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			metaBusy = false;
+		}
+	}
+
 	$: if (isOwner && tier && name && feedbackLessonsKey !== `${tier}/${name}`) {
 		feedbackLessonsKey = `${tier}/${name}`;
 		void loadFeedbackLessons();
@@ -1583,6 +1630,40 @@
 
 			<aside class="side" style="flex: 0 0 {sideWidth}px; width: {sideWidth}px;">
 				<ArtifactCanvas {tier} {name} />
+				<details class="side-section topic-meta" open>
+					<summary>
+						<span>Meta</span>
+						{#if info?.meta?.schema_version}<span class="section-status">v{info.meta.schema_version}</span>{/if}
+					</summary>
+					<label class="meta-field">
+						<span>Stato</span>
+						{#if isOwner}
+							<select value={metaStatus} disabled={metaBusy}
+								on:change={(e) => saveTopicStatus((e.currentTarget as HTMLSelectElement).value)}>
+								{#each topicStatusOptions as s}
+									<option value={s}>{s}</option>
+								{/each}
+							</select>
+						{:else}
+							<span class="meta-value">{metaStatus}</span>
+						{/if}
+					</label>
+					<label class="meta-field">
+						<span>Deadline</span>
+						{#if isOwner}
+							<div class="deadline-edit">
+								<input type="date" bind:value={metaDeadlineDraft} disabled={metaBusy}
+									on:change={() => saveTopicDeadline()} />
+								{#if info?.meta?.deadline}
+									<button type="button" title="Rimuovi deadline" disabled={metaBusy}
+										on:click={() => saveTopicDeadline('')}>×</button>
+								{/if}
+							</div>
+						{:else}
+							<span class="meta-value">{info?.meta?.deadline ?? '—'}</span>
+						{/if}
+					</label>
+				</details>
 				{#if isOwner}
 					<details class="side-section" open>
 						<summary>
@@ -2209,6 +2290,39 @@
 		text-transform: none;
 	}
 	.file-remote { display: flex; justify-content: flex-end; min-width: 0; margin: -2px 0 6px; }
+	.topic-meta { display: flex; flex-direction: column; gap: 8px; }
+	.meta-field { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; color: var(--fg-muted); }
+	.meta-field > span:first-child { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+	.meta-field select,
+	.meta-field input {
+		width: 100%;
+		min-width: 0;
+		height: 28px;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: var(--bg);
+		color: var(--fg);
+		font: inherit;
+		font-size: 12px;
+		padding: 0 8px;
+	}
+	.meta-field select:disabled,
+	.meta-field input:disabled { opacity: .55; }
+	.meta-value { color: var(--fg); }
+	.deadline-edit { display: flex; align-items: center; gap: 4px; min-width: 0; }
+	.deadline-edit button {
+		flex: none;
+		width: 28px;
+		height: 28px;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		background: transparent;
+		color: var(--fg-muted);
+		cursor: pointer;
+		font-size: 16px;
+		line-height: 1;
+	}
+	.deadline-edit button:hover:not(:disabled) { color: var(--fg); border-color: var(--accent); }
 
 	/* Divisore trascinabile tra chat e pannello destro. Sta nel gap del .body;
 	   l'area cliccabile è più larga della barretta visibile (::before). */

@@ -528,7 +528,15 @@ export interface FeedbackLesson {
 export interface ChannelInfo {
 	tier: string;
 	name: string;
-	meta: { title?: string; owner?: string; participants?: string[]; tier?: string };
+	meta: {
+		title?: string;
+		owner?: string;
+		participants?: string[];
+		tier?: string;
+		status?: string;
+		deadline?: string | null;
+		schema_version?: number;
+	};
 	summary?: string;
 	tldr?: string;
 	/** Storia dei recap (TLDR) del topic, dal più recente. `seed` = entry corrente
@@ -1884,11 +1892,16 @@ export async function archiveTopic(tier: string, name: string, opts: RequestOpti
 }
 
 /** Vocabolario unico di status del topic (selezione uguale per tutti). */
-export const TOPIC_STATUSES = ['await', 'active', 'archived', 'urgent'] as const;
+export const TOPIC_STATUSES = ['active', 'on-hold', 'done', 'archived'] as const;
 
-/** POST `/api/topics/{tier}/{name}/status` — imposta lo status (await|active|archived|urgent). */
+/** POST `/api/topics/{tier}/{name}/status` — imposta lo status (active|on-hold|done|archived). */
 export async function setTopicStatus(tier: string, name: string, status: string, opts: RequestOptions = {}): Promise<{ status: string }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/status`, { status }, opts);
+}
+
+/** POST `/api/topics/{tier}/{name}/deadline` — imposta la deadline (YYYY-MM-DD|null). */
+export async function setTopicDeadline(tier: string, name: string, deadline: string | null, opts: RequestOptions = {}): Promise<{ deadline: string | null }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/deadline`, { deadline }, opts);
 }
 
 /* ── Workflows dichiarativi ──────────────────────────────────────────────── */

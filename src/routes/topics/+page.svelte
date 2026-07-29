@@ -66,7 +66,7 @@
 		}
 	}
 
-	// Vocabolario status (selezione unica) + scadenza todo più vicina sulla card.
+	// Vocabolario status (selezione unica) + scadenza esplicita del topic.
 	const statusOptions = TOPIC_STATUSES;
 	let statusBusy: Record<string, boolean> = {};
 	async function changeStatus(t: Topic, status: string) {
@@ -269,10 +269,11 @@
 		const raw = String(t.status ?? 'active').trim().toLowerCase().replace(/[\s-]+/g, '_');
 		if (!raw) return 'active';
 		if (raw === 'attivo') return 'active';
-		if (raw === 'in_attesa' || raw === 'waiting' || raw === 'awaiting' || raw === 'pending') return 'await';
-		if (raw === 'completato' || raw === 'completed' || raw === 'done') return 'idle';
+		if (raw === 'in_attesa' || raw === 'waiting' || raw === 'awaiting' || raw === 'pending' || raw === 'await') return 'on-hold';
+		if (raw === 'completato' || raw === 'completed' || raw === 'done') return 'done';
+		if (raw === 'idle' || raw === 'urgent') return 'active';
 		if (raw === 'archiviato') return 'archived';
-		return raw;
+		return raw.replace(/_/g, '-');
 	}
 
 	const isArchived = (t: Topic) => topicStatus(t) === 'archived';
@@ -630,9 +631,10 @@
 						{#if status !== 'active'}
 							<span class="state state-{status}">{status}</span>
 						{/if}
-						{#if deadlineInfo(t.next_deadline)}
-							{@const dl = deadlineInfo(t.next_deadline)}
-							<span class="deadline deadline-{dl?.cls}" title="Scadenza todo più vicina">⏰ {dl?.label}</span>
+						{#if deadlineInfo(t.deadline ?? t.next_deadline)}
+							{@const explicitDeadline = !!t.deadline}
+							{@const dl = deadlineInfo(t.deadline ?? t.next_deadline)}
+							<span class="deadline deadline-{dl?.cls}" title={explicitDeadline ? 'Deadline topic' : 'Scadenza todo più vicina'}>⏰ {dl?.label}</span>
 						{/if}
 						{#if t.storage}
 							<span class="storage" title="Storage backend del topic">⛁ {t.storage}</span>
@@ -657,7 +659,7 @@
 						<div class="status-row" on:click|stopPropagation on:keydown|stopPropagation role="presentation">
 							<span class="status-label">Stato</span>
 							{#if canManage(t.owner)}
-								<select class="status-select" value={t.status ?? 'active'}
+								<select class="status-select" value={topicStatus(t)}
 									disabled={statusBusy[keyOf(t)]}
 									on:change={(e) => changeStatus(t, (e.currentTarget as HTMLSelectElement).value)}>
 									{#each statusOptions as s}
@@ -665,7 +667,7 @@
 									{/each}
 								</select>
 							{:else}
-								<span class="status-select" style="opacity:.7">{t.status ?? 'active'}</span>
+								<span class="status-select" style="opacity:.7">{topicStatus(t)}</span>
 							{/if}
 						</div>
 						{#if t.tldr}
