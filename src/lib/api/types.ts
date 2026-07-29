@@ -598,9 +598,11 @@ export interface Topic {
 	readonly participants?: ReadonlyArray<string>;
 	/** Tipo di canale: "dm" = messaggio diretto a 2; assente/altro = canale/topic. */
 	readonly kind?: string;
-	/** Stato del topic (selezione unica): await | active | archived | urgent
+	/** Stato del topic (selezione unica): active | on-hold | done | archived
 	 *  (default active). La vista Topics nasconde di default gli `archived`. */
 	readonly status?: string;
+	/** Deadline esplicita del topic, ISO YYYY-MM-DD; null se non impostata. */
+	readonly deadline?: string | null;
 	/** Scadenza più vicina fra i todo (action_points) con data, ISO YYYY-MM-DD;
 	 *  null se nessun todo ha una scadenza. Mostrata come badge sulla card. */
 	readonly next_deadline?: string | null;
