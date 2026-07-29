@@ -578,7 +578,7 @@ export async function postChannelMessage(
 	name: string,
 	content: string,
 	opts: RequestOptions = {}
-): Promise<{ responder: string | null; reply?: string; queued?: boolean; error?: string; note?: string; warning?: import('./types').TierWarning | null }> {
+): Promise<{ responder?: string | null; responders?: string[]; skipped?: string[]; reply?: string; queued?: boolean; error?: string; note?: string; warning?: import('./types').TierWarning | null }> {
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/post`, { content }, opts);
 }
 export async function sendMessageFeedback(
