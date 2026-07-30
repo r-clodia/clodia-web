@@ -9,6 +9,22 @@ SSE-driven live state, toasts, modals, confirmations, and
 disabled-while-submitting buttons everywhere a mutation can happen. See
 `CHANGELOG-fase8.md` for the full diff vs. the base.
 
+> ### 📍 This is not the entry-point repo
+>
+> This repository is a **component** of Clodia Platform, not a standalone
+> installable product. The entry-point repo — install, quickstart, overall
+> architecture, licensing and **risk warnings** — is:
+>
+> ### 👉 **[r-clodia/clodia-platform](https://github.com/r-clodia/clodia-platform)**
+>
+> Do not start here to deploy: `clodia-platform` clones the component repos,
+> builds the images and orchestrates the stack. Before installing, read the
+> as-is disclaimer and the **known defects** in the platform tracker —
+> [open `security` issues](https://github.com/r-clodia/clodia-platform/issues?q=is%3Aissue+is%3Aopen+label%3Asecurity)
+> and [`SECURITY.md`](https://github.com/r-clodia/clodia-platform/blob/main/SECURITY.md).
+> The software is distributed **AS-IS, without warranty of any kind**: you run
+> it at your own risk.
+
 ## Stack
 
 - **SvelteKit 2** + **Svelte 5** (TypeScript)
