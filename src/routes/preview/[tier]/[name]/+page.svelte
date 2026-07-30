@@ -7,6 +7,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { channelFileUrl, authHeaders } from '$lib/api/client';
+	import { escapeHtml, isMarkdownPath, renderMarkdown } from '$lib/markdown';
 
 	$: tier = $page.params.tier ?? '';
 	$: name = $page.params.name ?? '';
@@ -43,6 +44,60 @@
 		return HEAD_INJECT + raw;
 	}
 
+	function markdownDocument(raw: string): string {
+		const title = escapeHtml(path.split('/').pop() || path || 'Markdown');
+		return `<!doctype html>
+<html lang="it">
+<head>
+${HEAD_INJECT}
+<title>${title}</title>
+<style>
+	body {
+		margin: 0;
+		padding: 28px;
+		background: #fff;
+		color: #1f2933;
+		font: 15px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	}
+	.markdown-preview {
+		max-width: 880px;
+		margin: 0 auto;
+	}
+	h1, h2, h3, h4, h5, h6 {
+		line-height: 1.2;
+		margin: 1.1em 0 .45em;
+		color: #111827;
+	}
+	h1 { font-size: 2rem; border-bottom: 1px solid #e5e7eb; padding-bottom: .25em; }
+	h2 { font-size: 1.45rem; border-bottom: 1px solid #eef2f7; padding-bottom: .2em; }
+	p, ul, ol, blockquote, pre, table { margin: .75em 0; }
+	ul, ol { padding-left: 1.45em; }
+	code {
+		background: #f3f4f6;
+		border-radius: 4px;
+		padding: .12em .32em;
+		font: .92em ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	}
+	pre {
+		overflow: auto;
+		padding: 12px 14px;
+		background: #111827;
+		color: #f9fafb;
+		border-radius: 8px;
+	}
+	pre code { background: transparent; padding: 0; color: inherit; }
+	blockquote { border-left: 4px solid #cbd5e1; padding-left: 12px; color: #4b5563; }
+	a { color: #c2410c; }
+	table { border-collapse: collapse; width: 100%; }
+	th, td { border: 1px solid #d8dee9; padding: 6px 9px; vertical-align: top; }
+	th { background: #f8fafc; text-align: left; }
+	hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.5em 0; }
+</style>
+</head>
+<body><main class="markdown-preview">${renderMarkdown(raw)}</main></body>
+</html>`;
+	}
+
 	async function refresh() {
 		if (!path) return;
 		try {
@@ -55,7 +110,7 @@
 			const key = `${h}:${raw.length}`;
 			if (key !== lastKey) {
 				lastKey = key;
-				html = withInject(raw);
+				html = isMarkdownPath(path) ? markdownDocument(raw) : withInject(raw);
 			}
 			err = '';
 		} catch (e) {
