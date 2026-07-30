@@ -1798,8 +1798,8 @@
 								<a href="#download" class="st-{st ?? 'none'}"
 									title={st ? `${f.name} — ${st}` : f.name}
 									on:click|preventDefault={() => openSignedFile(f.path)}>{f.name}</a>
-								{#if /\.html?$/i.test(f.name)}
-									<button type="button" class="artifact-open" title="Apri anteprima live (finestra separata)"
+								{#if /\.(html?|md|markdown|mdown|mkd)$/i.test(f.name)}
+									<button type="button" class="artifact-open" title="Apri anteprima renderizzata (finestra separata)"
 										on:click={() => openArtifact(f.path)}>🔎</button>
 								{/if}
 							{/if}
