@@ -1366,6 +1366,14 @@ export async function getInstanceProfile(opts: RequestOptions = {}): Promise<Ins
 	return apiGet<InstanceProfile>('/profile', opts);
 }
 
+/** PATCH `/profile` — aggiorna campi runtime admin-only del profilo. */
+export async function patchInstanceProfile(
+	patch: { channel_aliases?: Record<string, string> },
+	opts: RequestOptions = {}
+): Promise<InstanceProfile> {
+	return apiPatch<InstanceProfile>('/profile', patch, opts);
+}
+
 // ---------------------------------------------------------------------------
 // PLUGIN & PACK — pack := [agent seeds]+[plugins]; plugin := [skills]+[rules]+[mcp]
 // ---------------------------------------------------------------------------

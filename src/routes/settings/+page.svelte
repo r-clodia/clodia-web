@@ -4,11 +4,11 @@
 	import QRCode from 'qrcode';
 	import {
 		getBackupStatus, configureBackup, runBackup, backupSnapshots, restoreTest,
-		ApiError, type BackupStatus
+		patchInstanceProfile, ApiError, type BackupStatus
 	} from '$lib/api/client';
 	import { mintPairingToken } from '$lib/auth/session';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
-	import { instanceProfile } from '$lib/stores/instance';
+	import { applyInstanceProfile, instanceProfile } from '$lib/stores/instance';
 
 	let status: BackupStatus | null = null;
 	let loading = true;
@@ -26,6 +26,10 @@
 	let pairingQr = '';
 	let pairingPayload = '';
 	let pairingError = '';
+	type AliasRow = { key: string; value: string };
+	let aliasRows: AliasRow[] = [];
+	let aliasesSaving = false;
+	let aliasesLoadedFrom = '';
 
 	// env per backend: S3-compatible (B2/S3/MinIO) → AWS_*; B2 nativo → B2_*
 	$: repoPlaceholder =
@@ -120,6 +124,50 @@
 		toastSuccess('Pairing copiato', 'incollalo nella PWA sul dispositivo da collegare');
 	}
 
+	$: profileAliasSig = JSON.stringify($instanceProfile.channel_aliases || {});
+	$: if (profileAliasSig !== aliasesLoadedFrom && !aliasesSaving) {
+		aliasesLoadedFrom = profileAliasSig;
+		aliasRows = Object.entries($instanceProfile.channel_aliases || {})
+			.map(([key, value]) => ({ key, value }));
+	}
+
+	function addAlias() {
+		aliasRows = [...aliasRows, { key: '', value: '' }];
+	}
+
+	function removeAlias(index: number) {
+		aliasRows = aliasRows.filter((_, i) => i !== index);
+	}
+
+	function aliasPayload(): Record<string, string> {
+		const out: Record<string, string> = {};
+		for (const row of aliasRows) {
+			const key = row.key.trim().replace(/^\$/, '');
+			const value = row.value.trim();
+			if (!key && !value) continue;
+			if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(key)) {
+				throw new Error(`Alias non valido: ${row.key || '(vuoto)'}`);
+			}
+			if (!value) throw new Error(`Testo mancante per $${key}`);
+			out[key] = value;
+		}
+		return out;
+	}
+
+	async function saveAliases() {
+		aliasesSaving = true;
+		try {
+			const profile = await patchInstanceProfile({ channel_aliases: aliasPayload() });
+			applyInstanceProfile(profile);
+			aliasesLoadedFrom = JSON.stringify(profile.channel_aliases || {});
+			toastSuccess('Alias aggiornati', 'le macro dei canali sono attive');
+		} catch (e) {
+			toastError('Salvataggio alias fallito', e instanceof Error ? e.message : String(e));
+		} finally {
+			aliasesSaving = false;
+		}
+	}
+
 	onMount(load);
 </script>
 
@@ -188,6 +236,38 @@
 	<DelegationsPanel />
 </section>
 
+<section class="card aliases">
+	<div class="card-h">
+		<h2>Alias canali</h2>
+		<span class="iso">prompt macro</span>
+	</div>
+	<div class="alias-list">
+		{#each aliasRows as row, i}
+			<div class="alias-row">
+				<label>Alias
+					<div class="alias-key">
+						<span>$</span>
+						<input bind:value={row.key} placeholder="save" autocomplete="off" />
+					</div>
+				</label>
+				<label>Prompt
+					<textarea bind:value={row.value} rows="2" placeholder="aggiorniamo summary e tldr del topic"></textarea>
+				</label>
+				<button type="button" class="icon-btn danger" title="Elimina alias" on:click={() => removeAlias(i)}>×</button>
+			</div>
+		{/each}
+		{#if aliasRows.length === 0}
+			<p class="muted">Nessun alias configurato.</p>
+		{/if}
+	</div>
+	<div class="actions">
+		<button class="btn" type="button" on:click={addAlias}>Aggiungi alias</button>
+		<button class="btn primary" type="button" on:click={saveAliases} disabled={aliasesSaving}>
+			{aliasesSaving ? 'Salvo…' : 'Salva alias'}
+		</button>
+	</div>
+</section>
+
 {#if $instanceProfile.features.pwa}
 <section class="card pairing">
 	<div class="card-h">
@@ -232,7 +312,8 @@
 	.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 	@media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
 	label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--fg-muted); }
-	input, select { background: rgba(0,0,0,.2); border: 1px solid var(--border); color: var(--fg); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; }
+	input, select, textarea { background: rgba(0,0,0,.2); border: 1px solid var(--border); color: var(--fg); border-radius: 8px; padding: 8px 10px; font: inherit; font-size: 13px; }
+	textarea { resize: vertical; min-height: 42px; line-height: 1.35; }
 	.retention { display: flex; align-items: center; gap: 12px; margin: 14px 0; font-size: 12px; color: var(--fg-muted); flex-wrap: wrap; }
 	.retention label { flex-direction: row; align-items: center; gap: 6px; }
 	.retention input { width: 64px; }
@@ -240,6 +321,19 @@
 	.btn { background: rgba(0,0,0,.2); border: 1px solid var(--border); color: var(--fg); border-radius: 8px; padding: 9px 14px; font: inherit; font-size: 13px; cursor: pointer; }
 	.btn.primary { background: var(--accent); color: #1a1208; font-weight: 700; border-color: transparent; }
 	.btn:disabled { opacity: .5; }
+	.alias-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+	.alias-row { display: grid; grid-template-columns: minmax(120px, 180px) 1fr 32px; gap: 10px; align-items: end; }
+	.alias-key { display: flex; align-items: center; border: 1px solid var(--border); border-radius: 8px; background: rgba(0,0,0,.2); overflow: hidden; }
+	.alias-key span { color: var(--fg-muted); padding-left: 10px; font-size: 13px; }
+	.alias-key input { border: 0; background: transparent; min-width: 0; width: 100%; padding-left: 2px; }
+	.icon-btn { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,.18); color: var(--fg-muted); cursor: pointer; font-size: 18px; line-height: 1; }
+	.icon-btn:hover { color: var(--fg); border-color: color-mix(in srgb, var(--border) 60%, var(--accent)); }
+	.icon-btn.danger:hover { color: #e85d75; }
+	@media (max-width: 640px) {
+		.alias-row { grid-template-columns: 1fr 32px; }
+		.alias-row label:nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+		.alias-row .icon-btn { grid-column: 2; grid-row: 1; }
+	}
 	.qr-wrap { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
 	.qr-wrap img { width: 248px; height: 248px; border-radius: 8px; background: #fff; padding: 8px; }
 </style>

@@ -33,7 +33,8 @@ export const FULL_PROFILE: InstanceProfile = {
 	vocabulary: {},
 	integrations: { allow_manual_mcp: false },
 	topics_single: {},
-	topics_defaults: {}
+	topics_defaults: {},
+	channel_aliases: {}
 };
 
 const _store = writable<InstanceProfile>(FULL_PROFILE);
@@ -65,6 +66,16 @@ export function ensureProfileLoaded(): Promise<void> {
 			_inflight = null;
 		});
 	return _inflight;
+}
+
+export function applyInstanceProfile(p: InstanceProfile): void {
+	_store.set({
+		...FULL_PROFILE,
+		...p,
+		features: { ...FULL_PROFILE.features, ...(p.features || {}) },
+		branding: { ...FULL_PROFILE.branding, ...(p.branding || {}) }
+	});
+	_loaded = true;
 }
 
 /** Href del topic-workspace unico (modalità topics: single). */
