@@ -5,8 +5,9 @@
  *   1. `PUBLIC_API_BASE_URL` (Vite env, exposed because of the `PUBLIC_` prefix)
  *   2. Fallback: `''` (same origin — works behind any proxy/VPN without IP baking)
  *
- * The client is intentionally small: it does NOT manage auth, retries, or
- * caching. Those concerns belong to higher layers when/if they show up.
+ * The client is intentionally small: it manages auth headers and a session
+ * in-memory GET cache so route changes can reuse data already fetched during
+ * the current browser session. Mutating requests invalidate the cache.
  */
 
 const FALLBACK_BASE_URL = '';
@@ -80,17 +81,61 @@ async function parseJsonOrText<T>(res: Response): Promise<T> {
 export interface RequestOptions {
 	headers?: Record<string, string>;
 	signal?: AbortSignal;
+	cache?: boolean | { ttlMs?: number };
+}
+
+const DEFAULT_GET_TTL_MS = 30_000;
+type CacheEntry = { expiresAt: number; promise: Promise<unknown> };
+const getCache = new Map<string, CacheEntry>();
+
+function cacheKey(path: string, headers: Record<string, string>): string {
+	return `${authToken() || 'anon'}\n${joinUrl(path)}\n${JSON.stringify(headers)}`;
+}
+
+function cacheTtl(opts: RequestOptions): number {
+	if (opts.signal) return 0;
+	if (opts.cache === false) return 0;
+	if (typeof opts.cache === 'object' && opts.cache.ttlMs !== undefined) {
+		return Math.max(0, opts.cache.ttlMs);
+	}
+	return DEFAULT_GET_TTL_MS;
+}
+
+export function invalidateApiCache(match?: string | RegExp): void {
+	if (!match) {
+		getCache.clear();
+		return;
+	}
+	for (const key of Array.from(getCache.keys())) {
+		if (typeof match === 'string' ? key.includes(match) : match.test(key)) {
+			getCache.delete(key);
+		}
+	}
 }
 
 /** GET <path> and parse the response as JSON (or text if not JSON). */
 export async function apiGet<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
-	const res = await fetch(joinUrl(path), {
+	const headers = { Accept: 'application/json', ...authHeaders(), ...(opts.headers || {}) };
+	const ttlMs = cacheTtl(opts);
+	const key = ttlMs > 0 ? cacheKey(path, headers) : '';
+	const now = Date.now();
+	if (key) {
+		const hit = getCache.get(key);
+		if (hit && hit.expiresAt > now) return hit.promise as Promise<T>;
+	}
+	const promise = fetch(joinUrl(path), {
 		method: 'GET',
-		headers: { Accept: 'application/json', ...authHeaders(), ...(opts.headers || {}) },
+		headers,
 		signal: opts.signal
+	}).then(async (res) => {
+		if (!res.ok) throw await parseError(res);
+		return parseJsonOrText<T>(res);
 	});
-	if (!res.ok) throw await parseError(res);
-	return parseJsonOrText<T>(res);
+	if (key) {
+		getCache.set(key, { expiresAt: now + ttlMs, promise });
+		promise.catch(() => getCache.delete(key));
+	}
+	return promise;
 }
 
 /** POST <path> with a JSON body and parse the response as JSON (or text). */
@@ -111,6 +156,7 @@ export async function apiPost<T = unknown>(
 		signal: opts.signal
 	});
 	if (!res.ok) throw await parseError(res);
+	invalidateApiCache();
 	return parseJsonOrText<T>(res);
 }
 
@@ -139,6 +185,7 @@ export async function apiPut<T = unknown>(
 		signal: opts.signal
 	});
 	if (!res.ok) throw await parseError(res);
+	invalidateApiCache();
 	if (res.status === 204) return undefined as unknown as T;
 	const ct = res.headers.get('content-type') || '';
 	if (!ct) return undefined as unknown as T;
@@ -162,6 +209,7 @@ export async function apiPatch<T = unknown>(
 		signal: opts.signal
 	});
 	if (!res.ok) throw await parseError(res);
+	invalidateApiCache();
 	if (res.status === 204) return undefined as unknown as T;
 	const ct = res.headers.get('content-type') || '';
 	if (!ct) return undefined as unknown as T;
@@ -183,6 +231,7 @@ export async function apiDelete<T = unknown>(
 		signal: opts.signal
 	});
 	if (!res.ok) throw await parseError(res);
+	invalidateApiCache();
 	// 204 No Content (or any empty body) → resolve with undefined.
 	if (res.status === 204) return undefined as unknown as T;
 	const ct = res.headers.get('content-type') || '';
