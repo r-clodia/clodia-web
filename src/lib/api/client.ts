@@ -560,6 +560,48 @@ export async function getTopics(opts: RequestOptions = {}): Promise<ReadonlyArra
 }
 
 /**
+ * Segnali per-principal dei recent topics (issue clodia-platform#83):
+ * `actionable` = mention non lette + gate pendenti assegnati a me (item, non
+ * messaggi); `activity` = "si è mosso qualcosa" dopo l'ultima visita.
+ * I topic non accessibili sono ASSENTI dalla mappa (mai un conteggio a zero).
+ */
+export interface TopicSignal {
+	actionable: number;
+	activity: boolean;
+}
+export async function getTopicSignals(
+	keys: ReadonlyArray<string>,
+	opts: RequestOptions = {}
+): Promise<Record<string, TopicSignal>> {
+	if (!keys.length) return {};
+	const q = encodeURIComponent(keys.join(','));
+	const data = await apiGet<{ signals?: Record<string, TopicSignal> }>(
+		`/api/topics/signals?topics=${q}`,
+		opts
+	);
+	return data?.signals ?? {};
+}
+
+/**
+ * POST `/api/topics/{tier}/{name}/seen` — registra la visita (spegne il
+ * pallino attività). Con `mentionsUpto` (ts dell'ultimo messaggio davvero
+ * renderizzato) registra anche l'ack di lettura delle mention. Non tocca i
+ * gate: quelli si spengono solo risolti o riassegnati.
+ */
+export async function postTopicSeen(
+	tier: string,
+	name: string,
+	mentionsUpto?: string,
+	opts: RequestOptions = {}
+): Promise<void> {
+	await apiPost(
+		`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/seen`,
+		mentionsUpto ? { mentions_upto: mentionsUpto } : {},
+		opts
+	);
+}
+
+/**
  * GET `/topics/{classification}/{name}/summary`.
  *
  * The server emits `text/plain; charset=utf-8` (markdown body). The

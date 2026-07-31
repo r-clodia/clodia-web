@@ -1,78 +1,106 @@
 /**
- * Non-letti per-topic + segnale di riordino RECENTS.
+ * Segnali per-topic dei RECENTS (issue clodia-platform#83).
  *
- * Alimentato dagli eventi SSE `channel_message` (un messaggio umano o AI è stato
- * persistito in un topic). Per ogni messaggio in un topic NON attualmente aperto
- * e NON scritto dall'utente stesso, incrementa il contatore non-letti di quel
- * topic. Aprendo il topic (`markSeen`) il contatore si azzera. `topicsBump` è un
- * tick che la sidebar osserva per ri-fetchare/riordinare i RECENTS (il topic con
- * attività risale in cima).
+ * Lo stato NON si calcola più nel client (il vecchio contatore in
+ * localStorage incrementava su ogni messaggio: rumore, e condiviso di fatto
+ * fra sessioni). La fonte di verità è il server, per-principal:
  *
- * Persistito in localStorage così i badge sopravvivono al reload.
+ * - `actionable` (badge numerico, accento): mention non lette rivolte a me +
+ *   gate pendenti assegnati a me. Conta gli item che aspettano me, non i
+ *   messaggi nuovi.
+ * - `activity` (pallino neutro, booleano): si è mosso qualcosa dopo la mia
+ *   ultima visita. Nessun numero, nessuna gradazione.
+ *
+ * Precedenza: se c'è actionable si mostra SOLO il badge, mai i due segnali
+ * insieme. La visita spegne il pallino (postTopicSeen); le mention si
+ * spengono con l'ack esplicito (ackMentions, inviato quando la coda dei
+ * messaggi è stata effettivamente renderizzata); i gate solo se risolti o
+ * riassegnati — mai per lettura.
+ *
+ * Gli eventi SSE `channel_message` fanno solo da trigger di refetch
+ * (noteMessage → topicsBump): nessun conteggio locale.
  */
-import { writable, derived, get, type Readable } from 'svelte/store';
+import { writable, type Readable } from 'svelte/store';
 import { browser } from '$app/environment';
-
-const LS = 'clodia.unread';
+import { getTopicSignals, postTopicSeen, type TopicSignal } from '$lib/api/client';
 
 export function topicKey(tier: string, name: string): string {
 	return `${tier}/${name}`;
 }
 
-function _load(): Record<string, number> {
-	if (!browser) return {};
-	try {
-		return JSON.parse(localStorage.getItem(LS) || '{}');
-	} catch {
-		return {};
-	}
-}
+const _signals = writable<Record<string, TopicSignal>>({});
+/** Mappa reattiva topicKey → {actionable, activity} (assente = nessun accesso). */
+export const signals: Readable<Record<string, TopicSignal>> = { subscribe: _signals.subscribe };
 
-const _unread = writable<Record<string, number>>(_load());
-_unread.subscribe((v) => {
-	if (browser) {
-		try {
-			localStorage.setItem(LS, JSON.stringify(v));
-		} catch {
-			/* quota — ignora */
-		}
-	}
-});
-
-/** Mappa reattiva topicKey → conteggio non-letti. */
-export const unread: Readable<Record<string, number>> = { subscribe: _unread.subscribe };
-
-/** Topic attualmente aperto (i suoi messaggi non contano come non-letti). */
+/** Topic attualmente aperto (i suoi eventi non devono suonare). */
 export const activeTopic = writable<string | null>(null);
 
-/** Tick incrementato a ogni `channel_message` → la sidebar ri-ordina i RECENTS. */
+/** Tick incrementato a ogni `channel_message` → la sidebar ri-ordina e rifetcha. */
 const _topicsBump = writable(0);
 export const topicsBump: Readable<number> = { subscribe: _topicsBump.subscribe };
 
-/**
- * Registra un messaggio arrivato in un topic. Incrementa i non-letti se il topic
- * NON è quello aperto e l'autore NON è l'utente stesso. Sempre bumpa il tick di
- * riordino.
- */
-export function noteMessage(tier: string, name: string, author?: string, me?: string | null): void {
-	const key = topicKey(tier, name);
-	_topicsBump.update((n) => n + 1);
-	if (key === get(activeTopic)) return; // lo sto guardando → già letto
-	if (author && me && author === me) return; // mio messaggio → non è "non letto"
-	_unread.update((m) => ({ ...m, [key]: (m[key] || 0) + 1 }));
+// Ultimo set di topic osservati (quelli mostrati in sidebar): il refetch dopo
+// una visita/ack riusa queste chiavi.
+let _watched: string[] = [];
+
+/** Rifetcha i segnali dal server per i topic indicati (o per gli ultimi osservati). */
+export async function refreshSignals(keys?: ReadonlyArray<string>): Promise<void> {
+	if (keys) _watched = [...keys];
+	if (!_watched.length) {
+		_signals.set({});
+		return;
+	}
+	try {
+		_signals.set(await getTopicSignals(_watched));
+	} catch {
+		/* rete/login assente: si riprova al prossimo trigger */
+	}
 }
 
-/** Azzera i non-letti di un topic (all'apertura / mentre lo si guarda). */
+/**
+ * Un `channel_message` è arrivato via SSE: trigger di riordino + refetch.
+ * Il conteggio NON si fa qui — lo fa il server, per-principal.
+ */
+export function noteMessage(_tier: string, _name: string): void {
+	_topicsBump.update((n) => n + 1);
+}
+
+/**
+ * Registra la visita al topic: spegne il pallino attività (ottimista in
+ * locale, poi POST al server). NON tocca badge azionabile né gate.
+ */
 export function markSeen(tier: string, name: string): void {
 	const key = topicKey(tier, name);
-	_unread.update((m) => {
-		if (!m[key]) return m;
-		const c = { ...m };
-		delete c[key];
-		return c;
-	});
+	_signals.update((m) => (m[key] ? { ...m, [key]: { ...m[key], activity: false } } : m));
+	if (browser) void postTopicSeen(tier, name).catch(() => {});
 }
 
-/** Conteggio non-letti di un topic (0 se nessuno). */
-export const unreadCount = (m: Record<string, number>, tier: string, name: string): number =>
-	m[topicKey(tier, name)] || 0;
+/**
+ * Ack di lettura delle mention fino a `upto` (ts dell'ultimo messaggio
+ * RENDERIZZATO — va chiamato solo quando la coda è davvero visibile, non
+ * alla mera navigazione). Poi riallinea i segnali dal server.
+ */
+export function ackMentions(tier: string, name: string, upto: string): void {
+	if (!browser || !upto) return;
+	void postTopicSeen(tier, name, upto)
+		.then(() => refreshSignals())
+		.catch(() => {});
+}
+
+/** Segnale corrente di un topic (default: nessun segnale). */
+export function topicSignal(
+	m: Record<string, TopicSignal>,
+	tier: string,
+	name: string
+): TopicSignal {
+	return m[topicKey(tier, name)] ?? { actionable: 0, activity: false };
+}
+
+// Migrazione: il vecchio contatore client-side non esiste più.
+if (browser) {
+	try {
+		localStorage.removeItem('clodia.unread');
+	} catch {
+		/* ignore */
+	}
+}

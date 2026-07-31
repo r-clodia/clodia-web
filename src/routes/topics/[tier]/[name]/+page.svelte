@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy, tick } from 'svelte';
-	import { activeTopic, markSeen, topicKey } from '$lib/stores/unread';
+	import { activeTopic, markSeen, ackMentions, topicKey } from '$lib/stores/unread';
 	import { page } from '$app/stores';
 	import { session } from '$lib/auth/session';
 	import { onEventStream, startEventStream } from '$lib/stores/events-stream';
@@ -47,11 +47,23 @@
 	$: tier = params.tier ?? '';
 	$: name = params.name ?? '';
 
-	// Non-letti: mentre guardo questo topic è "attivo" (i suoi messaggi non contano
-	// come non-letti) e azzero il suo badge. Alla chiusura libero il topic attivo.
+	// Visita (issue#83): spegne SOLO il pallino attività. Le mention si spengono
+	// con l'ack esplicito quando la coda dei messaggi è renderizzata (vedi
+	// _ackTail); i gate mai per lettura. Alla chiusura libero il topic attivo.
 	$: if (tier && name) {
 		activeTopic.set(topicKey(tier, name));
 		markSeen(tier, name);
+	}
+
+	// Ack di lettura delle mention: SOLO quando l'ultimo messaggio è stato
+	// davvero renderizzato e la vista è in fondo (non alla mera apertura).
+	// `_ackedTs` evita di rimandare lo stesso ack a ogni evento di scroll.
+	let _ackedTs = '';
+	function _ackTail() {
+		const last = messages[messages.length - 1];
+		if (!last?.ts || !isNearBottom || last.ts === _ackedTs) return;
+		_ackedTs = last.ts;
+		ackMentions(tier, name, last.ts);
 	}
 	onDestroy(() => activeTopic.set(null));
 
@@ -869,6 +881,7 @@
 		replyingTo = null; // niente reply-quote trascinata da un altro canale
 		thinkOpen = false;
 		filePath = ''; // riparti dalla radice dei file
+		_ackedTs = ''; // l'ack delle mention è per-topic
 		try {
 			[info, messages, files] = await Promise.all([
 				getChannel(t, n),
@@ -884,6 +897,7 @@
 			initialLoading = false;
 			await tick();
 			scrollDown();
+			_ackTail();
 			void loadEligibility(t, n);
 			void loadRemoteStatus();
 		} catch (e) {
@@ -935,8 +949,10 @@
 			}
 			if (last && previousLastId && last.id !== previousLastId) {
 				await tick();
-				if (wasNearBottom) scrollDown();
-				else showNewMessages = true;
+				if (wasNearBottom) {
+					scrollDown();
+					_ackTail();
+				} else showNewMessages = true;
 			}
 		} catch {
 			/* ignore poll errors */
@@ -947,7 +963,10 @@
 		if (!stream) return;
 		isNearBottom =
 			stream.scrollHeight - stream.scrollTop - stream.clientHeight <= BOTTOM_THRESHOLD_PX;
-		if (isNearBottom) showNewMessages = false;
+		if (isNearBottom) {
+			showNewMessages = false;
+			_ackTail();
+		}
 	}
 
 	function scrollDown(smooth = false) {

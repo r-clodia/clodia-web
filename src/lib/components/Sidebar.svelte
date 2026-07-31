@@ -9,7 +9,7 @@
 	import { instanceProfile, ensureProfileLoaded, singleTopicHref, term } from '$lib/stores/instance';
 	import { API_BASE_URL } from '$lib/api/client';
 	import { isAdmin } from '$lib/stores/capabilities';
-	import { unread, topicsBump, unreadCount } from '$lib/stores/unread';
+	import { signals, topicsBump, topicSignal, refreshSignals } from '$lib/stores/unread';
 
 	// Icone Unicode per ogni route
 	const ICONS: Record<string, string> = {
@@ -91,6 +91,9 @@
 				.filter((t) => t.kind !== 'dm')
 				.toSorted((a, b) => topicTime(b) - topicTime(a))
 				.slice(0, 5);
+			// Segnali per-principal (badge azionabile / pallino) dei topic mostrati:
+			// rivalutati dal server a ogni giro — nessun verdetto cachato (I3).
+			void refreshSignals(recentTopics.map((t) => `${t.tier}/${t.name}`));
 		} catch {
 			recentTopics = [];
 		}
@@ -193,8 +196,15 @@
 						title={t.title || t.name}
 					>
 						<span class="recent-name">{t.title || t.name}</span>
-						{#if unreadCount($unread, t.tier, t.name) > 0}
-							<span class="recent-badge" title="nuovi messaggi">{unreadCount($unread, t.tier, t.name)}</span>
+						<!-- Gerarchia dei segnali (issue#83): il badge azionabile (mention +
+						     gate che aspettano ME) vince sempre; il pallino neutro segnala solo
+						     attività ordinaria; mai i due insieme. Forme diverse (pill con
+						     numero vs cerchietto vuoto) → distinguibili anche in monocromia. -->
+						{#if topicSignal($signals, t.tier, t.name).actionable > 0}
+							<span class="recent-badge" title="item che aspettano te"
+								>{topicSignal($signals, t.tier, t.name).actionable}</span>
+						{:else if topicSignal($signals, t.tier, t.name).activity}
+							<span class="recent-dot" role="status" title="nuova attività" aria-label="nuova attività"></span>
 						{:else}
 							<span class="recent-tier">{t.tier}</span>
 						{/if}
@@ -457,7 +467,8 @@
 		font-weight: 700;
 		letter-spacing: 0.04em;
 	}
-	/* Badge non-letti: pallino con il numero di nuovi messaggi nel topic. */
+	/* Badge azionabile: pill accento col NUMERO di item che aspettano l'utente
+	   (mention + gate), non di messaggi. */
 	.recent-badge {
 		flex: 0 0 auto;
 		min-width: 16px;
@@ -470,6 +481,17 @@
 		font-weight: 800;
 		line-height: 16px;
 		text-align: center;
+	}
+	/* Pallino attività: booleano, tenue, SENZA numero e senza gradazione.
+	   Cerchietto vuoto (solo bordo) → forma diversa dal badge pieno, così i
+	   due segnali restano distinguibili anche in monocromia. */
+	.recent-dot {
+		flex: 0 0 auto;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		border: 1.5px solid var(--sidebar-fg-muted);
+		background: transparent;
 	}
 	.spacer {
 		flex: 1 1 auto;
