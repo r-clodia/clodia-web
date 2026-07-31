@@ -38,6 +38,7 @@
 		'setTimeout(f,0);setTimeout(f,250);setTimeout(f,800);})();<\/script>';
 
 	const HEAD_INJECT = CSP + FIT;
+	const MARKDOWN_HEAD_INJECT = CSP;
 
 	function withInject(raw: string): string {
 		if (/<head[^>]*>/i.test(raw)) return raw.replace(/<head[^>]*>/i, (m) => m + HEAD_INJECT);
@@ -49,19 +50,27 @@
 		return `<!doctype html>
 <html lang="it">
 <head>
-${HEAD_INJECT}
+${MARKDOWN_HEAD_INJECT}
 <title>${title}</title>
 <style>
+	* { box-sizing: border-box; }
+	html {
+		overflow: auto;
+		-webkit-text-size-adjust: 100%;
+		text-size-adjust: 100%;
+	}
 	body {
 		margin: 0;
-		padding: 28px;
+		padding: clamp(18px, 3vw, 36px);
 		background: #fff;
 		color: #1f2933;
-		font: 15px/1.55 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+		font: 17px/1.62 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 	}
 	.markdown-preview {
-		max-width: 880px;
+		width: min(100%, 980px);
 		margin: 0 auto;
+		overflow-wrap: anywhere;
+		word-break: normal;
 	}
 	h1, h2, h3, h4, h5, h6 {
 		line-height: 1.2;
@@ -72,6 +81,7 @@ ${HEAD_INJECT}
 	h2 { font-size: 1.45rem; border-bottom: 1px solid #eef2f7; padding-bottom: .2em; }
 	p, ul, ol, blockquote, pre, table { margin: .75em 0; }
 	ul, ol { padding-left: 1.45em; }
+	p { overflow-wrap: anywhere; }
 	code {
 		background: #f3f4f6;
 		border-radius: 4px;
@@ -79,19 +89,46 @@ ${HEAD_INJECT}
 		font: .92em ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 	}
 	pre {
-		overflow: auto;
+		max-width: 100%;
+		overflow-x: auto;
+		overflow-y: hidden;
 		padding: 12px 14px;
 		background: #111827;
 		color: #f9fafb;
 		border-radius: 8px;
+		-webkit-overflow-scrolling: touch;
+		overflow-wrap: normal;
 	}
-	pre code { background: transparent; padding: 0; color: inherit; }
+	pre code {
+		display: block;
+		min-width: max-content;
+		background: transparent;
+		padding: 0;
+		color: inherit;
+		white-space: pre;
+		overflow-wrap: normal;
+	}
 	blockquote { border-left: 4px solid #cbd5e1; padding-left: 12px; color: #4b5563; }
 	a { color: #c2410c; }
-	table { border-collapse: collapse; width: 100%; }
+	table {
+		display: block;
+		max-width: 100%;
+		overflow-x: auto;
+		border-collapse: collapse;
+		-webkit-overflow-scrolling: touch;
+	}
 	th, td { border: 1px solid #d8dee9; padding: 6px 9px; vertical-align: top; }
 	th { background: #f8fafc; text-align: left; }
+	img, video, canvas, svg {
+		max-width: 100%;
+		height: auto;
+	}
 	hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.5em 0; }
+	@media (max-width: 560px) {
+		body { font-size: 16px; }
+		h1 { font-size: 1.65rem; }
+		h2 { font-size: 1.28rem; }
+	}
 </style>
 </head>
 <body><main class="markdown-preview">${renderMarkdown(raw)}</main></body>
