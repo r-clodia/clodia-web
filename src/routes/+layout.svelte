@@ -87,10 +87,10 @@
 			if (ev.type === 'agent_activity') {
 				bumpJobs();
 			} else if (ev.type === 'channel_message') {
-				// Nuovo messaggio in un topic (umano o AI): aggiorna non-letti +
-				// segnala il riordino RECENTS (il topic con attività risale in cima).
-				const p = (ev.payload || {}) as { tier?: string; name?: string; author?: string };
-				if (p.tier && p.name) noteMessage(p.tier, p.name, p.author, $session?.principal ?? null);
+				// Nuovo messaggio in un topic: trigger di riordino RECENTS + refetch
+				// dei segnali dal server (il conteggio non si fa più nel client).
+				const p = (ev.payload || {}) as { tier?: string; name?: string };
+				if (p.tier && p.name) noteMessage(p.tier, p.name);
 			}
 		});
 	}
