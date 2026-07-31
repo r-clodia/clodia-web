@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, connectOpenAI, connectTrello, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
+	import type { ConnectorIssue, MailboxStatus } from '$lib/api/client';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { askWainston } from '$lib/stores/helpdesk';
 	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
@@ -22,7 +23,9 @@
 		scope: string;
 		wired: boolean; // ha un backend di connessione
 		connected: boolean;
+		operational?: boolean;
 		accounts: string[];
+		issues?: ConnectorIssue[];
 		provider?: string; // etichetta provider (google, openai, storage, …)
 		kind?: 'gmail' | 'gworkspace' | 'google' | 'openai' | 'trello' | 'mailbox' | 'github' | 'telegram'; // flusso di connessione da usare
 		bot_username?: string; // Telegram: @username del bot connesso
@@ -113,18 +116,30 @@
 		try {
 			const { connectors } = await getTools();
 			let boxes: string[] = [];
+			let statuses: MailboxStatus[] = [];
 			try {
-				boxes = await getMailboxes();
+				({ mailboxes: boxes, statuses } = await getMailboxes());
 			} catch {
 				boxes = [];
+				statuses = [];
 			}
 			mailboxes = boxes;
+			mailboxStatuses = statuses;
 			const base = BASE.map((c) => {
-				if (c.id === 'mailboxes') {
-					return { ...c, connected: boxes.length > 0, accounts: boxes };
-				}
 				const live = connectors.find((x) => x.id === c.id);
-				return live ? { ...c, connected: live.connected, accounts: live.accounts,
+				if (c.id === 'mailboxes') {
+					const issues = live?.issues ?? statuses
+						.filter((status) => !status.operational)
+						.map(({ account, missing, error }) => ({ account, missing, error }));
+					return {
+						...c,
+						connected: live?.connected ?? boxes.length > 0,
+						operational: live?.operational ?? (statuses.length > 0 ? statuses.every((status) => status.operational) : undefined),
+						accounts: live?.accounts ?? boxes,
+						issues
+					};
+				}
+				return live ? { ...c, connected: live.connected, operational: live.operational, accounts: live.accounts, issues: live.issues,
 				                bot_username: (live as { bot_username?: string }).bot_username } : { ...c };
 			});
 			// Storage dei topic (provider === 'storage') → card "built-in".
@@ -379,6 +394,7 @@
 
 	// ─── Caselle email (IMAP/SMTP) — connettore multi-mailbox ───
 	let mailboxes: string[] = [];
+	let mailboxStatuses: MailboxStatus[] = [];
 	let mbOpen = false;
 	let mbBusy = false;
 	let mbError = '';
@@ -411,7 +427,7 @@
 			toastSuccess('Casella aggiunta', f.account.trim());
 			mbForm = { account: '', email: '', password: '', imap_server: '', imap_port: 993, smtp_server: '', smtp_port: 587, display_name: '' };
 			await load();
-			mailboxes = await getMailboxes();
+			({ mailboxes, statuses: mailboxStatuses } = await getMailboxes());
 		} catch (err) {
 			mbError = err instanceof ApiError ? err.message : String(err);
 		} finally {
@@ -423,7 +439,7 @@
 			await removeMailbox(account);
 			toastInfo(`Casella ${account} rimossa`);
 			await load();
-			mailboxes = await getMailboxes();
+			({ mailboxes, statuses: mailboxStatuses } = await getMailboxes());
 		} catch (err) {
 			toastError('Rimozione fallita', err instanceof ApiError ? err.message : String(err));
 		}
@@ -522,20 +538,27 @@
 
 <div class="grid">
 	{#each visibleCards as c (c.id)}
-		<div class="card" class:on={c.connected}>
+		<div class="card" class:on={c.connected && c.operational !== false} class:broken={c.operational === false && (c.connected || Boolean(c.issues?.length))}>
 			<div class="card-head">
 				<span class="glyph" aria-hidden="true"><ConnectorIcon provider={c.provider} kind={c.kind} mcp={c.mcp} size={26} /></span>
 				<div class="title">
 					<div class="name">{c.name}</div>
 					<div class="provider">{c.mcp ? (c.transport ?? 'mcp') : (c.provider ?? 'google')}</div>
 				</div>
-				<span class="pill" class:pill-on={c.connected}>
-					{c.builtin ? 'Built-in' : c.mcp ? 'MCP montato' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto'}
+				<span class="pill" class:pill-on={c.connected && c.operational !== false} class:pill-broken={c.operational === false && (c.connected || Boolean(c.issues?.length))}>
+					{c.builtin ? 'Built-in' : c.mcp ? 'MCP montato' : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto'}
 				</span>
 			</div>
 
 			<p class="blurb">{c.blurb}</p>
 			<div class="scopes"><code class="scope">{c.scope}</code></div>
+			{#if c.issues?.length}
+				<div class="integration-issues">
+					{#each c.issues as issue (issue.account)}
+						<div><strong>{issue.account}</strong>: {issue.missing?.length ? `mancano ${issue.missing.join(', ')}` : (issue.error ?? 'configurazione non valida')}</div>
+					{/each}
+				</div>
+			{/if}
 
 			<div class="card-foot">
 				<span class="account">{c.connected && c.accounts.length ? c.accounts.join(', ') : (c.kind === 'telegram' && c.bot_username ? '@' + c.bot_username : '—')}</span>
@@ -762,11 +785,15 @@
 				<strong>Caselle email (IMAP/SMTP)</strong>
 				<button class="x" type="button" on:click={closeMailboxes} aria-label="Chiudi">×</button>
 			</div>
-			{#if mailboxes.length}
+			{#if mailboxStatuses.length}
 				<ul class="mb-list">
-					{#each mailboxes as m (m)}
-						<li><span class="mb-name">✉︎ {m}</span>
-							<button type="button" class="btn ghost sm" on:click={() => deleteMailbox(m)}>Rimuovi</button></li>
+					{#each mailboxStatuses as mailbox (mailbox.account)}
+						<li>
+							<span class="mb-name">✉︎ {mailbox.account}
+								<small class:mb-broken={!mailbox.operational}>{mailbox.operational ? 'operativa' : `non operativa${mailbox.missing?.length ? ` · mancano ${mailbox.missing.join(', ')}` : ''}`}</small>
+							</span>
+							<button type="button" class="btn ghost sm" on:click={() => deleteMailbox(mailbox.account)}>Rimuovi</button>
+						</li>
 					{/each}
 				</ul>
 			{:else}
@@ -843,6 +870,7 @@
 	.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
 	.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 	.card.on { border-color: color-mix(in srgb, var(--success) 55%, var(--border)); }
+	.card.broken { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); }
 	.card-head { display: flex; align-items: center; gap: 10px; }
 	.glyph { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--fg); flex: none; }
 	.title { min-width: 0; flex: 1 1 auto; }
@@ -850,9 +878,11 @@
 	.provider { color: var(--fg-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
 	.pill { flex: none; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; border: 1px solid var(--border); color: var(--fg-muted); }
 	.pill-on { color: var(--success); border-color: color-mix(in srgb, var(--success) 55%, var(--border)); background: color-mix(in srgb, var(--success) 12%, transparent); }
+	.pill-broken { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 	.blurb { margin: 0; color: var(--fg-muted); font-size: 12.5px; line-height: 1.45; }
 	.scopes { display: flex; flex-wrap: wrap; gap: 6px; }
 	.scope { font-family: var(--mono); font-size: 11px; color: var(--fg-muted); background: color-mix(in srgb, var(--fg-muted) 10%, transparent); border-radius: 5px; padding: 2px 6px; word-break: break-all; }
+	.integration-issues { color: var(--danger); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
 	.card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 4px; }
 	.test-badge { font-weight: 700; font-size: 13px; }
 	.test-badge.ok { color: #34c759; }
@@ -885,7 +915,9 @@
 	.modal-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 	.mb-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 	.mb-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px; }
-	.mb-name { font-size: 13px; font-weight: 600; }
+	.mb-name { display: flex; min-width: 0; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; }
+	.mb-name small { color: var(--success); font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
+	.mb-name small.mb-broken { color: var(--danger); }
 	.mb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0; }
 	.btn.sm { font-size: 11px; padding: 3px 9px; }
 </style>
