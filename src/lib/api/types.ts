@@ -418,6 +418,7 @@ export interface InstanceProfile {
 		readonly contact_agent?: string;
 		readonly types?: ReadonlyArray<string | { key: string; label?: string }>;
 	};
+	readonly channel_aliases?: Record<string, string>;
 }
 
 /* ------------------------------------------------------------------------ */
