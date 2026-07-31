@@ -1610,12 +1610,20 @@ export interface ToolConnector {
 	label: string;
 	provider: string;
 	connected: boolean;
+	operational?: boolean;
 	accounts: string[];
+	issues?: ConnectorIssue[];
 	transport?: string;
 	/** storage backend dei topic (provider 'storage'): adapter attivo + versioning. */
 	builtin?: boolean;
 	backend?: string;
 	versioning?: string;
+}
+
+export interface ConnectorIssue {
+	account: string;
+	missing?: string[];
+	error?: string | null;
 }
 
 /** GET `/tools` — stato dei connettori (quali account sono connessi). */
@@ -1745,9 +1753,20 @@ export interface MailboxInput {
 	sent_folder?: string;
 	smtp_user?: string;
 }
-export async function getMailboxes(opts: RequestOptions = {}): Promise<string[]> {
-	const d = await apiGet<{ mailboxes: string[] }>('/tools/email/mailboxes', opts);
-	return d.mailboxes ?? [];
+export interface MailboxStatus extends ConnectorIssue {
+	operational: boolean;
+}
+export interface MailboxesResponse {
+	mailboxes: string[];
+	statuses: MailboxStatus[];
+}
+export async function getMailboxes(opts: RequestOptions = {}): Promise<MailboxesResponse> {
+	const d = await apiGet<Partial<MailboxesResponse>>('/tools/email/mailboxes', opts);
+	const mailboxes = d.mailboxes ?? [];
+	return {
+		mailboxes,
+		statuses: d.statuses ?? mailboxes.map((account) => ({ account, operational: true }))
+	};
 }
 export async function addMailbox(m: MailboxInput, opts: RequestOptions = {}): Promise<{ account: string; connected: boolean }> {
 	return apiPost('/tools/email/mailboxes', m, opts);
