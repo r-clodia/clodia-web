@@ -92,13 +92,27 @@ function cacheKey(path: string, headers: Record<string, string>): string {
 	return `${authToken() || 'anon'}\n${joinUrl(path)}\n${JSON.stringify(headers)}`;
 }
 
+/**
+ * La cache è **opt-in**: `cache: true` (o `{ttlMs}`) per richiesta.
+ *
+ * Il default è NON cachare, e non è una scelta conservativa a caso: in questa
+ * app lo stato cambia per azione degli AGENTI, non solo dell'utente, mentre
+ * l'invalidazione qui sotto scatta solo sulle mutazioni locali (apiPost/Put/
+ * Patch/Delete). Con un default opt-out i poller — `/api/gate/pending` ogni 5s,
+ * la pagina Activity ogni 4s — verrebbero serviti dalla cache e mostrerebbero
+ * dati vecchi fino al TTL. Sul gate, che è una supervisione umana con finestra
+ * di ~180s, sarebbero 30s di ritardo su un controllo di sicurezza.
+ *
+ * Vale la pena marcare `cache: true` solo sulle GET di dati STABILI (cataloghi,
+ * elenchi di definizioni), che sono quelle che rallentano il cambio di sezione.
+ */
 function cacheTtl(opts: RequestOptions): number {
-	if (opts.signal) return 0;
-	if (opts.cache === false) return 0;
-	if (typeof opts.cache === 'object' && opts.cache.ttlMs !== undefined) {
-		return Math.max(0, opts.cache.ttlMs);
+	if (opts.signal) return 0;              // richieste abortabili: mai cache
+	if (opts.cache === true) return DEFAULT_GET_TTL_MS;
+	if (typeof opts.cache === 'object') {
+		return Math.max(0, opts.cache.ttlMs ?? DEFAULT_GET_TTL_MS);
 	}
-	return DEFAULT_GET_TTL_MS;
+	return 0;                               // default: nessuna cache
 }
 
 export function invalidateApiCache(match?: string | RegExp): void {
@@ -1360,7 +1374,7 @@ export async function runJob(id: string, opts: RequestOptions = {}): Promise<Job
 
 /** GET `/clodia/skills` — deduplicated skill catalog. */
 export async function listSkills(opts: RequestOptions = {}): Promise<ReadonlyArray<Skill>> {
-	const raw = await apiGet<unknown>('/clodia/skills', opts);
+	const raw = await apiGet<unknown>('/clodia/skills', { cache: true, ...opts });
 	return Array.isArray(raw) ? (raw as ReadonlyArray<Skill>) : [];
 }
 
@@ -1429,7 +1443,7 @@ export async function patchInstanceProfile(
 
 /** GET `/clodia/plugins` — tutti i plugin (anche sciolti, fuori dai pack). */
 export async function listPlugins(opts: RequestOptions = {}): Promise<ReadonlyArray<Plugin>> {
-	const raw = await apiGet<unknown>('/clodia/plugins', opts);
+	const raw = await apiGet<unknown>('/clodia/plugins', { cache: true, ...opts });
 	return Array.isArray(raw) ? (raw as ReadonlyArray<Plugin>) : [];
 }
 
@@ -1445,7 +1459,7 @@ export async function deletePlugin(name: string, opts: RequestOptions = {}): Pro
 
 /** GET `/clodia/packs` — pack (aggregati di agent seeds + plugins). */
 export async function listPacks(opts: RequestOptions = {}): Promise<ReadonlyArray<Pack>> {
-	const raw = await apiGet<unknown>('/clodia/packs', opts);
+	const raw = await apiGet<unknown>('/clodia/packs', { cache: true, ...opts });
 	return Array.isArray(raw) ? (raw as ReadonlyArray<Pack>) : [];
 }
 
@@ -1516,7 +1530,7 @@ export async function updatePack(
 
 /** GET `/clodia/rules` — deduplicated rule catalog. */
 export async function listRules(opts: RequestOptions = {}): Promise<ReadonlyArray<Rule>> {
-	const raw = await apiGet<unknown>('/clodia/rules', opts);
+	const raw = await apiGet<unknown>('/clodia/rules', { cache: true, ...opts });
 	return Array.isArray(raw) ? (raw as ReadonlyArray<Rule>) : [];
 }
 
