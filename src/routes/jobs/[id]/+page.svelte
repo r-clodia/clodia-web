@@ -206,6 +206,7 @@
 		'stato',
 		'description',
 		'command',
+		'prompt',
 		'enabled',
 		'timezone',
 		'next_run',
@@ -377,6 +378,11 @@
 				{#if job.description}
 					<dt>Description</dt>
 					<dd>{job.description}</dd>
+				{/if}
+
+				{#if job.prompt}
+					<dt>Prompt</dt>
+					<dd><pre class="prompt-text">{job.prompt}</pre></dd>
 				{/if}
 
 				<dt>Schedule</dt>
@@ -701,6 +707,9 @@
 		border: 1px solid var(--border);
 		border-radius: 10px;
 		padding: 20px 22px;
+		min-width: 0;
+		max-width: 100%;
+		box-sizing: border-box;
 	}
 
 	.def {
@@ -708,6 +717,7 @@
 		grid-template-columns: 200px 1fr;
 		gap: 10px 22px;
 		margin: 0;
+		min-width: 0;
 	}
 	.def dt {
 		font-size: 11px;
@@ -720,6 +730,8 @@
 		margin: 0;
 		font-size: 13px;
 		line-height: 1.5;
+		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	.sub-def {
@@ -727,6 +739,7 @@
 		grid-template-columns: 140px 1fr;
 		gap: 4px 14px;
 		margin: 0;
+		min-width: 0;
 	}
 	.sub-def dt {
 		font-size: 10.5px;
@@ -739,10 +752,25 @@
 	.sub-def dd {
 		margin: 0;
 		font-size: 12.5px;
+		min-width: 0;
 	}
 	.sub-def pre {
 		margin: 2px 0 0;
 		font-size: 11.5px;
+		max-width: 100%;
+		box-sizing: border-box;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+
+	.prompt-text {
+		margin: 0;
+		max-width: 100%;
+		box-sizing: border-box;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 
 	.cmd {
