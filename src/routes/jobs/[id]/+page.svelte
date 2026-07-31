@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { onMount } from 'svelte';
 	import {
 		API_BASE_URL,
 		ApiError,
@@ -67,6 +68,28 @@
 	async function reload() {
 		if (id) await loadDetail(id);
 	}
+
+	async function pollDetail() {
+		if (!id || tab !== 'runs' || document.visibilityState === 'hidden') return;
+		try {
+			const data = await getJob(id);
+			detail = { kind: 'ok', job: data };
+		} catch {
+			// Il polling non deve sostituire dati già visibili con un errore transitorio.
+		}
+	}
+
+	onMount(() => {
+		const timer = window.setInterval(() => void pollDetail(), 7_000);
+		const onVisible = () => {
+			if (document.visibilityState !== 'hidden') void pollDetail();
+		};
+		document.addEventListener('visibilitychange', onVisible);
+		return () => {
+			window.clearInterval(timer);
+			document.removeEventListener('visibilitychange', onVisible);
+		};
+	});
 
 	async function onRunNow() {
 		if (runBusy || !id) return;
