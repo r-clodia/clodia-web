@@ -5,8 +5,9 @@
  *   1. `PUBLIC_API_BASE_URL` (Vite env, exposed because of the `PUBLIC_` prefix)
  *   2. Fallback: `''` (same origin — works behind any proxy/VPN without IP baking)
  *
- * The client is intentionally small: it does NOT manage auth, retries, or
- * caching. Those concerns belong to higher layers when/if they show up.
+ * The client is intentionally small: it manages auth headers and a session
+ * in-memory GET cache so route changes can reuse data already fetched during
+ * the current browser session. Mutating requests invalidate the cache.
  */
 
 const FALLBACK_BASE_URL = '';
@@ -80,17 +81,75 @@ async function parseJsonOrText<T>(res: Response): Promise<T> {
 export interface RequestOptions {
 	headers?: Record<string, string>;
 	signal?: AbortSignal;
+	cache?: boolean | { ttlMs?: number };
+}
+
+const DEFAULT_GET_TTL_MS = 30_000;
+type CacheEntry = { expiresAt: number; promise: Promise<unknown> };
+const getCache = new Map<string, CacheEntry>();
+
+function cacheKey(path: string, headers: Record<string, string>): string {
+	return `${authToken() || 'anon'}\n${joinUrl(path)}\n${JSON.stringify(headers)}`;
+}
+
+/**
+ * La cache è **opt-in**: `cache: true` (o `{ttlMs}`) per richiesta.
+ *
+ * Il default è NON cachare, e non è una scelta conservativa a caso: in questa
+ * app lo stato cambia per azione degli AGENTI, non solo dell'utente, mentre
+ * l'invalidazione qui sotto scatta solo sulle mutazioni locali (apiPost/Put/
+ * Patch/Delete). Con un default opt-out i poller — `/api/gate/pending` ogni 5s,
+ * la pagina Activity ogni 4s — verrebbero serviti dalla cache e mostrerebbero
+ * dati vecchi fino al TTL. Sul gate, che è una supervisione umana con finestra
+ * di ~180s, sarebbero 30s di ritardo su un controllo di sicurezza.
+ *
+ * Vale la pena marcare `cache: true` solo sulle GET di dati STABILI (cataloghi,
+ * elenchi di definizioni), che sono quelle che rallentano il cambio di sezione.
+ */
+function cacheTtl(opts: RequestOptions): number {
+	if (opts.signal) return 0;              // richieste abortabili: mai cache
+	if (opts.cache === true) return DEFAULT_GET_TTL_MS;
+	if (typeof opts.cache === 'object') {
+		return Math.max(0, opts.cache.ttlMs ?? DEFAULT_GET_TTL_MS);
+	}
+	return 0;                               // default: nessuna cache
+}
+
+export function invalidateApiCache(match?: string | RegExp): void {
+	if (!match) {
+		getCache.clear();
+		return;
+	}
+	for (const key of Array.from(getCache.keys())) {
+		if (typeof match === 'string' ? key.includes(match) : match.test(key)) {
+			getCache.delete(key);
+		}
+	}
 }
 
 /** GET <path> and parse the response as JSON (or text if not JSON). */
 export async function apiGet<T = unknown>(path: string, opts: RequestOptions = {}): Promise<T> {
-	const res = await fetch(joinUrl(path), {
+	const headers = { Accept: 'application/json', ...authHeaders(), ...(opts.headers || {}) };
+	const ttlMs = cacheTtl(opts);
+	const key = ttlMs > 0 ? cacheKey(path, headers) : '';
+	const now = Date.now();
+	if (key) {
+		const hit = getCache.get(key);
+		if (hit && hit.expiresAt > now) return hit.promise as Promise<T>;
+	}
+	const promise = fetch(joinUrl(path), {
 		method: 'GET',
-		headers: { Accept: 'application/json', ...authHeaders(), ...(opts.headers || {}) },
+		headers,
 		signal: opts.signal
+	}).then(async (res) => {
+		if (!res.ok) throw await parseError(res);
+		return parseJsonOrText<T>(res);
 	});
-	if (!res.ok) throw await parseError(res);
-	return parseJsonOrText<T>(res);
+	if (key) {
+		getCache.set(key, { expiresAt: now + ttlMs, promise });
+		promise.catch(() => getCache.delete(key));
+	}
+	return promise;
 }
 
 /** POST <path> with a JSON body and parse the response as JSON (or text). */
@@ -111,6 +170,7 @@ export async function apiPost<T = unknown>(
 		signal: opts.signal
 	});
 	if (!res.ok) throw await parseError(res);
+	invalidateApiCache();
 	return parseJsonOrText<T>(res);
 }
 
@@ -139,6 +199,7 @@ export async function apiPut<T = unknown>(
 		signal: opts.signal
 	});
 	if (!res.ok) throw await parseError(res);
+	invalidateApiCache();
 	if (res.status === 204) return undefined as unknown as T;
 	const ct = res.headers.get('content-type') || '';
 	if (!ct) return undefined as unknown as T;
@@ -162,6 +223,7 @@ export async function apiPatch<T = unknown>(
 		signal: opts.signal
 	});
 	if (!res.ok) throw await parseError(res);
+	invalidateApiCache();
 	if (res.status === 204) return undefined as unknown as T;
 	const ct = res.headers.get('content-type') || '';
 	if (!ct) return undefined as unknown as T;
@@ -183,6 +245,7 @@ export async function apiDelete<T = unknown>(
 		signal: opts.signal
 	});
 	if (!res.ok) throw await parseError(res);
+	invalidateApiCache();
 	// 204 No Content (or any empty body) → resolve with undefined.
 	if (res.status === 204) return undefined as unknown as T;
 	const ct = res.headers.get('content-type') || '';
@@ -1311,7 +1374,7 @@ export async function runJob(id: string, opts: RequestOptions = {}): Promise<Job
 
 /** GET `/clodia/skills` — deduplicated skill catalog. */
 export async function listSkills(opts: RequestOptions = {}): Promise<ReadonlyArray<Skill>> {
-	const raw = await apiGet<unknown>('/clodia/skills', opts);
+	const raw = await apiGet<unknown>('/clodia/skills', { cache: true, ...opts });
 	return Array.isArray(raw) ? (raw as ReadonlyArray<Skill>) : [];
 }
 
@@ -1380,7 +1443,7 @@ export async function patchInstanceProfile(
 
 /** GET `/clodia/plugins` — tutti i plugin (anche sciolti, fuori dai pack). */
 export async function listPlugins(opts: RequestOptions = {}): Promise<ReadonlyArray<Plugin>> {
-	const raw = await apiGet<unknown>('/clodia/plugins', opts);
+	const raw = await apiGet<unknown>('/clodia/plugins', { cache: true, ...opts });
 	return Array.isArray(raw) ? (raw as ReadonlyArray<Plugin>) : [];
 }
 
@@ -1396,7 +1459,7 @@ export async function deletePlugin(name: string, opts: RequestOptions = {}): Pro
 
 /** GET `/clodia/packs` — pack (aggregati di agent seeds + plugins). */
 export async function listPacks(opts: RequestOptions = {}): Promise<ReadonlyArray<Pack>> {
-	const raw = await apiGet<unknown>('/clodia/packs', opts);
+	const raw = await apiGet<unknown>('/clodia/packs', { cache: true, ...opts });
 	return Array.isArray(raw) ? (raw as ReadonlyArray<Pack>) : [];
 }
 
@@ -1467,7 +1530,7 @@ export async function updatePack(
 
 /** GET `/clodia/rules` — deduplicated rule catalog. */
 export async function listRules(opts: RequestOptions = {}): Promise<ReadonlyArray<Rule>> {
-	const raw = await apiGet<unknown>('/clodia/rules', opts);
+	const raw = await apiGet<unknown>('/clodia/rules', { cache: true, ...opts });
 	return Array.isArray(raw) ? (raw as ReadonlyArray<Rule>) : [];
 }
 

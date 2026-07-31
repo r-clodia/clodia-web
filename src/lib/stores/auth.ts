@@ -23,6 +23,7 @@ import {
 	startLogin as apiStartLogin,
 	submitAuthCode as apiSubmitAuthCode,
 	logout as apiLogout,
+	invalidateApiCache,
 	ApiError
 } from '$lib/api/client';
 import type { AuthLoginResponse, AuthStatus } from '$lib/api/types';
@@ -192,6 +193,10 @@ export async function doLogout(): Promise<{ bypassed: boolean }> {
 	try {
 		await apiLogout();
 	} finally {
+		// La chiave di cache include il token, quindi le entry del vecchio utente
+		// non sono raggiungibili con un token nuovo. Ripulire comunque: nessun
+		// residuo in memoria dopo un logout.
+		invalidateApiCache();
 		rememberSession(false);
 		_state.set({
 			phase: 'anon',
