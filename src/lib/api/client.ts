@@ -652,6 +652,18 @@ export async function postChannelMessage(
 ): Promise<{ responder?: string | null; responders?: string[]; skipped?: string[]; reply?: string; queued?: boolean; error?: string; note?: string; warning?: import('./types').TierWarning | null }> {
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/post`, { content }, opts);
 }
+
+export async function getChannelAliases(opts: RequestOptions = {}): Promise<Record<string, string>> {
+	const data = await apiGet<{ aliases?: Record<string, string> }>('/api/channel-aliases', opts);
+	return data.aliases ?? {};
+}
+
+export async function putChannelAliases(
+	aliases: Record<string, string>, opts: RequestOptions = {}
+): Promise<Record<string, string>> {
+	const data = await apiPut<{ aliases?: Record<string, string> }>('/api/channel-aliases', { aliases }, opts);
+	return data.aliases ?? {};
+}
 export async function sendMessageFeedback(
 	tier: string,
 	name: string,

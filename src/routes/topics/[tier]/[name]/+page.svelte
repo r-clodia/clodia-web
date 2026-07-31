@@ -13,6 +13,7 @@
 		getAgents,
 		getChannel,
 		getChannelMessages,
+		getChannelAliases,
 		postChannelMessage,
 		sendMessageFeedback,
 		getFeedbackLessons,
@@ -39,6 +40,7 @@
 		type FeedbackLesson,
 		type ChannelFile
 	} from '$lib/api/client';
+	import { expandChannelAliases } from '$lib/channelAliases';
 	import type { TierWarning } from '$lib/api/types';
 
 	$: params = $page.params as Record<string, string>;
@@ -292,6 +294,7 @@
 	}
 	let tierWarning: TierWarning | null = null;
 	let draft = '';
+	let channelAliases: Record<string, string> = {};
 	let sending = false;
 	let stopping = false;
 	let resetting = false;
@@ -955,7 +958,7 @@
 	}
 
 	async function send() {
-		const body = draft.trim();
+		const body = expandChannelAliases(draft, channelAliases, Object.keys(eligibility)).trim();
 		if (!body || sending) return;
 		sending = true;
 		stopping = false;
@@ -1179,6 +1182,7 @@
 	let stopStream: (() => void) | null = null;
 	let offEvt: (() => void) | null = null;
 	onMount(() => {
+		void getChannelAliases().then((aliases) => (channelAliases = aliases)).catch(() => {});
 		try {
 			const raw = localStorage.getItem(SIDE_WIDTH_KEY);
 			if (raw) sideWidth = clampSideWidth(Number(raw) || sideWidth);

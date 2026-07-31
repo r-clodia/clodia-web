@@ -4,11 +4,11 @@
 	import QRCode from 'qrcode';
 	import {
 		getBackupStatus, configureBackup, runBackup, backupSnapshots, restoreTest,
-		patchInstanceProfile, ApiError, type BackupStatus
+		getChannelAliases, putChannelAliases, ApiError, type BackupStatus
 	} from '$lib/api/client';
 	import { mintPairingToken } from '$lib/auth/session';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
-	import { applyInstanceProfile, instanceProfile } from '$lib/stores/instance';
+	import { instanceProfile } from '$lib/stores/instance';
 
 	let status: BackupStatus | null = null;
 	let loading = true;
@@ -40,6 +40,9 @@
 	async function load() {
 		loading = true; err = '';
 		try {
+			const aliases = await getChannelAliases();
+			aliasRows = Object.entries(aliases).map(([key, value]) => ({ key, value }));
+			aliasesLoadedFrom = JSON.stringify(aliases);
 			status = await getBackupStatus();
 			if (status.schedule) schedule = status.schedule;
 			if (status.retention) { keepDaily = status.retention.daily; keepWeekly = status.retention.weekly; keepMonthly = status.retention.monthly; }
@@ -124,13 +127,6 @@
 		toastSuccess('Pairing copiato', 'incollalo nella PWA sul dispositivo da collegare');
 	}
 
-	$: profileAliasSig = JSON.stringify($instanceProfile.channel_aliases || {});
-	$: if (profileAliasSig !== aliasesLoadedFrom && !aliasesSaving) {
-		aliasesLoadedFrom = profileAliasSig;
-		aliasRows = Object.entries($instanceProfile.channel_aliases || {})
-			.map(([key, value]) => ({ key, value }));
-	}
-
 	function addAlias() {
 		aliasRows = [...aliasRows, { key: '', value: '' }];
 	}
@@ -145,7 +141,7 @@
 			const key = row.key.trim().replace(/^\$/, '');
 			const value = row.value.trim();
 			if (!key && !value) continue;
-			if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(key)) {
+			if (!/^[a-z_][a-z0-9_]{0,63}$/.test(key)) {
 				throw new Error(`Alias non valido: ${row.key || '(vuoto)'}`);
 			}
 			if (!value) throw new Error(`Testo mancante per $${key}`);
@@ -157,9 +153,8 @@
 	async function saveAliases() {
 		aliasesSaving = true;
 		try {
-			const profile = await patchInstanceProfile({ channel_aliases: aliasPayload() });
-			applyInstanceProfile(profile);
-			aliasesLoadedFrom = JSON.stringify(profile.channel_aliases || {});
+			const aliases = await putChannelAliases(aliasPayload());
+			aliasesLoadedFrom = JSON.stringify(aliases);
 			toastSuccess('Alias aggiornati', 'le macro dei canali sono attive');
 		} catch (e) {
 			toastError('Salvataggio alias fallito', e instanceof Error ? e.message : String(e));
