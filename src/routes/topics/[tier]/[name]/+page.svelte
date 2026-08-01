@@ -784,6 +784,8 @@
 		feedbackLessonsKey = `${tier}/${name}`;
 		void loadFeedbackLessons();
 	}
+	// Seed multi-spawn (issue#94): participant → true se materializza N istanze.
+	let multiSpawn: Record<string, boolean> = {};
 	$: participants = info?.meta?.participants ?? [];
 	// Partecipanti mostrati: nascondi i non idonei al tier (eligible=false). I super
 	// sotto tier restano (eligible=true) e li marchiamo con ⚠️ via eligibility[p].warn.
@@ -1211,10 +1213,12 @@
 			.then((as) => {
 				allAgents = as.map((a) => a.name);
 				aiAgents = as.filter((a) => a.type !== 'human').map((a) => a.name);
+				multiSpawn = Object.fromEntries(as.map((a) => [a.name, !!a.multi_spawn]));
 			})
 			.catch(() => {
 				allAgents = [];
 				aiAgents = [];
+				multiSpawn = {};
 			});
 		stopStream = startEventStream();
 		offEvt = onEventStream((ev) => {
@@ -1730,7 +1734,7 @@
 							<span class="part-id">
 								<AgentAvatar name={p} size={22} />
 								<span class="part-col">
-									<span class="part-name">{p}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
+									<span class="part-name">{p}{#if multiSpawn[p]} <span class="multi-spawn" title="lavora con istanze multiple (@{p}#1, @{p}#2, …)">👯</span>{/if}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
 									{#if c}
 										<span class="ctx-bar" title={`Contesto ${Math.round(c.pct * 100)}% — ${c.used.toLocaleString()}/${c.window.toLocaleString()} token`}>
 											<span class="ctx-fill" style="width:{Math.min(100, c.pct * 100)}%; background:{ctxColor(c.pct)}"></span>

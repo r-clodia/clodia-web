@@ -65,6 +65,9 @@ export interface Agent {
 	 *  drift dal genoma di Clodia Primal. Es. ["clodia-primal"]. */
 	readonly parents?: ReadonlyArray<string>;
 	readonly model?: string;
+	/** Il seed materializza N istanze concorrenti in un topic (issue#94):
+	 *  la UI lo segnala col simbolo 👯 sul participant. */
+	readonly multi_spawn?: boolean;
 	readonly avatar_color?: string;
 	readonly sandbox?: AgentSandbox | null;
 	readonly skills?: ReadonlyArray<string>;
