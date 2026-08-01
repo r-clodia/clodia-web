@@ -83,7 +83,7 @@
 		const provider = providerLabel(a);
 		if (!provider) return { kind: 'unknown' };
 		if (SUBSCRIPTION_PROVIDERS.has(provider)) return { kind: 'flat' };
-		const model = (a.model ?? '').toLowerCase();
+		const model = (a.effective_model || a.model || '').toLowerCase();
 		if (!model) return { kind: 'unknown' };
 
 		if (provider === 'scaleway') {
@@ -181,7 +181,7 @@
 							</span>
 						</span>
 					</td>
-					<td class="c-model"><code>{a.model || '—'}</code></td>
+					<td class="c-model"><code>{a.effective_model || a.model || '—'}</code></td>
 					<td class="c-provider">
 						{#if providerLabel(a)}
 							<span class="prov" class:off={isDisconnected(a)}>{providerLabel(a)}</span>

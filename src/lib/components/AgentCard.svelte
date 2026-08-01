@@ -75,8 +75,9 @@
 				<h3 class="title"><AgentName name={title} /></h3>
 				<StatusDot state={cardState} withLabel={false} />
 			</div>
-			{#if agent.model}
-				<div class="model" title="model">{agent.model}</div>
+			{#if agent.effective_model || agent.model}
+				<!-- Modello dello stack effettivo (1 seed → N stack, issue#93). -->
+				<div class="model" title="model (stack in uso)">{agent.effective_model || agent.model}</div>
 			{/if}
 			{#if providerLabel}
 				<div class="provider" class:off={disconnected} title="provider">

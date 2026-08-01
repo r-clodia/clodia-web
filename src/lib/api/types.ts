@@ -31,10 +31,13 @@ export interface AgentMemory {
 	readonly dir?: string;
 }
 
-/** Opzione del selettore di provider nel profilo agent: un provider della lista
- *  dichiarata + il suo stato corrente. */
+/** Opzione del selettore nel profilo agent: uno STACK (LLM, provider) della
+ *  lista dichiarata + il suo stato corrente (issue clodia-platform#93). */
 export interface ProviderOption {
 	readonly id: string;
+	/** Modello che questo provider servirà (lo stack è la tupla model+provider):
+	 *  l'override per-provider se dichiarato, altrimenti il model top-level. */
+	readonly model?: string | null;
 	readonly seal?: string | null;
 	readonly connected: boolean;
 	readonly paused: boolean;
@@ -81,6 +84,12 @@ export interface Agent {
 	/** Livello SEAL del provider a cui l'agent è ATTUALMENTE attribuito (es. 'SEAL-2'),
 	 *  null se nessun provider attivo. */
 	readonly provider_seal?: string | null;
+	/** Modello dello stack EFFETTIVO (può differire da `model` quando il provider
+	 *  effettivo ha un override per-provider). La UI mostra questo. */
+	readonly effective_model?: string | null;
+	/** Stack dichiarati/normalizzati del seed: tuple (model, provider) in ordine
+	 *  di preferenza (1 seed → N stack, issue clodia-platform#93). */
+	readonly stacks?: ReadonlyArray<{ readonly model: string; readonly provider: string }>;
 	/** Provider compatibili dell'agent, in ordine di preferenza (lista esplicita
 	 *  nell'agent.yaml o default dell'SDK). La UI mostra il preferito quando
 	 *  l'effettivo è null. */
