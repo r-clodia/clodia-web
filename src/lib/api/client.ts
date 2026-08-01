@@ -650,6 +650,49 @@ export interface ChannelInfo {
 	/** Responder con un turno ATTUALMENTE in corso (dal backend): la UI mostra
 	 *  l'indicatore di attività anche riaprendo il topic a metà turno. */
 	active_responders?: string[];
+	/** Danger score «lethal trifecta» del canale (issue clodia-platform#77),
+	 *  calcolato server-side dai grant dei partecipanti. `null` se non
+	 *  calcolabile: la UI in quel caso non mostra il badge. */
+	trifecta?: TrifectaProfile | null;
+}
+/** I tre lati del triangolo: dati privati · contenuto non fidato · uscita. */
+export type TrifectaLeg = 'private_data' | 'untrusted_input' | 'egress';
+export interface TrifectaAgentProfile {
+	name: string;
+	type?: string;
+	human?: boolean;
+	score: number;
+	legs: Record<TrifectaLeg, boolean>;
+	/** Grant che hanno acceso ciascun lato (per il tooltip: il numero da solo
+	 *  non è azionabile). */
+	why?: Record<TrifectaLeg, string[]>;
+	shell?: boolean;
+	expands?: boolean;
+}
+export interface TrifectaProfile {
+	/** 0–3 sulla CHIUSURA (partecipanti + agenti invitabili da chi è dentro). */
+	score: number;
+	label: string;
+	symbol: string;
+	legs: Record<TrifectaLeg, boolean>;
+	by_leg: Record<TrifectaLeg, string[]>;
+	/** Punteggio dei soli partecipanti dichiarati, distinto dalla chiusura. */
+	direct?: {
+		score: number;
+		label: string;
+		legs: Record<TrifectaLeg, boolean>;
+		by_leg: Record<TrifectaLeg, string[]>;
+		/** Agenti con shell fra i PRESENTI (i raggiungibili stanno in shell_agents). */
+		shell_agents?: string[];
+	};
+	agents: TrifectaAgentProfile[];
+	reachable?: string[];
+	expanded_by?: string[];
+	/** Flag SEPARATO, non un quarto lato: con la shell il gate è aggirabile. */
+	shell?: boolean;
+	shell_agents?: string[];
+	unknown_participants?: string[];
+	config_version?: number;
 }
 export interface ChannelFile {
 	name: string;
@@ -1155,7 +1198,6 @@ export async function selectAgentProvider(
 ): Promise<{ agent: string; provider_override: string | null; provider: string | null; provider_connected: boolean }> {
 	return apiPost(`/api/agents/${encodeURIComponent(name)}/provider`, { provider }, opts);
 }
-
 /** Connettore delegabile (account email) con lo stato di grant per un agent. */
 export interface Connector {
 	id: string;
