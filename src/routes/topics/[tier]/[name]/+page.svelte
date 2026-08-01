@@ -8,6 +8,7 @@
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import ArtifactCanvas from '$lib/components/ArtifactCanvas.svelte';
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
+	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
 	import {
 		ApiError,
 		getAgents,
@@ -38,7 +39,9 @@
 		type ChannelInfo,
 		type ChannelMessage,
 		type FeedbackLesson,
-		type ChannelFile
+		type ChannelFile,
+		type TrifectaAgentProfile,
+		type TrifectaLeg
 	} from '$lib/api/client';
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import type { TierWarning } from '$lib/api/types';
@@ -791,6 +794,28 @@
 	// sotto tier restano (eligible=true) e li marchiamo con ⚠️ via eligibility[p].warn.
 	$: shownParticipants = participants.filter((p) => eligibility[p]?.eligible ?? true);
 
+	// Profilo trifecta per partecipante (issue#77): il punteggio del canale è
+	// l'OR dei singoli, quindi accanto a ogni agente si mostra il suo contributo.
+	$: trifectaOf = Object.fromEntries(
+		(info?.trifecta?.agents ?? []).map((a) => [a.name, a])
+	) as Record<string, TrifectaAgentProfile>;
+	const TRI_LEG_LABEL: Record<TrifectaLeg, string> = {
+		private_data: 'dati privati',
+		untrusted_input: 'contenuto non fidato',
+		egress: 'uscita verso l’esterno'
+	};
+	function agentTrifectaTitle(a: TrifectaAgentProfile): string {
+		const legs = (Object.keys(TRI_LEG_LABEL) as TrifectaLeg[]);
+		const on = legs.filter((l) => a.legs?.[l]).map((l) => TRI_LEG_LABEL[l]);
+		const head = on.length ? `Trifecta ${a.score}/3: ${on.join(' · ')}` : 'Trifecta 0/3: nessun lato';
+		const why = legs
+			.filter((l) => a.why?.[l]?.length)
+			.map((l) => `${TRI_LEG_LABEL[l]}: ${a.why?.[l]?.join(', ')}`)
+			.join('\n');
+		const shell = a.shell ? '\nHa la shell: i controlli del gateway sono aggirabili.' : '';
+		return why ? `${head}\n${why}${shell}` : `${head}${shell}`;
+	}
+
 	// --- @mention autocomplete -----------------------------------------------
 	// Estraggo il token @parziale in coda al testo (fino al cursore) e propongo
 	// i partecipanti che combaciano. Click/Invio inserisce "@nome ".
@@ -1289,6 +1314,7 @@
 		<div class="title-row">
 			<h1>#{info?.meta?.title || name}</h1>
 			<span class="tier">{info?.tier || tier}</span>
+			<TrifectaBadge profile={info?.trifecta} />
 			<button type="button" class="reset-context" on:click={resetContext} disabled={resetting || sending}>
 				{resetting ? 'Reset…' : 'Reset contesto'}
 			</button>
@@ -1743,6 +1769,10 @@
 								</span>
 								{#if eligibility[p]?.warn}
 									<span class="part-warn" title="Provider sotto il tier del topic: attiva un provider con SEAL ≥ tier">⚠️</span>
+								{/if}
+								{#if trifectaOf[p] && !trifectaOf[p].human}
+									<span class="part-tri" title={agentTrifectaTitle(trifectaOf[p])}
+										>{trifectaOf[p].score}/3</span>
 								{/if}
 							</span>
 							{#if isOwner && p !== info?.meta?.owner}
@@ -2389,6 +2419,9 @@
 	.ctx-bar { display: block; width: 84px; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
 	.ctx-fill { display: block; height: 100%; border-radius: 2px; transition: width .3s ease, background .3s ease; }
 	.part-warn { flex-shrink: 0; font-size: 12px; cursor: help; margin-left: 2px; }
+	.part-tri { flex-shrink: 0; font-size: 10px; cursor: help; margin-left: 2px;
+		color: var(--fg-muted); border: 1px solid var(--border); border-radius: 999px;
+		padding: 0 5px; font-variant-numeric: tabular-nums; }
 	.parts em { color: var(--fg-muted); font-style: normal; font-size: 11px; }
 	.x { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 15px; }
 	.addp { display: flex; gap: 6px; margin-top: 8px; }
