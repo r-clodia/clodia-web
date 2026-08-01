@@ -1198,6 +1198,7 @@ export async function selectAgentProvider(
 ): Promise<{ agent: string; provider_override: string | null; provider: string | null; provider_connected: boolean }> {
 	return apiPost(`/api/agents/${encodeURIComponent(name)}/provider`, { provider }, opts);
 }
+
 /** Connettore delegabile (account email) con lo stato di grant per un agent. */
 export interface Connector {
 	id: string;
