@@ -566,9 +566,9 @@
 				</h1>
 				<div class="sub">
 					<code class="mono"><AgentName name={name} muted /></code>
-					{#if agent?.model}
+					{#if agent?.effective_model || agent?.model}
 						<span class="dot-sep">·</span>
-						<span class="mono">{agent.model}</span>
+						<span class="mono">{agent.effective_model || agent.model}</span>
 					{/if}
 					<span class="dot-sep">·</span>
 					<StatusDot state={runState} />
@@ -734,7 +734,14 @@
 				{/if}
 
 				<dt>Model</dt>
-				<dd>{agent.model ? agent.model : '—'}</dd>
+				<dd>
+					<!-- Modello dello stack EFFETTIVO (1 seed → N stack, issue#93): con
+					     più stack può differire dal model dichiarato in testa al seed. -->
+					{agent.effective_model || agent.model || '—'}
+					{#if agent.effective_model && agent.model && agent.effective_model !== agent.model}
+						<span class="hint-inline">(stack in uso — dichiarato: {agent.model})</span>
+					{/if}
+				</dd>
 
 				{#if agent.agent_sdk !== undefined}
 					<dt>Agent SDK</dt>
@@ -742,9 +749,11 @@
 				{/if}
 
 				{#if agent.provider_options && agent.provider_options.length}
-					<dt>Provider <span class="hint-inline">(motore di inferenza)</span></dt>
+					<dt>Stack <span class="hint-inline">(modello · provider)</span></dt>
 					<dd>
 						<div class="prov-picker">
+							<!-- Ogni opzione è uno STACK (LLM, provider): selezionarla
+							     seleziona la tupla, non solo il provider (issue#93). -->
 							{#each agent.provider_options as opt}
 								<button
 									type="button"
@@ -753,10 +762,11 @@
 									class:selected={opt.selected}
 									class:off={!opt.connected || opt.paused}
 									disabled={!isAdmin || providerBusy !== '' || !opt.connected || opt.paused}
-									title={opt.paused ? 'in pausa' : (!opt.connected ? 'non collegato' : (isAdmin ? 'attiva questo provider' : ''))}
+									title={opt.paused ? 'in pausa' : (!opt.connected ? 'non collegato' : (isAdmin ? 'attiva questo stack' : ''))}
 									on:click={() => selectProvider(opt.id)}
 								>
 									<span class="prov-name">{opt.id}</span>
+									{#if opt.model}<span class="prov-model mono">{opt.model}</span>{/if}
 									{#if opt.seal}<span class="prov-seal">{opt.seal}</span>{/if}
 									{#if opt.default}<span class="prov-tag" title="default (preferenza)">★</span>{/if}
 									{#if opt.effective}<span class="prov-tag on">in uso</span>
@@ -1437,6 +1447,8 @@
 	.prov-opt.selected { box-shadow: inset 0 0 0 1px var(--accent); }
 	.prov-opt.off { opacity: 0.5; }
 	.prov-name { font-family: var(--mono, monospace); }
+	/* Modello dello stack (tupla LLM·provider) accanto al provider (issue#93). */
+	.prov-model { font-size: 10.5px; color: var(--fg-muted); }
 	.prov-seal { font-size: 9.5px; letter-spacing: 0.03em; color: var(--fg-muted); }
 	.prov-tag { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--fg-muted); }
 	.prov-tag.on { color: var(--accent); font-weight: 700; }
