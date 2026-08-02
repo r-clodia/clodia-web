@@ -9,6 +9,7 @@
 	import ArtifactCanvas from '$lib/components/ArtifactCanvas.svelte';
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
+	import SpawnTree from '$lib/components/SpawnTree.svelte';
 	import {
 		ApiError,
 		getAgents,
@@ -1781,6 +1782,7 @@
 						</li>
 					{/each}
 				</ul>
+				<SpawnTree {tier} {name} />
 				{#if isOwner}
 					<div class="addp">
 						<div class="addp-field">
