@@ -5,6 +5,7 @@
 	import { getTopics } from '$lib/api/client';
 	import type { Topic } from '$lib/api/types';
 	import { theme, fontScale, toggleTheme, incFont, decFont } from '$lib/stores/prefs';
+	import { brandBanner } from '$lib/brand';
 	import { session, logout as sessionLogout } from '$lib/auth/session';
 	import { instanceProfile, ensureProfileLoaded, singleTopicHref, term } from '$lib/stores/instance';
 	import { API_BASE_URL } from '$lib/api/client';
@@ -148,7 +149,7 @@
 			<img class="brand-logo" src={brandLogo} alt={brandName} />
 			<span class="brand-name">{brandName}</span>
 		{:else}
-			<img class="brand-banner" src="/clodia-brand-banner.png" alt="Clodia Colony" />
+			<img class="brand-banner" src={brandBanner($theme)} alt="Clodia Colony" />
 		{/if}
 		<span class="brand-tag">{APP_VERSION}</span>
 		<button

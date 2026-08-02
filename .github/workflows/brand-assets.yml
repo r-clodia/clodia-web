@@ -1,0 +1,19 @@
+name: brand-assets
+on:
+  push:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pillow
+        run: pip install --quiet 'Pillow>=10,<12'
+      # Blocca due cose: un asset di brand aggiornato a mano (scavalcando il
+      # re-encode che elimina EXIF/C2PA e i chunk non standard) e un PNG che
+      # reintroduce metadata o byte appesi dopo IEND. Vedi clodia-platform#101.
+      - name: asset allineati al master e privi di metadata
+        run: python3 scripts/gen-brand-assets.py --check
