@@ -10,6 +10,7 @@
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
 	import SpawnTree from '$lib/components/SpawnTree.svelte';
+	import AgentLiveBox from '$lib/components/AgentLiveBox.svelte';
 	import {
 		ApiError,
 		getAgents,
@@ -420,12 +421,9 @@
 	// che l'agente sta effettivamente lavorando, invece di sembrare bloccato.
 	type LiveAgentState = { think: string; reply: string; tools: string[] };
 	let liveAgents: Record<string, LiveAgentState> = {};
-	// Box "Ragionamento": default CHIUSO, ma l'header resta SEMPRE visibile mentre
-	// l'agente lavora (turno attivo) → l'utente sa che c'è e può espanderlo.
-	let thinkOpen = false;
-	function toggleThink() {
-		thinkOpen = !thinkOpen;
-	}
+	// Un box per agente (issue#105): ragionamento e tool stanno nello stesso
+	// riquadro e l'apertura è per-box, dentro AgentLiveBox. Prima `thinkOpen`
+	// era una variabile sola condivisa: espandere un agente li apriva tutti.
 	const chatBelongs = (cid: unknown) =>
 		typeof cid === 'string' && cid.startsWith(`chan:${tier}:${name}:`);
 	function agentFromChatId(cid: unknown): string | null {
@@ -449,6 +447,16 @@
 				}
 			});
 		}
+	}
+	// Sequenza dei tool del turno (issue#105): prima ogni chiamata SOSTITUIVA la
+	// precedente, quindi il box mostrava solo l'ultimo step e il lavoro già fatto
+	// spariva. Ora si accodano, con un tetto per non far crescere il DOM sui turni
+	// lunghi; il duplicato consecutivo (stesso tool, stesso summary) non si ripete.
+	const MAX_STEPS = 25;
+	function pushStep(agent: string, step: string): string[] {
+		const prev = liveFor(agent).tools;
+		if (prev[prev.length - 1] === step) return prev;
+		return [...prev, step].slice(-MAX_STEPS);
 	}
 	function resetLive(agent?: string) {
 		if (!agent) {
@@ -907,7 +915,6 @@
 		workingResponders = [];
 		resetLive(); // blocchi live (thinking/tools/reply) del canale precedente
 		replyingTo = null; // niente reply-quote trascinata da un altro canale
-		thinkOpen = false;
 		filePath = ''; // riparti dalla radice dei file
 		_ackedTs = ''; // l'ack delle mention è per-topic
 		try {
@@ -1280,13 +1287,13 @@
 			} else if (ev.type === 'tool_use') {
 				const tool = String(p.tool ?? '');
 				const inp = p.input_summary ? `: ${String(p.input_summary)}` : '';
-				updateLive(liveAgent, { tools: [`🔧 ${tool}${inp}`] });
+				updateLive(liveAgent, { tools: pushStep(liveAgent, `🔧 ${tool}${inp}`) });
 			} else if (ev.type === 'task_progress') {
 				// progresso di un SUBAGENT (tool Task): senza questo la chat sembra
 				// ferma mentre il subagent lavora (es. un download).
 				const tool = p.last_tool_name ? ` · ${String(p.last_tool_name)}` : '';
 				const desc = p.description ? `: ${String(p.description)}` : '';
-				updateLive(liveAgent, { tools: [`🤖 subagent${tool}${desc}`.slice(0, 120)] });
+				updateLive(liveAgent, { tools: pushStep(liveAgent, `🤖 subagent${tool}${desc}`.slice(0, 120)) });
 			}
 		});
 	});
@@ -1542,31 +1549,10 @@
 						{typingLabel}
 					</div>
 				{/if}
-				<!-- Ragionamento: collassabile (default chiuso), distinto dallo streaming. -->
+				<!-- Un box per agente (issue#105): ragionamento e tool in sequenza nello
+				     stesso riquadro, compatto di default, con expand/compact per i dettagli. -->
 				{#each liveEntries as [agent, live] (agent)}
-					<div class="think" class:open={thinkOpen}>
-						<button type="button" class="think-head" on:click={toggleThink}
-							aria-expanded={thinkOpen}>
-							<span class="caret" class:open={thinkOpen}>▸</span>
-							<span class="think-title">Ragionamento · {agent}</span>
-							<span class="think-live">● live</span>
-							<span class="think-hint">{thinkOpen ? 'comprimi' : 'espandi'}</span>
-						</button>
-						{#if thinkOpen}
-							<div class="think-body"><pre class="think-text">{live.think || '…'}</pre></div>
-						{/if}
-					</div>
-				{/each}
-				<!-- Tool e subagent in uso: sempre visibili sotto il ragionamento. -->
-				{#each liveEntries as [agent, live] (agent)}
-					{#if live.tools.length}
-						<div class="live-tools">
-							<span class="live-tools-agent">{agent}</span>
-							<ul>
-								{#each live.tools as t}<li>{t}</li>{/each}
-							</ul>
-						</div>
-					{/if}
+					<AgentLiveBox {agent} think={live.think} tools={live.tools} />
 				{/each}
 			{/if}
 			{#if lastRouting}
@@ -1576,7 +1562,7 @@
 						<span class="caret" class:open={routingOpen}>▸</span>
 						<span class="routing-title">🧭 Routing → <b>{lastRouting.chosen}</b></span>
 						<span class="routing-why">{routingReason[lastRouting.reason] ?? lastRouting.reason}</span>
-						<span class="think-hint">{routingOpen ? 'comprimi' : multiRouting ? 'dettagli' : 'correggi'}</span>
+						<span class="routing-hint">{routingOpen ? 'comprimi' : multiRouting ? 'dettagli' : 'correggi'}</span>
 					</button>
 					{#if routingOpen}
 						<div class="routing-body">
@@ -2135,7 +2121,7 @@
 	.routing-head .caret.open { transform: rotate(90deg); }
 	.routing-title { font-weight: 500; }
 	.routing-why { color: var(--fg-muted); flex: 1; font-style: italic; }
-	.routing-head .think-hint { color: var(--fg-muted); font-size: 11px; }
+	.routing-hint { margin-left: auto; color: var(--fg-muted); font-size: 11px; opacity: .7; }
 	.routing-body { padding: 4px 12px 10px 12px; }
 	.routing-meta { color: var(--fg-muted); margin-bottom: 6px; }
 	.routing-scores { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
@@ -2162,23 +2148,6 @@
 	.streaming-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--accent); animation: stream-pulse 1.2s ease-in-out infinite; }
 	@keyframes stream-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
 
-	/* Pannello "Ragionamento" live (comprimibile, di default chiuso) */
-	.think { margin: 2px 8px 8px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(255,255,255,.02); }
-	.think.open { border-style: solid; }
-	.think-head { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font: inherit; font-size: 11.5px; padding: 7px 10px; }
-	.think-head:hover { color: var(--fg); }
-	.think-head .caret { font-size: 10px; transition: transform .12s ease; }
-	.think-head .caret.open { transform: rotate(90deg); }
-	.think-title { font-weight: 700; letter-spacing: .03em; text-transform: uppercase; font-size: 10px; }
-	.think-live { color: var(--accent); font-size: 10px; font-weight: 700; }
-	.think-hint { margin-left: auto; font-size: 10px; opacity: .7; }
-	.think-body { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
-	.think-text { margin: 0; max-height: 220px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--fg-muted); }
-	/* Barra tool/subagent sempre visibile (indipendente dal collapse del ragionamento) */
-	.live-tools { min-width: 0; margin: 2px 8px 6px; padding: 5px 9px; display: flex; align-items: baseline; gap: 8px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; }
-	.live-tools-agent { flex: none; color: var(--fg-muted); font-size: 10px; font-weight: 700; text-transform: uppercase; }
-	.live-tools ul { min-width: 0; margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
-	.live-tools li { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.ts { font-size: 10.5px; color: var(--fg-muted); }
 	.text { font-size: 13.5px; margin-top: 2px; }
 	/* markdown renderizzato nei messaggi */
