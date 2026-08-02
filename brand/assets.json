@@ -1,0 +1,53 @@
+{
+  "master": "brand/logo-master.png",
+  "out_dir": "static",
+  "geometry": {
+    "master_size": [1536, 1024],
+    "content_bbox": [226, 306, 1262, 636],
+    "icon_box": [225, 303, 561, 639],
+    "lockup_box": [226, 305, 1262, 637],
+    "wordmark_x": 383
+  },
+  "palette": {
+    "ink": "#19303a",
+    "accent_ink": "#2f6b5c",
+    "surface_dark": "#101116"
+  },
+  "targets": [
+    { "file": "favicon-16.png", "kind": "icon", "size": 16, "inset": 1.0 },
+    { "file": "favicon-32.png", "kind": "icon", "size": 32, "inset": 1.0 },
+    { "file": "favicon.ico", "kind": "ico", "sizes": [16, 32, 48], "inset": 1.0 },
+    {
+      "file": "clodia-icon-192.png",
+      "kind": "icon",
+      "size": 192,
+      "inset": 0.8,
+      "bg": "#101116"
+    },
+    {
+      "file": "clodia-brand-banner.png",
+      "kind": "lockup",
+      "width": 720,
+      "height": 240,
+      "pad": 0.04,
+      "variant": "dark"
+    },
+    {
+      "file": "clodia-brand-banner-light.png",
+      "kind": "lockup",
+      "width": 720,
+      "height": 240,
+      "pad": 0.04,
+      "variant": "light"
+    },
+    {
+      "file": "clodia-colony-social.png",
+      "kind": "lockup",
+      "width": 1200,
+      "height": 400,
+      "pad": 0.1,
+      "variant": "dark",
+      "bg": "#101116"
+    }
+  ]
+}

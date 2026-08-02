@@ -24,6 +24,8 @@
 		submitAuthCode
 	} from '$lib/stores/auth';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
+	import { theme } from '$lib/stores/prefs';
+	import { brandBanner } from '$lib/brand';
 
 	type Step = 'idle' | 'await-code' | 'verifying';
 
@@ -147,7 +149,7 @@
 <div class="login-wrap">
 	<div class="card">
 		<div class="brand">
-			<img src="/clodia-brand-banner.png" alt="Clodia Colony" />
+			<img src={brandBanner($theme)} alt="Clodia Colony" />
 			<span class="brand-tag">v2</span>
 		</div>
 
