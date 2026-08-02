@@ -13,6 +13,7 @@
 	 * Accepted lifecycle states. Strings outside this union render
 	 * neutrally. The vocabulary spans three subsystems:
 	 *  - agents: `idle`, `running`
+	 *  - spawns: `blocked`, `error` (albero spawn del topic, issue#99)
 	 *  - jobs:   `success`, `failed`
 	 *  - daemons:`up`, `down`, `degraded` (`unknown` shared as fallback)
 	 */
@@ -23,7 +24,9 @@
 		| 'up'
 		| 'down'
 		| 'degraded'
-		| 'disconnected';
+		| 'disconnected'
+		| 'blocked'
+		| 'error';
 
 	export let state: DotState | string = 'unknown';
 	export let withLabel: boolean = true;
@@ -37,6 +40,8 @@
 		'down',
 		'degraded',
 		'disconnected',
+		'blocked',
+		'error',
 		'unknown'
 	];
 
@@ -59,6 +64,10 @@
 			? 'Degraded'
 			: normalised === 'disconnected'
 			? 'Provider non collegato'
+			: normalised === 'blocked'
+			? 'Bloccato'
+			: normalised === 'error'
+			? 'Errore sull’ultimo turno'
 			: 'Status unknown';
 
 	$: label = normalised === 'unknown' ? (typeof state === 'string' && state ? state : '—') : normalised;
@@ -161,6 +170,28 @@
 	.pill.disconnected .dot {
 		background: #d6a85a;
 		box-shadow: 0 0 0 2px rgba(214, 168, 90, 0.18);
+	}
+	/* issue#99 — semaforo dell'albero spawn: arancio = fermo, rosso = errore.
+	   Il colore non è mai l'unico canale: la label testuale resta sempre a
+	   fianco del pallino (daltonismo/screen reader), e il `title`/`aria-label`
+	   della pill descrive lo stato per esteso. */
+	.pill.blocked {
+		color: #e8a23a;
+		border-color: rgba(232, 162, 58, 0.55);
+		background: rgba(232, 162, 58, 0.08);
+	}
+	.pill.blocked .dot {
+		background: #e8a23a;
+		box-shadow: 0 0 0 2px rgba(232, 162, 58, 0.18);
+	}
+	.pill.error {
+		color: var(--danger);
+		border-color: rgba(232, 93, 117, 0.55);
+		background: rgba(232, 93, 117, 0.08);
+	}
+	.pill.error .dot {
+		background: var(--danger);
+		box-shadow: 0 0 0 2px rgba(232, 93, 117, 0.18);
 	}
 	.pill.unknown {
 		opacity: 0.7;
