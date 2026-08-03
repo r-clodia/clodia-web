@@ -713,8 +713,18 @@ export interface TrifectaProfile {
 	shell?: boolean;
 	shell_agents?: string[];
 	unknown_participants?: string[];
-	/** Rischio RESIDUO dopo il confinamento applicato: l'uscita conta solo se è
-	 *  arbitraria. `score` resta la capacità e non mente. */
+	/** Il vettore così com'è deciso dal backend: `110`, `010`, `?11`… Il `?` è il
+	 *  primo bit non leggibile (gateway giù): non inventato né a 0 né a 1. */
+	vector?: string;
+	/** I tre bit separati, per la resa a simboli. */
+	bits?: { tainted: number; private_data: number; arbitrary_egress: number };
+	/** Stato di contaminazione: `null` = non leggibile. */
+	tainted?: boolean | null;
+	/** CAPACITÀ presente: l'OR dei tre lati, indipendentemente da cosa è accaduto
+	 *  e da come è confinato. `score` conta i bit; questo conta i verbi. */
+	capability?: number;
+	capability_legs?: Record<TrifectaLeg, boolean>;
+	/** Alias storico: `score` È già il rischio residuo. */
 	residual?: number;
 	/** Modo del confinamento in uscita del gateway (`gate` | `on` | `report` | `off`). */
 	egress_mode?: string;
