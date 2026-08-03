@@ -704,6 +704,9 @@ export interface ChannelFile {
 	/** Google Doc nativo: proxy/link al documento remoto su Drive (non scaricabile
 	 *  come binario: si legge/edita direttamente su Drive). `url` = webViewLink. */
 	remote?: boolean;
+	/** webViewLink. Presente anche sulle voci `kind: "dir"` di un topic con remote
+	 *  Drive: la cartella si NAVIGA qui dentro, e questo link è l'alternativa
+	 *  esplicita (bottone ↗) per aprirla nella web app di Drive (#117). */
 	url?: string;
 	mime?: string | null;
 }
