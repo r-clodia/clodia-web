@@ -268,13 +268,23 @@
 	}
 	// silent=true (poll di background): niente spinner/dim e riassegna `files`
 	// SOLO se la lista è davvero cambiata → la sidebar non flickera ad ogni giro.
+	// Motivo per cui i file non sono elencabili (storage remoto giù, es. token
+	// Drive scaduto). Prima di questo il catch ingoiava tutto e il pannello
+	// mostrava una cartella vuota: indistinguibile da un topic senza file.
+	let filesError = '';
 	async function loadFiles(silent = false) {
 		if (!silent) filesLoading = true;
 		try {
 			const next = await getChannelFiles(tier, name, filePath);
 			if (!sameFiles(next, files)) files = next;
-		} catch {
-			/* ignore */
+			filesError = '';
+		} catch (e) {
+			// 424 = storage del topic non disponibile: il backend ha già formulato
+			// un motivo azionabile, lo mostriamo così com'è. Gli altri errori non
+			// devono cancellare la lista già caricata.
+			const msg = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+			filesError = msg;
+			if (e instanceof ApiError && e.status === 424) files = [];
 		} finally {
 			if (!silent) filesLoading = false;
 		}
@@ -1831,7 +1841,12 @@
 							on:click={() => unstageMany(folderStaged)}>⊖ tutti</button>
 					{/if}
 				</nav>
-			<ul class="files" class:loading={filesLoading} aria-busy={filesLoading}>
+			{#if filesError}
+					<!-- Lo storage del topic è remoto e non risponde: dirlo, invece di
+					     mostrare una cartella vuota che sembra un topic senza file. -->
+					<p class="files-error" role="status">⚠ {filesError}</p>
+				{/if}
+				<ul class="files" class:loading={filesLoading} aria-busy={filesLoading}>
 					{#each files as f}
 						{@const st = f.kind !== 'dir' ? fileState(f.path) : null}
 						<li>
@@ -2277,6 +2292,16 @@
 	.remote-actions button:disabled { opacity: .5; cursor: default; }
 	.remote-actions button.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 	.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-bottom: 6px; font-size: 11.5px; }
+	.files-error {
+		margin: 6px 0 8px;
+		padding: 7px 9px;
+		border: 1px solid var(--warn, #e0a800);
+		border-radius: 4px;
+		background: color-mix(in srgb, var(--warn, #e0a800) 8%, transparent);
+		color: var(--fg);
+		font-size: 12px;
+		line-height: 1.45;
+	}
 	.files-spinner { width: 12px; height: 12px; margin-left: 6px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: files-spin .7s linear infinite; flex: none; }
 	@keyframes files-spin { to { transform: rotate(360deg); } }
 	.files.loading { opacity: .55; pointer-events: none; }
