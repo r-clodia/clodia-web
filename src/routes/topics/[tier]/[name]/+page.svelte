@@ -1852,6 +1852,12 @@
 						<li>
 							{#if f.kind === 'dir'}
 								<button type="button" class="dir" on:click={() => openDir(f)} disabled={filesLoading}>📂 {f.name}</button>
+								{#if f.url}
+									<!-- Su un remote Drive la cartella si naviga qui dentro; aprirla su
+									     Drive resta possibile, ma come scelta esplicita (#117). -->
+									<a class="ext" href={f.url} target="_blank" rel="noopener"
+										title="Apri questa cartella su Google Drive">↗</a>
+								{/if}
 							{:else if f.remote}
 								<a href={f.url} target="_blank" rel="noopener" class="remote st-{st ?? 'none'}" title="Documento Google — apri e modifica su Drive">📄 {f.name}</a>
 							{:else}
@@ -2310,6 +2316,10 @@
 	.crumb-sep { color: var(--fg-muted); opacity: .6; }
 	.dir { background: transparent; border: none; color: var(--fg); cursor: pointer; font: inherit; font-size: 12px; padding: 0; text-align: left; }
 	.dir:hover { color: var(--accent); }
+	/* Link "apri su Drive" accanto a una cartella navigabile: discreto, non deve
+	   competere col nome, che è l'azione primaria (navigare). */
+	.ext { color: var(--muted); font-size: 11px; margin-left: 4px; text-decoration: none; }
+	.ext:hover { color: var(--accent); }
 	/* Larghezza via inline style (resize); flex:0 0 evita che venga compressa.
 	   height:100% + min-height:0 → occupa tutta l'altezza del .body e scrolla
 	   internamente invece di allungare la pagina. */
