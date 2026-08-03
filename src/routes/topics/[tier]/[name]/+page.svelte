@@ -1135,22 +1135,44 @@
 		}
 	}
 
-	async function uploadFile(f: File) {
+	async function uploadFile(f: File, provenance: 'trusted' | 'untrusted') {
 		const buf = await f.arrayBuffer();
 		let bin = '';
 		const u = new Uint8Array(buf);
 		for (let i = 0; i < u.length; i++) bin += String.fromCharCode(u[i]);
 		try {
-			await uploadChannelFile(tier, name, f.name, btoa(bin));
+			await uploadChannelFile(tier, name, f.name, btoa(bin), provenance);
 			await loadFiles();
 		} catch (err) {
 			loadErr = err instanceof ApiError || err instanceof Error ? err.message : String(err);
 		}
 	}
 
+	// ── Provenienza all'upload (clodia-platform#104 §3) ────────────────────────
+	// All'upload si chiede DA DOVE viene il file: è l'unico momento in cui
+	// l'informazione esiste, e l'unico interlocutore che può risponderla è
+	// l'utente. È una CLASSIFICAZIONE, non un'autorizzazione — non si chiede
+	// «consenti/nega», perché un blocco insegnerebbe a rispondere «fidata» per
+	// andare avanti, rendendo l'etichetta inutile.
+	//
+	// Si chiede UNA volta per lotto: cinque immagini incollate insieme vengono
+	// dalla stessa fonte, e cinque dialog di fila sono la strada per farli
+	// cliccare senza leggere.
+	let pending: File[] = [];
+	async function askProvenance(files: File[]) {
+		if (!files.length) return;
+		pending = files;
+	}
+	async function resolveProvenance(provenance: 'trusted' | 'untrusted' | null) {
+		const files = pending;
+		pending = [];
+		if (!provenance) return; // annullato: non si carica niente
+		for (const f of files) await uploadFile(f, provenance);
+	}
+
 	async function onUpload(e: Event) {
 		const files = (e.target as HTMLInputElement).files;
-		if (files) for (const f of Array.from(files)) await uploadFile(f);
+		if (files) await askProvenance(Array.from(files));
 		(e.target as HTMLInputElement).value = ''; // permette di ricaricare lo stesso file
 	}
 
@@ -1178,7 +1200,7 @@
 		}
 		if (imgs.length) {
 			e.preventDefault();
-			for (const f of imgs) await uploadFile(f);
+			await askProvenance(imgs);
 		}
 	}
 
@@ -1204,7 +1226,7 @@
 		if (!fs?.length) return;
 		e.preventDefault();
 		dragOver = false;
-		for (const f of Array.from(fs)) await uploadFile(f);
+		await askProvenance(Array.from(fs));
 	}
 
 	$: if (tier && name && `${tier}/${name}` !== loadedKey) {
@@ -1864,6 +1886,15 @@
 								<a href="#download" class="st-{st ?? 'none'}"
 									title={st ? `${f.name} — ${st}` : f.name}
 									on:click|preventDefault={() => openSignedFile(f.path)}>{f.name}</a>
+								{#if f.provenance === 'untrusted' || f.provenance === 'unknown'}
+									<!-- Etichetta visibile solo quando NON è verificata: marcare anche
+									     i file fidati farebbe rumore su ogni riga e nessuno la
+									     guarderebbe più. `unknown` = caricato prima della §3. -->
+									<span class="prov-tag" class:unknown={f.provenance === 'unknown'}
+										title={f.provenance === 'unknown'
+											? 'Provenienza non registrata: file caricato prima che la classificazione esistesse'
+											: 'Dichiarato come fonte esterna o non verificata'}>{f.provenance === 'unknown' ? '?' : '⚠'}</span>
+								{/if}
 								{#if /\.(html?|md|markdown|mdown|mkd)$/i.test(f.name)}
 									<button type="button" class="artifact-open" title="Apri anteprima renderizzata (finestra separata)"
 										on:click={() => openArtifact(f.path)}>🔎</button>
@@ -2009,6 +2040,38 @@
 	</div>
 	{/if}
 </div>
+
+{#if pending.length}
+	<!-- Provenienza all'upload (#104 §3). Due scelte simmetriche e nessun
+	     "consenti/nega": è una classificazione. `untrusted` è la scelta a costo
+	     basso — il file si legge comunque, contamina il canale, e l'uscita
+	     successiva chiede conferma. -->
+	<div class="prov-backdrop" role="button" tabindex="0"
+		on:click={() => resolveProvenance(null)}
+		on:keydown={(e) => e.key === 'Escape' && resolveProvenance(null)}>
+		<div class="prov-modal" role="dialog" aria-modal="true" aria-label="Provenienza del file"
+			tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+			<h2>Da dove viene {pending.length === 1 ? 'questo file' : `questi ${pending.length} file`}?</h2>
+			<p class="prov-files">{pending.map((f) => f.name).join(' · ')}</p>
+			<p class="prov-why">
+				Serve a sapere se il contenuto è di terzi. Il file si legge in ogni caso:
+				se la fonte non è verificata il canale risulta <em>contaminato</em>, e la
+				prima uscita successiva (email, messaggio, push) chiederà una conferma.
+			</p>
+			<div class="prov-actions">
+				<button type="button" class="prov-untrusted" on:click={() => resolveProvenance('untrusted')}>
+					Fonte esterna o non verificata
+					<small>Ricevuto da terzi, scaricato, non so cosa contiene</small>
+				</button>
+				<button type="button" class="prov-trusted" on:click={() => resolveProvenance('trusted')}>
+					Fonte che conosco
+					<small>L'ho scritto io o viene da una fonte di cui rispondo</small>
+				</button>
+			</div>
+			<button type="button" class="prov-cancel" on:click={() => resolveProvenance(null)}>Annulla</button>
+		</div>
+	</div>
+{/if}
 
 {#if composerExpanded}
 	<div class="composer-modal-backdrop" role="button" tabindex="0"
@@ -2243,6 +2306,22 @@
 	.mention-item { display: flex; align-items: center; gap: 7px; width: 100%; background: transparent; border: none; color: var(--fg); font: inherit; font-size: 12.5px; padding: 5px 8px; border-radius: 6px; cursor: pointer; text-align: left; }
 	.mention-item.sel, .mention-item:hover { background: rgba(255, 107, 61, 0.12); }
 	.files-hint { font-size: 11px; color: var(--fg-muted); margin: 8px 0 0; line-height: 1.4; }
+	.prov-tag { font-size: 10px; margin-left: 4px; color: #d97706; cursor: help; }
+	.prov-tag.unknown { color: var(--fg-muted); }
+	.prov-backdrop { position: fixed; inset: 0; z-index: 75; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.55); }
+	.prov-modal { width: min(520px, 100%); background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 18px; box-shadow: 0 18px 55px rgba(0,0,0,.45); }
+	.prov-modal h2 { margin: 0 0 6px; font-size: 15px; }
+	.prov-files { margin: 0 0 10px; font-size: 12px; color: var(--fg-muted); word-break: break-all; }
+	.prov-why { margin: 0 0 14px; font-size: 12px; line-height: 1.5; color: var(--fg-muted); }
+	.prov-actions { display: flex; flex-direction: column; gap: 8px; }
+	/* Le due scelte hanno lo STESSO peso tipografico: enfatizzarne una la
+	   trasformerebbe nel default da cliccare senza leggere, che è il modo di
+	   rendere la classificazione inutile. */
+	.prov-actions button { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 12px; font: inherit; font-size: 13px; color: var(--fg); background: transparent; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+	.prov-actions button:hover { border-color: var(--accent); }
+	.prov-actions small { font-size: 11px; color: var(--fg-muted); }
+	.prov-cancel { margin: 12px 0 0; padding: 0; font: inherit; font-size: 12px; color: var(--fg-muted); background: none; border: none; cursor: pointer; }
+	.prov-cancel:hover { color: var(--fg); }
 	.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 	.remote-goto { font-size: 11px; font-weight: 600; color: var(--accent); text-decoration: none;
 		max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
