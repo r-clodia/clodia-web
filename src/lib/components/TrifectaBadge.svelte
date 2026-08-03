@@ -12,6 +12,11 @@
 	import type { TrifectaProfile, TrifectaLeg } from '$lib/api/client';
 
 	export let profile: TrifectaProfile | null | undefined = null;
+	/** Primo bit del vettore: contenuto non fidato ENTRATO in questo canale.
+	 *  È l'unico dei tre che cambia in tempo reale e l'unico che l'owner può
+	 *  azzerare — gli altri due sono proprietà della composizione. */
+	export let taint: { tainted: boolean; since?: number | null;
+		sources?: { kind?: string; detail?: string; agent?: string }[] } | null = null;
 
 	const LEG_LABEL: Record<TrifectaLeg, string> = {
 		private_data: 'dati privati',
@@ -21,7 +26,17 @@
 	const LEGS: TrifectaLeg[] = ['private_data', 'untrusted_input', 'egress'];
 
 	$: score = profile?.score ?? 0;
-	$: level = score >= 3 ? 'high' : score === 2 ? 'mid' : 'low';
+	// Il residuo è ciò che resta dopo il confinamento APPLICATO: un canale a 3/3
+	// in cui ogni destinazione nuova passa da un umano non è lo stesso rischio di
+	// uno che può scrivere a chiunque.
+	$: residual = profile?.residual ?? score;
+	$: tainted = !!taint?.tainted;
+	// Il colore segue il residuo, non la capacità: è il numero che descrive il
+	// rischio, e mostrare 🚨 su un canale presidiato addestrerebbe a ignorarlo.
+	$: level = residual >= 3 ? 'high' : residual === 2 ? 'mid' : 'low';
+	$: vector = `${tainted ? 1 : 0}${profile?.legs?.private_data ? 1 : 0}${profile?.legs?.egress ? 1 : 0}`;
+	$: sources = (taint?.sources ?? []).slice(-3)
+		.map((x) => `${x.kind ?? '?'}:${x.detail ?? '?'}`).join(' · ');
 	$: direct = profile?.direct;
 	// Il canale arriva a 3 solo perché qualcuno può invitare altri agenti:
 	// va detto, altrimenti il numero sembra descrivere i presenti.
@@ -38,9 +53,12 @@
 		aria-label="Danger score trifecta {profile.label}">
 		<span class="sym" aria-hidden="true">{profile.symbol}</span>
 		<span class="val">{profile.label}</span>
+		{#if residual < score}<span class="res" aria-hidden="true">→{residual}</span>{/if}
+		{#if tainted}<span class="taint" aria-hidden="true" title="Canale contaminato">☣</span>{/if}
 		{#if profile.shell}<span class="shell" aria-hidden="true">⛨</span>{/if}
 		<span class="tip">
-			<strong>Trifecta {profile.label}</strong> — lati presenti in questo topic:
+			<strong>Trifecta {profile.label}</strong>
+			<span class="vec">{vector}</span> — lati presenti in questo topic:
 			<ul>
 				{#each LEGS as leg}
 					<li class:on={profile.legs[leg]}>
@@ -49,6 +67,19 @@
 					</li>
 				{/each}
 			</ul>
+			{#if tainted}
+				<p class="note warn">
+					☣ Contaminato: è entrato contenuto non fidato{#if sources} ({sources}){/if}.
+					La prima uscita da questo canale chiede conferma; approvando, il canale
+					viene declassificato.
+				</p>
+			{/if}
+			{#if residual < score}
+				<p class="note">
+					Rischio residuo {residual}/3: l'uscita è presidiata — una destinazione
+					non ancora vagliata passa da un'approvazione.
+				</p>
+			{/if}
 			{#if byInvitation}
 				<p class="note">
 					Fra i soli partecipanti è {direct?.label}: sale a {profile.label} perché
@@ -70,8 +101,9 @@
 				<p class="note">Partecipanti non registrati, non valutati: {profile.unknown_participants.join(', ')}.</p>
 			{/if}
 			<p class="note dim">
-				3/3 = dati privati + contenuto non fidato + uscita nello stesso contesto.
-				Misura, non blocco (issue #77).
+				Vettore {vector}: contaminato · dati privati · uscita. Il primo bit è un
+				evento e si azzera declassificando; gli altri due sono proprietà della
+				composizione.
 			</p>
 		</span>
 	</button>
@@ -86,6 +118,10 @@
 	}
 	.trifecta:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 	.trifecta.mid { border-color: var(--warn, #e0a800); color: var(--warn, #e0a800); }
+	.res { opacity: .75; font-size: 10px; }
+	.taint { color: #d97706; }
+	.vec { font-family: ui-monospace, monospace; letter-spacing: 2px; opacity: .8; }
+	.note.warn { color: #d97706; }
 	.trifecta.high { border-color: var(--danger); color: var(--danger); }
 	.sym { font-size: 10px; }
 	.val { font-variant-numeric: tabular-nums; }

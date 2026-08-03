@@ -1354,7 +1354,7 @@
 		<div class="title-row">
 			<h1>#{info?.meta?.title || name}</h1>
 			<span class="tier">{info?.tier || tier}</span>
-			<TrifectaBadge profile={info?.trifecta} />
+			<TrifectaBadge profile={info?.trifecta} taint={info?.taint} />
 			<button type="button" class="reset-context" on:click={resetContext} disabled={resetting || sending}>
 				{resetting ? 'Reset…' : 'Reset contesto'}
 			</button>

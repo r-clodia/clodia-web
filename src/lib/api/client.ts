@@ -654,6 +654,11 @@ export interface ChannelInfo {
 	 *  calcolato server-side dai grant dei partecipanti. `null` se non
 	 *  calcolabile: la UI in quel caso non mostra il badge. */
 	trifecta?: TrifectaProfile | null;
+	/** Primo bit del vettore di contesto: contenuto non fidato ENTRATO nel canale
+	 *  (clodia-platform#104 §4). Vive nel gateway ed è l'unico dei tre che cambia
+	 *  in tempo reale — e l'unico che l'owner può azzerare, approvando. */
+	taint?: { tainted: boolean; since?: number | null;
+		sources?: { kind?: string; detail?: string; agent?: string; at?: number }[] } | null;
 }
 /** I tre lati del triangolo: dati privati · contenuto non fidato · uscita. */
 export type TrifectaLeg = 'private_data' | 'untrusted_input' | 'egress';
@@ -669,6 +674,22 @@ export interface TrifectaAgentProfile {
 	shell?: boolean;
 	expands?: boolean;
 }
+/** Un controllo che AVREBBE bloccato, in modalità di osservazione. */
+export interface Observation {
+	at: number;
+	verb: string;
+	agent: string;
+	outcome: 'would_gate' | 'would_deny';
+	channel?: string;
+	why?: string;
+}
+export async function getObservations(since = 0, opts: RequestOptions = {}): Promise<{ observing: boolean; observations: Observation[] }> {
+	return apiGet(`/api/observe/recent?since=${since}`, opts);
+}
+export async function getEgressWhitelist(opts: RequestOptions = {}): Promise<{ mode: string; types: string[]; agents: Record<string, Record<string, string[]>> }> {
+	return apiGet('/api/observe/whitelist', opts);
+}
+
 export interface TrifectaProfile {
 	/** 0–3 sulla CHIUSURA (partecipanti + agenti invitabili da chi è dentro). */
 	score: number;
@@ -692,6 +713,13 @@ export interface TrifectaProfile {
 	shell?: boolean;
 	shell_agents?: string[];
 	unknown_participants?: string[];
+	/** Rischio RESIDUO dopo il confinamento applicato: l'uscita conta solo se è
+	 *  arbitraria. `score` resta la capacità e non mente. */
+	residual?: number;
+	/** Modo del confinamento in uscita del gateway (`gate` | `on` | `report` | `off`). */
+	egress_mode?: string;
+	egress_scopes?: string[];
+	unclassified?: string[];
 	config_version?: number;
 }
 export interface ChannelFile {

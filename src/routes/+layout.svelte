@@ -25,6 +25,7 @@
 	import LoginScreen from '$lib/components/LoginScreen.svelte';
 	import SetupScreen from '$lib/components/SetupScreen.svelte';
 	import GateApprovals from '$lib/components/GateApprovals.svelte';
+	import ObserveFeed from '$lib/components/ObserveFeed.svelte';
 	import {
 		onEventStream,
 		startEventStream
@@ -146,6 +147,9 @@
 {/if}
 
 <Toaster />
+<!-- Feedback effimero della modalità di osservazione: silenzioso quando i gate
+     bloccano davvero (in enforcement si vedono da sé, sono popup). -->
+<ObserveFeed />
 {#if loggedIn}<GateApprovals />{/if}
 
 <style>
