@@ -704,6 +704,9 @@ export interface ChannelFile {
 	/** Google Doc nativo: proxy/link al documento remoto su Drive (non scaricabile
 	 *  come binario: si legge/edita direttamente su Drive). `url` = webViewLink. */
 	remote?: boolean;
+	/** Provenienza dichiarata all'upload (clodia-platform#104 §3):
+	 *  `trusted` | `untrusted` | `agent` | `unknown` (caricato prima della §3). */
+	provenance?: string;
 	/** webViewLink. Presente anche sulle voci `kind: "dir"` di un topic con remote
 	 *  Drive: la cartella si NAVIGA qui dentro, e questo link è l'alternativa
 	 *  esplicita (bottone ↗) per aprirla nella web app di Drive (#117). */
@@ -971,8 +974,13 @@ export async function getChannelFiles(tier: string, name: string, subpath = '', 
 		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/files${qs}`, opts);
 	return d.files ?? [];
 }
-export async function uploadChannelFile(tier: string, name: string, filename: string, contentB64: string, opts: RequestOptions = {}): Promise<{ name: string }> {
-	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/files`, { filename, content_b64: contentB64 }, opts);
+/** Carica un file nel canale. `provenance` dichiara DA DOVE viene il file
+ *  (clodia-platform#104 §3): `trusted` = fonte che l'utente conosce, `untrusted`
+ *  = fonte esterna o non verificata. Default `untrusted`, perché se non è
+ *  dichiarata non si assume il bene. Un file untrusted contamina il canale: si
+ *  legge normalmente, ma l'uscita successiva passa da un'approvazione. */
+export async function uploadChannelFile(tier: string, name: string, filename: string, contentB64: string, provenance: 'trusted' | 'untrusted' = 'untrusted', opts: RequestOptions = {}): Promise<{ name: string }> {
+	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/files`, { filename, content_b64: contentB64, provenance }, opts);
 }
 /** URL di download di un file del canale (topic v2, via gateway). Usa l'endpoint
  *  /download (serve P0..P3 dal vault); /file è solo per i vecchi topic git e
