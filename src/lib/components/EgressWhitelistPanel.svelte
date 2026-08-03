@@ -17,14 +17,14 @@
 	import { getEgressWhitelist } from '$lib/api/client';
 
 	let mode = 'unknown';
-	let types: string[] = [];
-	let agents: Record<string, Record<string, string[]>> = {};
+	let egressAllow: string[] = [];
+	let sourceAllow: string[] = [];
 	let loading = true;
 	let err = '';
 
 	const MODE_LABEL: Record<string, string> = {
 		gate: 'chiede — una destinazione nuova passa da un’approvazione, e approvando resta',
-		on: 'nega — una destinazione fuori whitelist è rifiutata senza chiedere',
+		on: 'nega — una destinazione fuori lista è rifiutata senza chiedere',
 		report: 'osserva — decide e registra, non blocca nulla',
 		off: 'spento — nessun controllo sulle destinazioni',
 		unknown: 'non leggibile dal gateway'
@@ -34,8 +34,8 @@
 		try {
 			const r = await getEgressWhitelist();
 			mode = r.mode ?? 'unknown';
-			types = r.types ?? [];
-			agents = r.agents ?? {};
+			egressAllow = r.egress_allow ?? [];
+			sourceAllow = r.source_allow ?? [];
 		} catch (e) {
 			err = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -43,11 +43,10 @@
 		}
 	});
 
-	$: names = Object.keys(agents).sort();
 </script>
 
 <div class="card-h">
-	<h2>Destinazioni consentite</h2>
+	<h2>Destinazioni e fonti</h2>
 	<span class="mode mode-{mode}">{mode}</span>
 </div>
 <p class="hint">{MODE_LABEL[mode] ?? mode}</p>
@@ -56,40 +55,45 @@
 	<p class="hint">caricamento…</p>
 {:else if err}
 	<p class="hint err">⚠ {err}</p>
-{:else if !names.length}
-	<p class="hint">
-		Nessuna destinazione dichiarata. È il punto di partenza previsto: la lista si
-		popola con l’uso — la prima volta che un agent scrive a un indirizzo nuovo ti
-		viene chiesto, e approvando la destinazione resta.
-	</p>
 {:else}
-	<ul class="agents">
-		{#each names as a}
-			<li>
-				<strong>{a}</strong>
-				<ul class="types">
-					{#each Object.entries(agents[a]) as [t, rules]}
-						<li>
-							<span class="type">{t}</span>
-							{#if !rules.length}
-								<em class="muted">dichiarato vuoto — muto</em>
-							{:else}
-								{#each rules as r}
-									<code class:wide={r === '*'}>{r}</code>
-								{/each}
-							{/if}
-						</li>
-					{/each}
-				</ul>
-			</li>
-		{/each}
-	</ul>
+	<h3>In uscita — dove gli agenti possono scrivere</h3>
+	{#if !egressAllow.length}
+		<p class="hint">
+			Nessuna destinazione dichiarata. È il punto di partenza previsto: la lista è
+			<em>opt-in</em> e si popola con l’uso — la prima volta che un agent scrive a
+			un indirizzo nuovo ti viene chiesto, e approvando la destinazione resta
+			<strong>per tutti</strong>: è la destinazione che giudichi, non chi spedisce.
+		</p>
+	{:else}
+		<ul class="uris">
+			{#each egressAllow as u}
+				<li><code class:wide={u === '*'}>{u}</code></li>
+			{/each}
+		</ul>
+	{/if}
+
+	<h3>In ingresso — fonti che non contaminano</h3>
+	{#if !sourceAllow.length}
+		<p class="hint">
+			Nessuna fonte fidata. Ogni lettura contamina il canale, e la prima uscita
+			successiva chiede conferma. Questa lista va tenuta <em>piccola e statica</em>:
+			sbagliare qui è silenzioso — un taint che non si accende non lo vedi.
+		</p>
+	{:else}
+		<ul class="uris">
+			{#each sourceAllow as u}
+				<li><code>{u}</code></li>
+			{/each}
+		</ul>
+	{/if}
 {/if}
 
 <p class="hint dim">
-	Un tipo <em>non elencato</em> per un agent nega: non è una dimenticanza che
-	apre, è una regola. <code>*</code> apre l’intero tipo e va letto come tale.
-	{#if types.length}<br />Tipi gestiti: {types.join(' · ')}.{/if}
+	Notazione URI: lo schema <em>è</em> il tipo — <code>mailto:</code>
+	<code>tg:</code> <code>https://</code> <code>gdrive:</code>
+	<code>gsheets:</code> in uscita, <code>mailfrom:</code> e <code>https://</code>
+	come fonte. Liste separate di proposito: un errore su una destinazione è
+	rumoroso, uno su una fonte è silenzioso.
 </p>
 
 <style>
@@ -101,11 +105,8 @@
 	.hint { font-size: 12px; color: var(--fg-muted); line-height: 1.5; margin: 6px 0 0; }
 	.hint.err { color: var(--danger); }
 	.hint.dim { opacity: .8; margin-top: 12px; }
-	.agents { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 10px; }
-	.agents > li { font-size: 13px; }
-	.types { list-style: none; padding: 0; margin: 4px 0 0 10px; display: flex; flex-direction: column; gap: 3px; }
-	.type { display: inline-block; min-width: 74px; font-size: 11px; color: var(--fg-muted); }
+	h3 { margin: 14px 0 4px; font-size: 12px; font-weight: 600; color: var(--fg-muted); }
+	.uris { list-style: none; padding: 0; margin: 4px 0 0; display: flex; flex-direction: column; gap: 2px; }
 	code { font-size: 11px; padding: 1px 5px; margin-right: 4px; background: var(--code-bg, rgba(127,127,127,.12)); border-radius: 4px; }
 	code.wide { color: #d97706; }
-	.muted { font-size: 11px; color: var(--fg-muted); }
 </style>

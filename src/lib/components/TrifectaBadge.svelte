@@ -40,22 +40,29 @@
 	$: sources = (taint?.sources ?? []).slice(-3)
 		.map((x) => `${x.kind ?? '?'}:${x.detail ?? '?'}`).join(' · ');
 
-	/** I tre bit come simboli: acceso = presente, spento = assente. Tre icone si
-	 *  leggono a colpo d'occhio; un numero da solo dice quanti ma non quali, ed è
-	 *  «quali» che dice cosa fare. */
+	/** I tre bit come le tre scimmiette. Il gesto è lo SPAVENTO per lo stato del
+	 *  canale, non il nome del senso: la scimmia si copre perché quel canale è
+	 *  aperto. Piena = bit acceso, tenue = spento.
+	 *
+	 *  🙉 non-ascolta → è entrato contenuto non fidato
+	 *  🙈 non-vede    → qualcuno qui legge dati privati
+	 *  🙊 non-parla   → qualcuno può scrivere fuori senza approvazione
+	 *
+	 *  Tre icone in posizione fissa si leggono a colpo d'occhio; un numero da solo
+	 *  dice quanti bit sono accesi, non QUALI — ed è «quali» che dice cosa fare. */
 	$: SYMS = [
-		{ on: tainted, unknown: taintUnknown, glyph: '☣', label: 'contaminato',
+		{ on: tainted, unknown: taintUnknown, glyph: '🙉', label: 'contaminato',
 		  tip: taintUnknown
 			? 'contaminazione non leggibile dal gateway'
 			: tainted
 				? 'è entrato contenuto non fidato'
 				: 'nessun contenuto non fidato entrato' },
-		{ on: (bits?.private_data ?? 0) === 1, unknown: false, glyph: '🗄',
+		{ on: (bits?.private_data ?? 0) === 1, unknown: false, glyph: '🙈',
 		  label: 'dati privati',
 		  tip: (bits?.private_data ?? 0) === 1
 			? 'qualcuno qui accede a dati privati'
 			: 'nessun accesso a dati privati' },
-		{ on: (bits?.arbitrary_egress ?? 0) === 1, unknown: false, glyph: '↗',
+		{ on: (bits?.arbitrary_egress ?? 0) === 1, unknown: false, glyph: '🙊',
 		  label: 'uscita',
 		  tip: (bits?.arbitrary_egress ?? 0) === 1
 			? 'uscita ARBITRARIA: può scrivere verso destinazioni non approvate'
@@ -75,6 +82,7 @@
 	<!-- button e non span: il tooltip dev'essere raggiungibile da tastiera -->
 	<button type="button" class="trifecta {level}"
 		aria-label="Trifecta {profile.label}: {SYMS.map((b) => `${b.label} ${b.on ? 'sì' : 'no'}`).join(', ')}">
+		<span class="sym" aria-hidden="true">{profile.symbol}</span>
 		<span class="bits" aria-hidden="true">
 			{#each SYMS as b}
 				<span class="bit" class:on={b.on} class:unk={b.unknown}
@@ -147,8 +155,11 @@
 	.bits { display: inline-flex; gap: 1px; font-size: 10px; line-height: 1; }
 	/* Spento = tenue, non assente: la posizione dei tre simboli è fissa, così si
 	   legge quale bit è acceso senza contare. */
-	.bit { opacity: .28; }
-	.bit.on { opacity: 1; }
+	/* Spento = tenue E desaturato: un'emoji a colori resta leggibile anche a
+	   opacità bassa, e due bit spenti sembrerebbero accesi. La posizione resta
+	   fissa, così si legge QUALE è acceso senza contare. */
+	.bit { opacity: .3; filter: grayscale(1); }
+	.bit.on { opacity: 1; filter: none; }
 	.bit.unk { opacity: .55; font-family: ui-monospace, monospace; }
 	.tip .g { display: inline-block; width: 14px; }
 	.vec { font-family: ui-monospace, monospace; letter-spacing: 2px; opacity: .8; }

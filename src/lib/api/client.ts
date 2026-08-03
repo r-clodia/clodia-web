@@ -686,7 +686,7 @@ export interface Observation {
 export async function getObservations(since = 0, opts: RequestOptions = {}): Promise<{ observing: boolean; observations: Observation[] }> {
 	return apiGet(`/api/observe/recent?since=${since}`, opts);
 }
-export async function getEgressWhitelist(opts: RequestOptions = {}): Promise<{ mode: string; types: string[]; agents: Record<string, Record<string, string[]>> }> {
+export async function getEgressWhitelist(opts: RequestOptions = {}): Promise<{ mode: string; egress_allow: string[]; source_allow: string[]; egress_schemes?: string[]; source_schemes?: string[] }> {
 	return apiGet('/api/observe/whitelist', opts);
 }
 
