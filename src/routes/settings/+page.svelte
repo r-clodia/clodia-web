@@ -1,5 +1,6 @@
 <script lang="ts">
 	import DelegationsPanel from '$lib/components/DelegationsPanel.svelte';
+	import EgressWhitelistPanel from '$lib/components/EgressWhitelistPanel.svelte';
 	import { onMount } from 'svelte';
 	import QRCode from 'qrcode';
 	import {
@@ -229,6 +230,10 @@
 
 <section class="card">
 	<DelegationsPanel />
+</section>
+
+<section class="card">
+	<EgressWhitelistPanel />
 </section>
 
 <section class="card aliases">
