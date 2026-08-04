@@ -42,8 +42,6 @@
 		type ChannelMessage,
 		type FeedbackLesson,
 		type ChannelFile,
-		type TrifectaAgentProfile,
-		type TrifectaLeg
 	} from '$lib/api/client';
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import type { TierWarning } from '$lib/api/types';
@@ -846,49 +844,18 @@
 	// sotto tier restano (eligible=true) e li marchiamo con ⚠️ via eligibility[p].warn.
 	$: shownParticipants = participants.filter((p) => eligibility[p]?.eligible ?? true);
 
-	// Profilo trifecta per partecipante (issue#77): il punteggio del canale è
-	// l'OR dei singoli, quindi accanto a ogni agente si mostra il suo contributo.
-	$: trifectaOf = Object.fromEntries(
-		(info?.trifecta?.agents ?? []).map((a) => [a.name, a])
-	) as Record<string, TrifectaAgentProfile>;
-	const TRI_LEG_LABEL: Record<TrifectaLeg, string> = {
-		private_data: 'dati privati',
-		untrusted_input: 'contenuto non fidato',
-		egress: 'uscita verso l’esterno'
-	};
-	/** Cosa un agente PORTA nel canale — non un punteggio.
-	 *
-	 *  Un «2/3» accanto a un agente sommava cose che non gli appartengono: da
-	 *  quando il punteggio conta i bit del vettore, due dei tre sono proprietà
-	 *  del CANALE — la contaminazione è un evento della stanza, l'uscita
-	 *  arbitraria dipende da una whitelist globale. Un numero per-agente
-	 *  suggeriva che l'agente fosse il soggetto della misura, che è precisamente
-	 *  la lettura che abbiamo abbandonato.
-	 *
-	 *  Quello che resta vero e utile è quali capacità porta: sono i suoi verbi. */
-	function agentCapLegs(a: TrifectaAgentProfile): TrifectaLeg[] {
-		return (Object.keys(TRI_LEG_LABEL) as TrifectaLeg[]).filter((l) => a.legs?.[l]);
-	}
-	const CAP_GLYPH: Record<TrifectaLeg, string> = {
-		private_data: '🙈',
-		untrusted_input: '🙉',
-		egress: '🙊'
-	};
-	function agentTrifectaTitle(a: TrifectaAgentProfile): string {
-		const legs = (Object.keys(TRI_LEG_LABEL) as TrifectaLeg[]);
-		const on = agentCapLegs(a).map((l) => TRI_LEG_LABEL[l]);
-		const head = on.length
-			? `Capacità di ${a.name}: ${on.join(' · ')}`
-			: `${a.name} non porta nessuna delle tre capacità`;
-		const why = legs
-			.filter((l) => a.why?.[l]?.length)
-			.map((l) => `${TRI_LEG_LABEL[l]}: ${a.why?.[l]?.join(', ')}`)
-			.join('\n');
-		const shell = a.shell ? '\nHa la shell: i controlli del gateway sono aggirabili.' : '';
-		const note = '\nIl punteggio è del CANALE, non dell’agente: la contaminazione è un evento della stanza e l’uscita dipende dalle destinazioni ammesse.';
-		return (why ? `${head}\n${why}` : head) + shell + note;
-	}
-
+	// Niente indicatore trifecta accanto ai partecipanti — di proposito.
+	//
+	// Prima c'era un «2/3», poi le tre scimmiette delle capacità. Entrambi
+	// mettevano il soggetto sbagliato accanto al nome: da quando il punteggio
+	// conta i bit accesi, la misura è del CANALE. La contaminazione è un evento
+	// della stanza, l'uscita arbitraria dipende da una whitelist globale — e
+	// nessuna delle due diventa una proprietà di chi è in elenco. Un simbolo per
+	// agente invitava a leggere «questo agente è pericoloso» dove il fatto è
+	// «questa stanza, ora, combina queste cose».
+	//
+	// Chi porta cosa resta leggibile dove ha senso: la pagina dell'agente elenca
+	// i suoi verbi, che sono la fonte di quella capacità.
 	// --- @mention autocomplete -----------------------------------------------
 	// Estraggo il token @parziale in coda al testo (fino al cursore) e propongo
 	// i partecipanti che combaciano. Click/Invio inserisce "@nome ".
@@ -1843,13 +1810,6 @@
 								{#if eligibility[p]?.warn}
 									<span class="part-warn" title="Provider sotto il tier del topic: attiva un provider con SEAL ≥ tier">⚠️</span>
 								{/if}
-								{#if trifectaOf[p] && !trifectaOf[p].human && agentCapLegs(trifectaOf[p]).length}
-									<!-- Le capacità che questo agente porta, non un punteggio: le
-									     scimmiette sono le stesse del badge del canale, così si
-									     legge subito CHI accende cosa. -->
-									<span class="part-tri" title={agentTrifectaTitle(trifectaOf[p])}
-										>{#each agentCapLegs(trifectaOf[p]) as l}{CAP_GLYPH[l]}{/each}</span>
-								{/if}
 							</span>
 							{#if isOwner && p !== info?.meta?.owner}
 								<button class="x" type="button" on:click={() => removeParticipant(p)} aria-label="Rimuovi">×</button>
@@ -2586,8 +2546,6 @@
 	.part-warn { flex-shrink: 0; font-size: 12px; cursor: help; margin-left: 2px; }
 	/* Capacità dell'agente, non un punteggio: nessun bordo a pillola, che
 	   leggerebbe come un valore. Sono icone accanto al nome. */
-	.part-tri { flex-shrink: 0; font-size: 9px; cursor: help; margin-left: 3px;
-		letter-spacing: -1px; opacity: .75; }
 	.parts em { color: var(--fg-muted); font-style: normal; font-size: 11px; }
 	.x { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 15px; }
 	.addp { display: flex; gap: 6px; margin-top: 8px; }
