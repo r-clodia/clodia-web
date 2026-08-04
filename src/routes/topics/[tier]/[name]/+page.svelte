@@ -499,6 +499,20 @@
 		if (prev[prev.length - 1] === step) return prev;
 		return [...prev, step].slice(-MAX_STEPS);
 	}
+	/** Autori-agente dei messaggi arrivati DOPO `sinceId` (compresi i non-ultimi).
+	 *
+	 *  `sinceId` assente (primo carico) → nessuno: al mount non c'è live da
+	 *  chiudere, e trattare tutta la storia come "nuova" azzererebbe il live di un
+	 *  turno in corso appena si riapre il topic — che è precisamente il caso per
+	 *  cui `active_responders` esiste.
+	 */
+	function newAiAuthors(items: ChannelMessage[], sinceId?: string | null): string[] {
+		if (!sinceId) return [];
+		const at = items.findIndex((m) => m.id === sinceId);
+		const fresh = at >= 0 ? items.slice(at + 1) : items;
+		return Array.from(new Set(fresh.filter((m) => m.kind === 'ai').map((m) => m.author)));
+	}
+
 	function resetLive(agent?: string) {
 		if (!agent) {
 			liveAgents = {};
@@ -944,6 +958,7 @@
 		typing = []; // reset indicatore al cambio canale
 		lastRouting = null;
 		workingResponders = [];
+		_idleLastPoll = []; // la cintura non deve ereditare le assenze di un altro canale
 		resetLive(); // blocchi live (thinking/tools/reply) del canale precedente
 		replyingTo = null; // niente reply-quote trascinata da un altro canale
 		filePath = ''; // riparti dalla radice dei file
@@ -975,12 +990,29 @@
 
 	// Refresh periodico di partecipanti + file (così add/remove di file o membri
 	// fatti da altri attori o dagli agenti si riflettono senza ricaricare).
+	// Agenti visti NON al lavoro nel giro di poll precedente: serve alla cintura
+	// di sicurezza sotto, che pretende due assenze consecutive.
+	let _idleLastPoll: string[] = [];
+
 	async function refreshInfo() {
 		try {
 			info = await getChannel(tier, name);
 			// tiene vivo l'indicatore "sta lavorando" durante turni lunghi/silenziosi
 			// (es. tool-call senza chunk SSE) e lo spegne quando il turno finisce.
 			workingResponders = info?.active_responders ?? [];
+			// CINTURA: una bolla live significa «turno in corso». Se un turno muore
+			// senza postare nulla (errore, interruzione, watchdog), il messaggio
+			// finale non arriva mai e la bolla — con il testo a metà — resterebbe
+			// sullo schermo per sempre, indistinguibile da un agente appeso.
+			//
+			// `active_responders` è la verità sul turno (legge il task vivo lato
+			// server). Si richiedono DUE assenze consecutive perché fra l'arrivo di un
+			// chunk SSE e il poll successivo un turno appena nato può non essere
+			// ancora in lista, e azzerare lì cancellerebbe una bolla legittima.
+			const live = Object.keys(liveAgents);
+			const idleNow = live.filter((a) => !workingResponders.includes(a));
+			for (const a of idleNow) if (_idleLastPoll.includes(a)) resetLive(a);
+			_idleLastPoll = idleNow;
 			void loadEligibility(tier, name); // i provider possono cambiare stato
 		} catch {
 			/* ignore */
@@ -1001,18 +1033,31 @@
 			const wasNearBottom = isNearBottom;
 			const previousLastId = _lastMsgId;
 			messages = await getChannelMessages(tier, name);
-			// se l'ultimo messaggio è di un agente, smetti di mostrarlo "scrivendo"
+			// smetti di mostrare "scrivendo" ogni agente che ha appena postato — non
+			// solo l'ultimo: con più agenti attivi, il penultimo restava "scrivendo"
+			// fino allo scadere del timeout di 90s.
 			const last = messages[messages.length - 1];
+			for (const a of newAiAuthors(messages, previousLastId)) setTyping(a, false);
 			if (last?.kind === 'ai') setTyping(last.author, false);
 			// nuovo ultimo messaggio → azzera la selezione multipla delle pills
 			if (last && last.id !== _lastMsgId) {
 				_lastMsgId = last.id;
 				multiSel = new Set();
-				// turno concluso: il messaggio finale dell'agente è arrivato →
-				// solo ORA ripulisci il live (thinking + barra task/tools). Durante
-				// l'attesa dei subagent il live resta visibile.
-				if (last.kind === 'ai') resetLive(last.author);
 			}
+			// Turno concluso: il messaggio finale di un agente è arrivato → solo ORA
+			// si ripulisce il suo live (testo in streaming + thinking + barra tool).
+			// Durante l'attesa dei subagent il live resta visibile, che è il motivo
+			// per cui non lo si azzera prima.
+			//
+			// Si guardano TUTTI i nuovi messaggi, non solo l'ultimo. Prima la
+			// condizione era `if (last.kind === 'ai') resetLive(last.author)`: in un
+			// canale con più agenti e catene di delega, che dopo A posti B è il caso
+			// normale — e allora `resetLive(A)` non veniva mai chiamato. Il testo
+			// parzialmente streamato di A restava sullo schermo accanto al suo
+			// messaggio vero, per sempre: una risposta che sembra incompleta, con
+			// l'agente che sembra ancora al lavoro. Il bug si vedeva tanto più quanto
+			// più il canale era vivo, cioè esattamente quando dà più fastidio.
+			for (const a of newAiAuthors(messages, previousLastId)) resetLive(a);
 			if (last && previousLastId && last.id !== previousLastId) {
 				await tick();
 				if (wasNearBottom) {
