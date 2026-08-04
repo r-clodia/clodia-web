@@ -3,9 +3,12 @@
 	 * Danger score «lethal trifecta» del contesto (issue clodia-platform#77).
 	 *
 	 * Sempre visibile accanto al titolo del topic: 0-1/3 ✅ · 2/3 ⚠️ · 3/3 🚨.
-	 * Il numero da solo non è azionabile — il tooltip lo scompone per lato e
-	 * per agente («legge il web: clodia · dati privati: ophelia · può inviare:
-	 * messaggero»), perché è quella l'informazione che serve a decidere.
+	 * Il numero da solo non è azionabile, e il tooltip è UN PARAGRAFO PER BIT:
+	 * acceso → gli eventi o i verbi che l'hanno acceso; spento → «inerte».
+	 *
+	 * Spiegare perché un bit non è acceso occupava metà del riquadro con ciò che
+	 * non serve, e le righe che contano finivano sotto il rumore. Di un bit spento
+	 * l'unica cosa da sapere è che è spento.
 	 *
 	 * Il punteggio è di MISURA, non di enforcement: nessuna azione è bloccata.
 	 */
@@ -18,12 +21,6 @@
 	export let taint: { tainted: boolean; since?: number | null;
 		sources?: { kind?: string; detail?: string; agent?: string }[] } | null = null;
 
-	const LEG_LABEL: Record<TrifectaLeg, string> = {
-		private_data: 'dati privati',
-		untrusted_input: 'contenuto non fidato',
-		egress: 'uscita verso l’esterno'
-	};
-	const LEGS: TrifectaLeg[] = ['private_data', 'untrusted_input', 'egress'];
 
 	// Il punteggio è il numero di BIT ACCESI del vettore, calcolato dal backend:
 	// contaminato · dati privati · uscita arbitraria. Non si ricalcola qui — una
@@ -32,13 +29,10 @@
 	$: bits = profile?.bits;
 	$: tainted = bits ? bits.tainted === 1 : !!taint?.tainted;
 	$: taintUnknown = profile?.tainted === null || profile?.tainted === undefined;
-	$: capability = profile?.capability ?? score;
 	// Il colore segue il PUNTEGGIO, che ora descrive il rischio reale: mostrare
 	// 🚨 su un canale presidiato addestrerebbe a ignorare l'icona.
 	$: level = score >= 3 ? 'high' : score === 2 ? 'mid' : 'low';
 	$: vector = profile?.vector ?? '???';
-	$: sources = (taint?.sources ?? []).slice(-3)
-		.map((x) => `${x.kind ?? '?'}:${x.detail ?? '?'}`).join(' · ');
 
 	/** I tre bit come le tre scimmiette. Il gesto è lo SPAVENTO per lo stato del
 	 *  canale, non il nome del senso: la scimmia si copre perché quel canale è
@@ -51,31 +45,46 @@
 	 *  Tre icone in posizione fissa si leggono a colpo d'occhio; un numero da solo
 	 *  dice quanti bit sono accesi, non QUALI — ed è «quali» che dice cosa fare. */
 	$: SYMS = [
-		{ on: tainted, unknown: taintUnknown, glyph: '🙉', label: 'contaminato',
-		  tip: taintUnknown
-			? 'contaminazione non leggibile dal gateway'
-			: tainted
-				? 'è entrato contenuto non fidato'
-				: 'nessun contenuto non fidato entrato' },
+		{ on: tainted, unknown: taintUnknown, glyph: '🙉', label: 'contaminato' },
 		{ on: (bits?.private_data ?? 0) === 1, unknown: false, glyph: '🙈',
-		  label: 'dati privati',
-		  tip: (bits?.private_data ?? 0) === 1
-			? 'qualcuno qui accede a dati privati'
-			: 'nessun accesso a dati privati' },
+		  label: 'dati privati' },
 		{ on: (bits?.arbitrary_egress ?? 0) === 1, unknown: false, glyph: '🙊',
-		  label: 'uscita',
-		  tip: (bits?.arbitrary_egress ?? 0) === 1
-			? 'uscita ARBITRARIA: può scrivere verso destinazioni non approvate'
-			: 'uscita presidiata o assente: una destinazione nuova passa da un’approvazione' }
+		  label: 'uscita' }
 	];
+	/** Chi e con QUALE verbo ha acceso un lato, fra i presenti.
+	 *
+	 *  `why` è per agente: aggregarlo qui dà «commercialista: topic.read_file,
+	 *  gdocs.read», che è l'informazione con cui si decide qualcosa. Il solo nome
+	 *  dice chi guardare, non cosa togliergli.
+	 */
+	$: causeFor = (leg: TrifectaLeg): string[] => {
+		const names = direct?.by_leg?.[leg] ?? profile?.by_leg?.[leg] ?? [];
+		const present = new Set(names);
+		const detailed = (profile?.agents ?? [])
+			.filter((a) => present.has(a.name))
+			.map((a) => {
+				const verbs = (a.why?.[leg] ?? []).slice(0, 4).join(', ');
+				return verbs ? `${a.name}: ${verbs}` : a.name;
+			});
+		// Ricaduta sui soli nomi: se il profilo per agente manca, un bit acceso
+		// senza NESSUNA spiegazione è peggio di una spiegazione parziale — dice
+		// «c'è un problema» e niente su dove guardare.
+		return detailed.length ? detailed : names;
+	};
+	/** Gli EVENTI che hanno contaminato: chi ha letto, cosa, da dove. */
+	$: taintEvents = (taint?.sources ?? []).slice(-4).map((x) => {
+		const who = x.agent ? `${x.agent} ` : '';
+		const what = x.kind === 'verb' ? (x.detail ?? '?') : `${x.kind ?? '?'}: ${x.detail ?? '?'}`;
+		return `${who}${what}`.trim();
+	});
+
+	$: remoteEgress = !!profile?.remote_egress;
 	$: direct = profile?.direct;
 	// Il canale arriva a 3 solo perché qualcuno può invitare altri agenti:
 	// va detto, altrimenti il numero sembra descrivere i presenti.
 	$: byInvitation = !!direct && direct.score < score && (profile?.expanded_by?.length ?? 0) > 0;
 	// La shell va attribuita a chi è davvero nel canale, non a chi è invitabile.
 	$: directShell = direct?.shell_agents ?? profile?.shell_agents ?? [];
-	$: names = (leg: TrifectaLeg) =>
-		(direct?.by_leg?.[leg] ?? profile?.by_leg?.[leg] ?? []).join(', ');
 </script>
 
 {#if profile}
@@ -86,7 +95,7 @@
 		<span class="bits" aria-hidden="true">
 			{#each SYMS as b}
 				<span class="bit" class:on={b.on} class:unk={b.unknown}
-					title="{b.label}: {b.tip}">{b.unknown ? '?' : b.glyph}</span>
+					title={b.label}>{b.unknown ? '?' : b.glyph}</span>
 			{/each}
 		</span>
 		<span class="val">{profile.label}</span>
@@ -94,51 +103,52 @@
 		<span class="tip">
 			<strong>Trifecta {profile.label}</strong>
 			<span class="vec">{vector}</span>
+			<!-- Un paragrafo per scimmietta, e niente altro.
+			     Acceso → si elencano gli eventi o i verbi che l'hanno acceso: è la
+			     sola informazione con cui si decide qualcosa.
+			     Spento → «inerte». Spiegare perché un bit NON è acceso occupava metà
+			     del riquadro con ciò che non serve, e le tre righe che contano
+			     finivano sotto il rumore. -->
 			<ul>
-				{#each SYMS as b}
-					<li class:on={b.on}>
-						<span class="g">{b.unknown ? '?' : b.glyph}</span> {b.label} — {b.tip}
-					</li>
-				{/each}
+				<li class:on={tainted}>
+					<span class="g">{taintUnknown ? '?' : '🙉'}</span>
+					<strong>contaminato</strong>
+					{#if taintUnknown}
+						— non leggibile dal gateway
+					{:else if tainted}
+						{#if taintEvents.length}<br /><span class="why">{taintEvents.join(' · ')}</span>{/if}
+						<br /><span class="why">La prima uscita chiede conferma; approvando, il canale è declassificato.</span>
+					{:else}
+						— inerte
+					{/if}
+				</li>
+				<li class:on={(bits?.private_data ?? 0) === 1}>
+					<span class="g">🙈</span> <strong>dati privati</strong>
+					{#if (bits?.private_data ?? 0) === 1}
+						{#if causeFor('private_data').length}<br /><span class="why">{causeFor('private_data').join(' · ')}</span>{/if}
+					{:else}
+						— inerte
+					{/if}
+				</li>
+				<li class:on={(bits?.arbitrary_egress ?? 0) === 1}>
+					<span class="g">🙊</span> <strong>uscita</strong>
+					{#if (bits?.arbitrary_egress ?? 0) === 1}
+						{#if remoteEgress}<br /><span class="why">remote non vagliato: è un condotto permanente</span>{/if}
+						{#if causeFor('egress').length}<br /><span class="why">{causeFor('egress').join(' · ')}</span>{/if}
+					{:else}
+						— inerte
+					{/if}
+				</li>
 			</ul>
-			{#if capability > score}
-				<p class="note">
-					Capacità presente {capability}/3: i verbi ci sono, ma
-					{#if !tainted}nessun contenuto non fidato è entrato{/if}{#if !tainted && (bits?.arbitrary_egress ?? 0) === 0} e {/if}{#if (bits?.arbitrary_egress ?? 0) === 0}l’uscita è presidiata{/if}.
-					{#each LEGS as leg}{#if profile.legs[leg] && names(leg)}<br />{LEG_LABEL[leg]}: <span class="who">{names(leg)}</span>{/if}{/each}
-				</p>
-			{/if}
-			{#if tainted}
-				<p class="note warn">
-					☣ Contaminato: è entrato contenuto non fidato{#if sources} ({sources}){/if}.
-					La prima uscita da questo canale chiede conferma; approvando, il canale
-					viene declassificato.
-				</p>
-			{/if}
 			{#if byInvitation}
-				<p class="note">
-					Fra i soli partecipanti è {direct?.label}: sale a {profile.label} perché
-					{profile.expanded_by?.join(', ')} può aggiungere altri agenti.
-				</p>
+				<p class="note">Fra i soli presenti è {direct?.label}: sale perché {profile.expanded_by?.join(', ')} può aggiungere agenti.</p>
 			{/if}
 			{#if directShell.length}
-				<p class="note">
-					⛨ {directShell.join(', ')}: shell attiva, i controlli del gateway sono
-					aggirabili (curl non passa dal gateway).
-				</p>
-			{:else if profile.shell}
-				<p class="note">
-					⛨ Nessun presente ha la shell, ma fra gli agenti invitabili sì
-					({profile.shell_agents?.join(', ')}).
-				</p>
+				<p class="note">⛨ {directShell.join(', ')}: shell attiva, il gateway è aggirabile.</p>
 			{/if}
 			{#if profile.unknown_participants?.length}
-				<p class="note">Partecipanti non registrati, non valutati: {profile.unknown_participants.join(', ')}.</p>
+				<p class="note">Non registrati, non valutati: {profile.unknown_participants.join(', ')}.</p>
 			{/if}
-			<p class="note dim">
-				Il punteggio conta i bit accesi. Il primo è un <em>evento</em> e si azzera
-				declassificando; gli altri due sono <em>proprietà</em> della composizione.
-			</p>
 		</span>
 	</button>
 {/if}
@@ -179,8 +189,6 @@
 	.tip ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 	.tip li { color: var(--fg-muted); }
 	.tip li.on { color: var(--fg); }
-	.tip .who { color: var(--fg-muted); font-size: 11px; }
-	.tip .who::before { content: '— '; }
+	.tip .why { color: var(--fg-muted); font-size: 11px; padding-left: 14px; display: inline-block; }
 	.tip .note { margin: 6px 0 0; color: var(--fg-muted); font-size: 11px; }
-	.tip .note.dim { opacity: .75; }
 </style>
