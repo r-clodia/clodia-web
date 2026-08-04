@@ -856,16 +856,37 @@
 		untrusted_input: 'contenuto non fidato',
 		egress: 'uscita verso l’esterno'
 	};
+	/** Cosa un agente PORTA nel canale — non un punteggio.
+	 *
+	 *  Un «2/3» accanto a un agente sommava cose che non gli appartengono: da
+	 *  quando il punteggio conta i bit del vettore, due dei tre sono proprietà
+	 *  del CANALE — la contaminazione è un evento della stanza, l'uscita
+	 *  arbitraria dipende da una whitelist globale. Un numero per-agente
+	 *  suggeriva che l'agente fosse il soggetto della misura, che è precisamente
+	 *  la lettura che abbiamo abbandonato.
+	 *
+	 *  Quello che resta vero e utile è quali capacità porta: sono i suoi verbi. */
+	function agentCapLegs(a: TrifectaAgentProfile): TrifectaLeg[] {
+		return (Object.keys(TRI_LEG_LABEL) as TrifectaLeg[]).filter((l) => a.legs?.[l]);
+	}
+	const CAP_GLYPH: Record<TrifectaLeg, string> = {
+		private_data: '🙈',
+		untrusted_input: '🙉',
+		egress: '🙊'
+	};
 	function agentTrifectaTitle(a: TrifectaAgentProfile): string {
 		const legs = (Object.keys(TRI_LEG_LABEL) as TrifectaLeg[]);
-		const on = legs.filter((l) => a.legs?.[l]).map((l) => TRI_LEG_LABEL[l]);
-		const head = on.length ? `Trifecta ${a.score}/3: ${on.join(' · ')}` : 'Trifecta 0/3: nessun lato';
+		const on = agentCapLegs(a).map((l) => TRI_LEG_LABEL[l]);
+		const head = on.length
+			? `Capacità di ${a.name}: ${on.join(' · ')}`
+			: `${a.name} non porta nessuna delle tre capacità`;
 		const why = legs
 			.filter((l) => a.why?.[l]?.length)
 			.map((l) => `${TRI_LEG_LABEL[l]}: ${a.why?.[l]?.join(', ')}`)
 			.join('\n');
 		const shell = a.shell ? '\nHa la shell: i controlli del gateway sono aggirabili.' : '';
-		return why ? `${head}\n${why}${shell}` : `${head}${shell}`;
+		const note = '\nIl punteggio è del CANALE, non dell’agente: la contaminazione è un evento della stanza e l’uscita dipende dalle destinazioni ammesse.';
+		return (why ? `${head}\n${why}` : head) + shell + note;
 	}
 
 	// --- @mention autocomplete -----------------------------------------------
@@ -1822,9 +1843,12 @@
 								{#if eligibility[p]?.warn}
 									<span class="part-warn" title="Provider sotto il tier del topic: attiva un provider con SEAL ≥ tier">⚠️</span>
 								{/if}
-								{#if trifectaOf[p] && !trifectaOf[p].human}
+								{#if trifectaOf[p] && !trifectaOf[p].human && agentCapLegs(trifectaOf[p]).length}
+									<!-- Le capacità che questo agente porta, non un punteggio: le
+									     scimmiette sono le stesse del badge del canale, così si
+									     legge subito CHI accende cosa. -->
 									<span class="part-tri" title={agentTrifectaTitle(trifectaOf[p])}
-										>{trifectaOf[p].score}/3</span>
+										>{#each agentCapLegs(trifectaOf[p]) as l}{CAP_GLYPH[l]}{/each}</span>
 								{/if}
 							</span>
 							{#if isOwner && p !== info?.meta?.owner}
@@ -2560,9 +2584,10 @@
 	.ctx-bar { display: block; width: 84px; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
 	.ctx-fill { display: block; height: 100%; border-radius: 2px; transition: width .3s ease, background .3s ease; }
 	.part-warn { flex-shrink: 0; font-size: 12px; cursor: help; margin-left: 2px; }
-	.part-tri { flex-shrink: 0; font-size: 10px; cursor: help; margin-left: 2px;
-		color: var(--fg-muted); border: 1px solid var(--border); border-radius: 999px;
-		padding: 0 5px; font-variant-numeric: tabular-nums; }
+	/* Capacità dell'agente, non un punteggio: nessun bordo a pillola, che
+	   leggerebbe come un valore. Sono icone accanto al nome. */
+	.part-tri { flex-shrink: 0; font-size: 9px; cursor: help; margin-left: 3px;
+		letter-spacing: -1px; opacity: .75; }
 	.parts em { color: var(--fg-muted); font-style: normal; font-size: 11px; }
 	.x { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 15px; }
 	.addp { display: flex; gap: 6px; margin-top: 8px; }
