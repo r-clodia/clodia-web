@@ -1574,6 +1574,27 @@ export async function deleteSkill(name: string, opts: RequestOptions = {}): Prom
 // ---------------------------------------------------------------------------
 
 /** GET `/profile` — feature attive + branding dell'istanza (mai segreti). */
+/** `GET /health` — versione COLLETTIVA di piattaforma + semver del componente.
+ *
+ *  Il numero di piattaforma sta nel backend, in un solo posto. Prima era un
+ *  letterale nella sidebar (`|| 'v7.0'`), sovrascrivibile da una variabile di
+ *  build che nessuna build impostava: a 8.0 nessuno l'ha alzato, e l'unico posto
+ *  dove si guarda per sapere cosa gira dichiarava una release vecchia di una
+ *  major. Una versione replicata è una versione che mente.
+ */
+export interface HealthInfo {
+	status: string;
+	/** Tag collettivo, es. `v8.0`. */
+	platform?: string;
+	/** Semver del solo agent-server, es. `6.124.0`. */
+	version?: string;
+	commit?: string;
+}
+
+export async function getHealth(opts: RequestOptions = {}): Promise<HealthInfo> {
+	return apiGet<HealthInfo>('/health', opts);
+}
+
 export async function getInstanceProfile(opts: RequestOptions = {}): Promise<InstanceProfile> {
 	return apiGet<InstanceProfile>('/profile', opts);
 }
