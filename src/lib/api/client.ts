@@ -720,6 +720,9 @@ export interface TrifectaProfile {
 	bits?: { tainted: number; private_data: number; arbitrary_egress: number };
 	/** Stato di contaminazione: `null` = non leggibile. */
 	tainted?: boolean | null;
+	/** Il terzo bit è acceso da un REMOTE non vagliato, non dai verbi: un condotto
+	 *  permanente verso l'esterno vale a prescindere da chi è nel canale. */
+	remote_egress?: boolean;
 	/** CAPACITÀ presente: l'OR dei tre lati, indipendentemente da cosa è accaduto
 	 *  e da come è confinato. `score` conta i bit; questo conta i verbi. */
 	capability?: number;
