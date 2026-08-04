@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { getTopics } from '$lib/api/client';
+	import { getTopics, getHealth } from '$lib/api/client';
 	import type { Topic } from '$lib/api/types';
 	import { theme, fontScale, toggleTheme, incFont, decFont } from '$lib/stores/prefs';
 	import { brandBanner } from '$lib/brand';
@@ -127,9 +127,27 @@
 			return true;
 		return pathname === href || pathname.startsWith(href + '/');
 	}
-	// Versione di piattaforma (tag collettivo). Override a build-time via
-	// PUBLIC_APP_VERSION; fallback al tag corrente.
-	const APP_VERSION = (import.meta.env.PUBLIC_APP_VERSION as string | undefined) || 'v7.0';
+	// Versione di piattaforma: LETTA DAL BACKEND, non dichiarata qui.
+	//
+	// Prima era `(import.meta.env.PUBLIC_APP_VERSION) || 'v7.0'`: una variabile che
+	// nessuna build impostava, quindi sempre il letterale — e a 8.0 nessuno l'ha
+	// alzato. La sidebar dichiarava una release vecchia di una major nell'unico
+	// posto dove la si guarda per sapere cosa sta girando.
+	//
+	// Finché non risponde non si mostra NIENTE: un numero inventato come
+	// segnaposto è indistinguibile da un numero vero e sbagliato, che è
+	// esattamente il modo in cui questo si è rotto.
+	let appVersion = '';
+	let componentVersion = '';
+	onMount(async () => {
+		try {
+			const h = await getHealth();
+			appVersion = h.platform ?? (h.version ? `v${h.version}` : '');
+			componentVersion = [h.version, h.commit].filter(Boolean).join(' · ');
+		} catch {
+			/* backend muto → nessuna versione, che è l'informazione corretta */
+		}
+	});
 </script>
 
 <aside class="sidebar" class:collapsed>
@@ -151,7 +169,13 @@
 		{:else}
 			<img class="brand-banner" src={brandBanner($theme)} alt="Clodia Colony" />
 		{/if}
-		<span class="brand-tag">{APP_VERSION}</span>
+		{#if appVersion}
+			<!-- Il tag di piattaforma; nel title la semver del componente che sta
+			     davvero girando col suo commit. Il badge da solo può dichiarare una
+			     release mentre gira codice successivo: affiancare ciò che gira lo
+			     rende verificabile invece che soltanto plausibile. -->
+			<span class="brand-tag" title={componentVersion}>{appVersion}</span>
+		{/if}
 		<button
 			class="collapse-btn"
 			type="button"
