@@ -217,6 +217,15 @@
 		skipped_by_hard_deny: 'protetti',
 		error: 'errori'
 	};
+	// ── Rifiuto CONFERMABILE (clodia-platform, 4 ago 2026) ────────────────────
+	// Il backend marca i casi in cui la decisione spetta all'owner e non al
+	// sistema — collegare Drive su un topic che ha già file — con un 409 e un
+	// campo strutturato. Qui diventa una conferma, non un errore: `loadErr`
+	// mostrerebbe un messaggio rosso senza via d'uscita, mentre la via d'uscita
+	// è precisamente l'informazione che serve.
+	let confirmRemote: { message: string; field: string;
+		action: string; params: Record<string, unknown> } | null = null;
+
 	async function doRemote(action: string, params: Record<string, unknown> = {}) {
 		remoteBusy = true; loadErr = '';
 		try {
@@ -229,10 +238,34 @@
 			await loadRemoteStatus();
 			await loadFiles();
 		} catch (e) {
-			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+			const c = e instanceof ApiError && e.status === 409 ? parseConfirmable(e.body) : null;
+			if (c) {
+				confirmRemote = { message: c.message, field: c.confirm_field,
+					action, params };
+			} else {
+				loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+			}
 		} finally {
 			remoteBusy = false;
 		}
+	}
+	/** Estrae il 409 strutturato. Il nome del campo di conferma arriva dal
+	 *  backend (`confirm_field`) invece di essere scritto qui: così il giorno che
+	 *  lo rinomina la conferma non smette di funzionare in silenzio. */
+	function parseConfirmable(body: string):
+			{ message: string; confirm_field: string } | null {
+		try {
+			const d = JSON.parse(body)?.detail;
+			if (d && typeof d === 'object' && d.confirmable && d.confirm_field) {
+				return { message: String(d.message ?? ''), confirm_field: String(d.confirm_field) };
+			}
+		} catch { /* corpo non JSON: non è una conferma */ }
+		return null;
+	}
+	function acceptConfirmRemote() {
+		const c = confirmRemote;
+		confirmRemote = null;
+		if (c) void doRemote(c.action, { ...c.params, [c.field]: true });
 	}
 	// Solo gli stati con conteggio > 0, per il riepilogo compatto.
 	$: syncReportEntries = lastSyncReport
@@ -2040,6 +2073,29 @@
 	</div>
 	{/if}
 </div>
+
+{#if confirmRemote}
+	<div class="prov-backdrop" role="button" tabindex="0"
+		on:click={() => (confirmRemote = null)}
+		on:keydown={(e) => e.key === 'Escape' && (confirmRemote = null)}>
+		<div class="prov-modal" role="dialog" aria-modal="true"
+			aria-label="Conferma collegamento remote"
+			tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
+			<h2>⚠️ Confermi il collegamento?</h2>
+			<p class="prov-why">{confirmRemote.message}</p>
+			<div class="prov-actions">
+				<button type="button" class="prov-untrusted" on:click={() => (confirmRemote = null)}>
+					Annulla
+					<small>Il topic resta com’è</small>
+				</button>
+				<button type="button" class="prov-trusted" on:click={acceptConfirmRemote}>
+					Collega il remote
+					<small>Ho fatto una copia di ciò che mi serve</small>
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 {#if pending.length}
 	<!-- Provenienza all'upload (#104 §3). Due scelte simmetriche e nessun
