@@ -1595,8 +1595,12 @@ export interface HealthInfo {
 export interface AgentVerb {
 	verb: string;
 	gated: boolean;
-	/** `global` = pericoloso per chiunque · `agent` = privilegiato per QUESTO seed. */
-	gated_by?: 'global' | 'agent' | null;
+	/** `global` = pericoloso per chiunque · `agent` = privilegiato per QUESTO seed ·
+	 *  `profile` = raggiungibile ma fuori dal mestiere dichiarato. */
+	gated_by?: 'global' | 'agent' | 'profile' | null;
+	/** `false` = fuori dal profilo dichiarato · `null` = l'agente non dichiara un profilo. */
+	in_profile?: boolean | null;
+	description?: string;
 	via?: string;
 }
 /** Un grant wildcard. Espanso SOLO se contiene almeno un verbo gated: si espande
@@ -1608,12 +1612,26 @@ export interface AgentVerbGroup {
 	count?: number;
 	verbs: AgentVerb[];
 }
+/** Un nodo dell'albero: un namespace coi suoi verbi. */
+export interface AgentVerbNode {
+	namespace: string;
+	verbs: AgentVerb[];
+	gated: number;
+	outside: number;
+	/** Aperto di default dove c'è qualcosa da guardare (lucchetti o fuori profilo). */
+	open_by_default: boolean;
+}
 export interface AgentVerbs {
 	agent: string;
 	verbs: AgentVerb[];
 	groups: AgentVerbGroup[];
+	tree?: AgentVerbNode[];
+	/** Il mestiere dichiarato: questi sono liberi, il resto passa da un gate. */
+	profile?: string[];
+	has_profile?: boolean;
 	denied?: string[];
 	gated_agent?: string[];
+	catalogue_complete?: boolean;
 	unavailable?: string;
 }
 

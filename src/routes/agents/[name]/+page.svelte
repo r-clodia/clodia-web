@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, getAgentVerbs, type ProfileFile, type Connector, type AgentProfile, type AgentVerbs, type AgentVerb } from '$lib/api/client';
+	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, getAgentVerbs, type ProfileFile, type Connector, type AgentProfile, type AgentVerbs, type AgentVerb, type AgentVerbNode } from '$lib/api/client';
 	import { session } from '$lib/auth/session';
 	import Modal from '$lib/components/Modal.svelte';
 	import type {
@@ -200,11 +200,25 @@
 	// chi tiene le due liste gated (globale + per-agente).
 	let verbs: AgentVerbs | null = null;
 
+	// Nodi aperti a mano. `undefined` = si segue il default del backend, che apre
+	// dove c'è un lucchetto o un verbo fuori profilo: aprire tutto significherebbe
+	// 159 righe, chiudere tutto significherebbe non vedere il lucchetto che conta.
+	let nodeOpen: Record<string, boolean> = {};
+	function isOpen(node: { namespace: string; open_by_default: boolean }): boolean {
+		return nodeOpen[node.namespace] ?? node.open_by_default;
+	}
+	function toggleNode(ns: string) {
+		const node = verbs?.tree?.find((n) => n.namespace === ns);
+		nodeOpen = { ...nodeOpen, [ns]: !(nodeOpen[ns] ?? node?.open_by_default ?? false) };
+	}
+
 	function lockTitle(v: AgentVerb): string {
 		if (!v.gated) return v.verb;
-		return v.gated_by === 'global'
-			? `${v.verb} — consenso umano richiesto a ogni uso, per QUALUNQUE agente`
-			: `${v.verb} — consenso umano richiesto a ogni uso per questo agente (lo stesso verbo può essere libero per altri)`;
+		if (v.gated_by === 'global')
+			return `${v.verb} — consenso umano richiesto a ogni uso, per QUALUNQUE agente`;
+		if (v.gated_by === 'profile')
+			return `${v.verb} — fuori dal profilo dichiarato: raggiungibile, ma ogni uso passa da un'approvazione. Non è pericoloso, è fuori dal suo mestiere.`;
+		return `${v.verb} — consenso umano richiesto a ogni uso per questo agente (lo stesso verbo può essere libero per altri)`;
 	}
 
 	async function loadVerbs(n: string) {
@@ -852,53 +866,61 @@
 				{#if agent.tool_permissions}
 					<dt>Tools</dt>
 					<dd>
-						{#if verbs && (verbs.verbs.length || verbs.groups.length)}
-							<!-- 🔒 = richiede un consenso umano a OGNI uso. Il lucchetto è
-							     l'informazione che un elenco piatto di grant non dava: fra
-							     `email.list` e `email.send` la differenza non è il nome. -->
-							{#if verbs.verbs.length}
-								<ul class="chips">
-									{#each verbs.verbs as v}
-										<li><code class:gated={v.gated} title={lockTitle(v)}
-											>{v.gated ? '🔒 ' : ''}{v.verb}</code></li>
-									{/each}
-								</ul>
+						{#if verbs?.tree?.length}
+							{#if verbs.has_profile}
+								<p class="vnote">
+									Profilo dichiarato: <strong>{verbs.profile?.length}</strong> verbi, il
+									mestiere di questo agente. Gli altri restano raggiungibili ma
+									passano da un’approvazione — 🔒 li segna tutti.
+								</p>
 							{/if}
-							{#each verbs.groups as g}
-								<div class="vgroup">
-									<span class="grant"><code>{g.grant === '*' ? '*  (tutti i namespace)' : g.grant}</code>
-										{#if g.expanded}
-											<span class="ghint">espanso: contiene {g.verbs.filter((v) => v.gated).length} verbi con lucchetto</span>
-										{:else}
-											<span class="ghint">{g.count} verbi, nessuno con lucchetto</span>
+							<ul class="vtree">
+								{#each verbs.tree as node (node.namespace)}
+									<li>
+										<button type="button" class="vnode"
+											aria-expanded={isOpen(node)}
+											on:click={() => toggleNode(node.namespace)}>
+											<span class="caret">{isOpen(node) ? '▾' : '▸'}</span>
+											<code>{node.namespace}</code>
+											<span class="vcount">{node.verbs.length}</span>
+											{#if node.gated}<span class="vlock">🔒 {node.gated}</span>{/if}
+											{#if node.outside}<span class="voff">fuori profilo {node.outside}</span>{/if}
+										</button>
+										{#if isOpen(node)}
+											<ul class="vleaves">
+												{#each node.verbs as v (v.verb)}
+													<li class:off={v.in_profile === false}>
+														<span class="vlead">
+															{#if v.gated}<span class="vlock" title={lockTitle(v)}>🔒</span>{/if}
+															<code class:gated={v.gated}>{v.verb}</code>
+														</span>
+														{#if v.description}<span class="vdesc">{v.description}</span>{/if}
+													</li>
+												{/each}
+											</ul>
 										{/if}
-									</span>
-									{#if g.expanded}
-										<ul class="chips">
-											{#each g.verbs as v}
-												<li><code class:gated={v.gated} title={lockTitle(v)}
-													>{v.gated ? '🔒 ' : ''}{v.verb}</code></li>
-											{/each}
-										</ul>
-									{/if}
-								</div>
-							{/each}
+									</li>
+								{/each}
+							</ul>
+							{#if verbs.catalogue_complete === false}
+								<p class="vnote">⚠ Elenco parziale: i tool dei backend MCP montati non
+									sono leggibili in questo momento.</p>
+							{/if}
 							{#if verbs.denied?.length}
 								<p class="vnote">Negati: {verbs.denied.join(', ')}</p>
 							{/if}
 						{:else if agent.tool_permissions.length}
-							<!-- Gateway muto: si mostra la dichiarazione del seed SENZA
-							     lucchetti, e lo si dice. Un pannello che sparisce per un
-							     timeout insegna a non fidarsi del pannello; uno che mostra
-							     grant senza lucchetti facendo credere che non ce ne siano
-							     sarebbe peggio. -->
+							<!-- Gateway muto: la dichiarazione del seed SENZA lucchetti, e lo si
+							     dice. Un pannello che sparisce insegna a non fidarsi del pannello;
+							     uno che mostra grant senza lucchetti facendo credere che non ce ne
+							     siano sarebbe peggio. -->
 							<ul class="chips">
 								{#each agent.tool_permissions as t}
 									<li><code>{t === '*' ? 'tutti (gateway)' : t}</code></li>
 								{/each}
 							</ul>
 							<p class="vnote">Lucchetti non leggibili dal gateway: questa è la
-								dichiarazione del seed, non l'insieme effettivo.</p>
+								dichiarazione del seed, non l’insieme effettivo.</p>
 						{:else}—{/if}
 					</dd>
 				{/if}
@@ -1292,6 +1314,29 @@
 	   gli altri: colore d'allerta e peso. Un elenco in cui tutto ha lo stesso peso
 	   è un elenco in cui non si nota niente. */
 	code.gated { color: #d97706; border: 1px solid #d9770633; }
+	.vtree { list-style: none; padding: 0; margin: 6px 0 0; }
+	.vnode { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+		background: transparent; border: 0; padding: 3px 0; cursor: pointer; font: inherit;
+		color: var(--fg); }
+	.vnode:hover code { text-decoration: underline; }
+	.caret { width: 10px; color: var(--fg-muted); }
+	.vcount { font-size: 11px; color: var(--fg-muted); }
+	.vlock { font-size: 11px; color: #d97706; }
+	.voff { font-size: 11px; color: var(--fg-muted); font-style: italic; }
+	.vleaves { list-style: none; margin: 2px 0 6px 18px; padding: 0; display: flex;
+		flex-direction: column; gap: 2px; }
+	.vleaves li { display: grid; grid-template-columns: minmax(0, 22em) 1fr; gap: 10px;
+		align-items: baseline; }
+	/* Fuori profilo: tenue, non nascosto. È raggiungibile, e nasconderlo direbbe
+	   che non lo è. */
+	.vleaves li.off { opacity: .75; }
+	.vlead { display: flex; align-items: baseline; gap: 5px; }
+	.vdesc { font-size: 11px; color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis;
+		white-space: nowrap; }
+	@media (max-width: 700px) {
+		.vleaves li { grid-template-columns: 1fr; }
+		.vdesc { white-space: normal; }
+	}
 	.vgroup { margin-top: 8px; }
 	.grant { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 	.ghint { font-size: 11px; color: var(--fg-muted); }
