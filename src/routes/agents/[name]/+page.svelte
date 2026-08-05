@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, type ProfileFile, type Connector, type AgentProfile } from '$lib/api/client';
+	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, getAgentVerbs, type ProfileFile, type Connector, type AgentProfile, type AgentVerbs, type AgentVerb } from '$lib/api/client';
 	import { session } from '$lib/auth/session';
 	import Modal from '$lib/components/Modal.svelte';
 	import type {
@@ -195,10 +195,33 @@
 		toastError('Timeout generazione avatar', 'riprova più tardi');
 	}
 
+	// Verbi effettivi col lucchetto. Vengono dal GATEWAY, non dal seed: il seed
+	// dichiara i grant, ma quali di quei verbi richiedano un consenso lo sa solo
+	// chi tiene le due liste gated (globale + per-agente).
+	let verbs: AgentVerbs | null = null;
+
+	function lockTitle(v: AgentVerb): string {
+		if (!v.gated) return v.verb;
+		return v.gated_by === 'global'
+			? `${v.verb} — consenso umano richiesto a ogni uso, per QUALUNQUE agente`
+			: `${v.verb} — consenso umano richiesto a ogni uso per questo agente (lo stesso verbo può essere libero per altri)`;
+	}
+
+	async function loadVerbs(n: string) {
+		verbs = null;
+		try {
+			const v = await getAgentVerbs(n);
+			verbs = v.unavailable ? null : v;
+		} catch {
+			verbs = null;   // → la scheda ricade sulla dichiarazione del seed, dicendolo
+		}
+	}
+
 	async function loadDetail(n: string) {
 		detail = { kind: 'loading' };
 		promptBody = '';
 		promptError = '';
+		void loadVerbs(n);
 		memories = { kind: 'idle' };   // ricaricata pigramente all'apertura del tab
 		try {
 			const data = await apiGet<Agent>(`/api/agents/${encodeURIComponent(n)}`);
@@ -829,12 +852,53 @@
 				{#if agent.tool_permissions}
 					<dt>Tools</dt>
 					<dd>
-						{#if agent.tool_permissions.length}
+						{#if verbs && (verbs.verbs.length || verbs.groups.length)}
+							<!-- 🔒 = richiede un consenso umano a OGNI uso. Il lucchetto è
+							     l'informazione che un elenco piatto di grant non dava: fra
+							     `email.list` e `email.send` la differenza non è il nome. -->
+							{#if verbs.verbs.length}
+								<ul class="chips">
+									{#each verbs.verbs as v}
+										<li><code class:gated={v.gated} title={lockTitle(v)}
+											>{v.gated ? '🔒 ' : ''}{v.verb}</code></li>
+									{/each}
+								</ul>
+							{/if}
+							{#each verbs.groups as g}
+								<div class="vgroup">
+									<span class="grant"><code>{g.grant === '*' ? '*  (tutti i namespace)' : g.grant}</code>
+										{#if g.expanded}
+											<span class="ghint">espanso: contiene {g.verbs.filter((v) => v.gated).length} verbi con lucchetto</span>
+										{:else}
+											<span class="ghint">{g.count} verbi, nessuno con lucchetto</span>
+										{/if}
+									</span>
+									{#if g.expanded}
+										<ul class="chips">
+											{#each g.verbs as v}
+												<li><code class:gated={v.gated} title={lockTitle(v)}
+													>{v.gated ? '🔒 ' : ''}{v.verb}</code></li>
+											{/each}
+										</ul>
+									{/if}
+								</div>
+							{/each}
+							{#if verbs.denied?.length}
+								<p class="vnote">Negati: {verbs.denied.join(', ')}</p>
+							{/if}
+						{:else if agent.tool_permissions.length}
+							<!-- Gateway muto: si mostra la dichiarazione del seed SENZA
+							     lucchetti, e lo si dice. Un pannello che sparisce per un
+							     timeout insegna a non fidarsi del pannello; uno che mostra
+							     grant senza lucchetti facendo credere che non ce ne siano
+							     sarebbe peggio. -->
 							<ul class="chips">
 								{#each agent.tool_permissions as t}
 									<li><code>{t === '*' ? 'tutti (gateway)' : t}</code></li>
 								{/each}
 							</ul>
+							<p class="vnote">Lucchetti non leggibili dal gateway: questa è la
+								dichiarazione del seed, non l'insieme effettivo.</p>
 						{:else}—{/if}
 					</dd>
 				{/if}
@@ -1224,6 +1288,15 @@
 </Modal>
 
 <style>
+	/* Il lucchetto è l'informazione, quindi il verbo gated non deve leggersi come
+	   gli altri: colore d'allerta e peso. Un elenco in cui tutto ha lo stesso peso
+	   è un elenco in cui non si nota niente. */
+	code.gated { color: #d97706; border: 1px solid #d9770633; }
+	.vgroup { margin-top: 8px; }
+	.grant { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+	.ghint { font-size: 11px; color: var(--fg-muted); }
+	.vnote { font-size: 11px; color: var(--fg-muted); margin: 6px 0 0; }
+
 	.connectors { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
 	.connectors h3 { font-size: 13px; margin: 0 0 8px; }
 	.conn-note { font-size: 11.5px; color: var(--fg-muted); margin: 6px 0 0; line-height: 1.4; }
