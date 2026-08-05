@@ -1591,6 +1591,36 @@ export interface HealthInfo {
 	commit?: string;
 }
 
+/** Un verbo effettivo di un seed, col lucchetto se richiede consenso umano. */
+export interface AgentVerb {
+	verb: string;
+	gated: boolean;
+	/** `global` = pericoloso per chiunque · `agent` = privilegiato per QUESTO seed. */
+	gated_by?: 'global' | 'agent' | null;
+	via?: string;
+}
+/** Un grant wildcard. Espanso SOLO se contiene almeno un verbo gated: si espande
+ *  dove c'è qualcosa da vedere, altrimenti un `*` produce duecento righe in cui
+ *  il lucchetto che conta non si nota. Compatto → `count` dice quanti copre. */
+export interface AgentVerbGroup {
+	grant: string;
+	expanded: boolean;
+	count?: number;
+	verbs: AgentVerb[];
+}
+export interface AgentVerbs {
+	agent: string;
+	verbs: AgentVerb[];
+	groups: AgentVerbGroup[];
+	denied?: string[];
+	gated_agent?: string[];
+	unavailable?: string;
+}
+
+export async function getAgentVerbs(name: string, opts: RequestOptions = {}): Promise<AgentVerbs> {
+	return apiGet<AgentVerbs>(`/api/agents/${encodeURIComponent(name)}/verbs`, opts);
+}
+
 export async function getHealth(opts: RequestOptions = {}): Promise<HealthInfo> {
 	return apiGet<HealthInfo>('/health', opts);
 }
