@@ -1633,6 +1633,18 @@ export interface AgentVerbs {
 	gated_agent?: string[];
 	catalogue_complete?: boolean;
 	unavailable?: string;
+	/** `human` o `agent`: un solo tipo di principal, ma il lucchetto ha due letture. */
+	principal_kind?: 'human' | 'agent';
+	/** Ruolo DICHIARATO nel seed (es. `member`), non il bucket di autorizzazione. */
+	role?: string | null;
+	clearance?: string | null;
+	is_admin?: boolean | null;
+	/**
+	 * `false` = nessuna matrice dichiarata → l'umano ricade sulla regola
+	 * precedente, che è AMPIA. Non significa «nessun verbo»: mostrarlo come zero
+	 * direbbe «bloccato» dove il sistema è «aperto».
+	 */
+	matrix_declared?: boolean;
 }
 
 export async function getAgentVerbs(name: string, opts: RequestOptions = {}): Promise<AgentVerbs> {

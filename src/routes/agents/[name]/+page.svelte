@@ -863,9 +863,39 @@
 					{:else}—{/if}
 				</dd>
 
-				{#if agent.tool_permissions}
-					<dt>Tools</dt>
+				<!-- Un solo tipo di principal: la sezione compare anche per un umano,
+				     che nel proprio seed non ha `tool_permissions` — la sua matrice vive
+				     nel seed come `tool_permissions` ma il dettaglio dell'agent non la
+				     espone, quindi si guarda `principal_kind` dalla risposta del gateway.
+				     Prima questo blocco non veniva renderizzato affatto per una persona,
+				     e la sua scheda diceva «nessun verbo». -->
+				{#if agent.tool_permissions || verbs?.principal_kind === 'human'}
+					<dt>{verbs?.principal_kind === 'human' ? 'Verbi (matrice)' : 'Tools'}</dt>
 					<dd>
+						{#if verbs?.principal_kind === 'human' && verbs.matrix_declared === false}
+							<!-- IL caso che non va mostrato come «zero verbi»: senza matrice
+							     dichiarata la persona ricade sulla regola precedente, cioè può
+							     tutto ciò che non è gated. Dire «nessuno» direbbe «bloccato»
+							     dove il sistema è «aperto», ed è la direzione d'errore peggiore
+							     per un pannello di sicurezza. -->
+							<p class="vnote warn">
+								⚠ <strong>Nessuna matrice dichiarata.</strong> Non significa «nessun
+								verbo»: significa che questa persona ricade sulla regola precedente
+								— può far eseguire <strong>tutto ciò che non è gated</strong>, e i
+								verbi gated solo se è admin. Dichiarare una matrice nel suo seed
+								(<code>tool_permissions</code>) è ciò che la delimita.
+							</p>
+						{/if}
+						{#if verbs?.principal_kind === 'human' && verbs.matrix_declared}
+							<p class="vnote">
+								Cosa può essere fatto <strong>su richiesta</strong> di questa persona,
+								da qualunque agente: una delega non aumenta l’autorità di chi la
+								chiede. 🔒 = riservato agli admin{verbs.is_admin ? ' (lo è)' : ''}.
+								{#if verbs.role}Ruolo dichiarato: <code>{verbs.role}</code>.{/if}
+								{#if verbs.clearance}Clearance: <code>{verbs.clearance}</code> — vale
+								sopra alla matrice: un topic di tier superiore resta precluso.{/if}
+							</p>
+						{/if}
 						{#if verbs?.tree?.length}
 							{#if verbs.has_profile}
 								<p class="vnote">
@@ -909,7 +939,13 @@
 							{#if verbs.denied?.length}
 								<p class="vnote">Negati: {verbs.denied.join(', ')}</p>
 							{/if}
-						{:else if agent.tool_permissions.length}
+						{:else if verbs?.principal_kind === 'human'}
+							{#if verbs.matrix_declared}
+								<p class="vnote">Matrice dichiarata <strong>vuota</strong>: nessun
+									verbo può essere eseguito su richiesta di questa persona. È
+									diverso da «non dichiarata», che è il caso ampio qui sopra.</p>
+							{/if}
+						{:else if agent.tool_permissions?.length}
 							<!-- Gateway muto: la dichiarazione del seed SENZA lucchetti, e lo si
 							     dice. Un pannello che sparisce insegna a non fidarsi del pannello;
 							     uno che mostra grant senza lucchetti facendo credere che non ce ne
@@ -1340,7 +1376,11 @@
 	.vgroup { margin-top: 8px; }
 	.grant { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 	.ghint { font-size: 11px; color: var(--fg-muted); }
-	.vnote { font-size: 11px; color: var(--fg-muted); margin: 6px 0 0; }
+	.vnote { font-size: 11px; color: var(--fg-muted); margin: 6px 0 0; line-height: 1.5; }
+	/* L'avviso «nessuna matrice» descrive uno stato APERTO: deve leggersi come
+	   un allarme, non come un'informazione neutra fra le altre. */
+	.vnote.warn { color: var(--fg); background: rgba(217, 119, 6, .1);
+		border-left: 2px solid #d97706; padding: 6px 8px; border-radius: 3px; }
 
 	.connectors { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
 	.connectors h3 { font-size: 13px; margin: 0 0 8px; }
