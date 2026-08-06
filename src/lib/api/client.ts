@@ -1040,6 +1040,44 @@ export async function signedChannelFileUrl(tier: string, name: string, path: str
 	return `${API_BASE_URL}${r.url}`;
 }
 
+/** Scope rules of a topic: the text injected into every agent's context, every
+ * turn. `authoritative` is false while it still comes from the legacy
+ * `files/AGENTS.md`, where any participant could write it — the UI must say so,
+ * because the same text means two different things depending on who could have
+ * written it. */
+export interface TopicAgentsMd {
+	text: string | null;
+	version: string | null;
+	authoritative: boolean;
+}
+
+export async function getTopicAgentsMd(
+	tier: string,
+	name: string,
+	opts: RequestOptions = {}
+): Promise<TopicAgentsMd> {
+	return apiGet<TopicAgentsMd>(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/agents-md`,
+		opts
+	);
+}
+
+/** Writes them under the optimistic lock. A 409 means someone else wrote in the
+ * meantime: re-read and merge, never retry the same body. */
+export async function saveTopicAgentsMd(
+	tier: string,
+	name: string,
+	text: string,
+	baseVersion: string | null,
+	opts: RequestOptions = {}
+): Promise<{ agents_md_version: string | null; removed: boolean }> {
+	return apiPost(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/agents-md`,
+		{ text, base_version: baseVersion },
+		opts
+	);
+}
+
 export async function getTopicSummary(
 	classification: string,
 	name: string,
