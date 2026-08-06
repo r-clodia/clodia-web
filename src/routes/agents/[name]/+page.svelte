@@ -218,6 +218,10 @@
 			return `${v.verb} — consenso umano richiesto a ogni uso, per QUALUNQUE agente`;
 		if (v.gated_by === 'profile')
 			return `${v.verb} — fuori dal profilo dichiarato: raggiungibile, ma ogni uso passa da un'approvazione. Non è pericoloso, è fuori dal suo mestiere.`;
+		if (v.gated_by === 'channel')
+			return `${v.verb} — libero FUORI da un canale, dentro serve l'approvazione di un ADMIN. Il verbo è il suo mestiere: ciò che cambia in un canale è chi può chiederglielo, perché i partecipanti non sono l'owner.`;
+		if (v.gated_by === 'admin')
+			return `${v.verb} — riservato agli admin. Per una persona il lucchetto non è un consenso per-uso: è il ruolo.`;
 		return `${v.verb} — consenso umano richiesto a ogni uso per questo agente (lo stesso verbo può essere libero per altri)`;
 	}
 

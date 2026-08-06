@@ -1597,7 +1597,14 @@ export interface AgentVerb {
 	gated: boolean;
 	/** `global` = pericoloso per chiunque · `agent` = privilegiato per QUESTO seed ·
 	 *  `profile` = raggiungibile ma fuori dal mestiere dichiarato. */
-	gated_by?: 'global' | 'agent' | 'profile' | null;
+	/**
+	 * Perché è gated, e i quattro casi chiedono cose diverse:
+	 * `global` pericoloso per chiunque · `agent` per costui · `channel` libero
+	 * fuori da un canale e da approvare dentro · `profile` fuori dal mestiere.
+	 * `admin` compare solo per un principal umano: non è un consenso per-uso,
+	 * è il ruolo.
+	 */
+	gated_by?: 'global' | 'agent' | 'channel' | 'profile' | 'admin' | null;
 	/** `false` = fuori dal profilo dichiarato · `null` = l'agente non dichiara un profilo. */
 	in_profile?: boolean | null;
 	description?: string;
@@ -1645,6 +1652,8 @@ export interface AgentVerbs {
 	 * direbbe «bloccato» dove il sistema è «aperto».
 	 */
 	matrix_declared?: boolean;
+	/** Verbi gated solo DENTRO un canale (quarto motivo di gate). */
+	gated_in_channel?: string[];
 }
 
 export async function getAgentVerbs(name: string, opts: RequestOptions = {}): Promise<AgentVerbs> {
