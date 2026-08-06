@@ -43,6 +43,8 @@
 		type FeedbackLesson,
 		type ChannelFile,
 	} from '$lib/api/client';
+	import { getTopicAgentsMd, saveTopicAgentsMd, type TopicAgentsMd } from '$lib/api/client';
+	import { toastSuccess } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import type { TierWarning } from '$lib/api/types';
 
@@ -285,6 +287,58 @@
 	}
 	// Timeline dei recap (TLDR storici): il recap sotto al titolo è cliccabile.
 	let showRecap = false;
+
+	// --- Regole dello scope (AGENTS.md) ------------------------------------
+	// Il testo che entra nel contesto di OGNI agente della stanza a OGNI turno.
+	// Fino al 6 ago 2026 stava in files/, dove qualunque partecipante poteva
+	// caricarlo; ora vive nel control-plane e si scrive solo con un verbo gated.
+	// `authoritative=false` significa che quel topic non è ancora migrato e il
+	// testo è ancora quello vecchio: va detto, perché lo stesso testo vale due
+	// cose diverse a seconda di chi poteva scriverlo.
+	let showRules = false;
+	let rules: TopicAgentsMd | null = null;
+	let rulesDraft = '';
+	let rulesBusy = false;
+	let rulesErr = '';
+	let rulesLoadedFor = '';
+
+	async function loadRules() {
+		const key = `${tier}/${name}`;
+		try {
+			rules = await getTopicAgentsMd(tier, name);
+			rulesDraft = rules.text ?? '';
+			rulesLoadedFor = key;
+			rulesErr = '';
+		} catch (e) {
+			rulesErr = e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	async function openRules() {
+		showRules = !showRules;
+		if (showRules && rulesLoadedFor !== `${tier}/${name}`) await loadRules();
+	}
+
+	async function saveRules() {
+		if (rulesBusy) return;
+		rulesBusy = true;
+		rulesErr = '';
+		try {
+			await saveTopicAgentsMd(tier, name, rulesDraft, rules?.version ?? null);
+			await loadRules();
+			toastSuccess('Regole dello scope aggiornate');
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			// 409 = qualcun altro ha scritto: si rilegge e si rifonde, non si
+			// ritenta uguale. Dirlo qui evita che l'utente prema di nuovo Salva
+			// e sovrascriva senza saperlo.
+			rulesErr = /409|conflitto/i.test(msg)
+				? 'Qualcun altro ha modificato le regole nel frattempo. Ricarica, rileggi le sue modifiche e riapplica le tue.'
+				: msg;
+		} finally {
+			rulesBusy = false;
+		}
+	}
 	function fmtRecapDate(ts: string): string {
 		try {
 			return new Date(ts).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -1445,6 +1499,41 @@
 				</ol>
 			{/if}
 		{/if}
+
+		<button type="button" class="rules-btn" on:click={openRules} aria-expanded={showRules}
+			title="Istruzioni che ogni agente della stanza legge a ogni turno">
+			📋 Regole dello scope{#if rules?.text}<span class="rules-dot" aria-label="presenti"></span>{/if}
+			<span class="rules-caret">{showRules ? '▴' : '▾'}</span>
+		</button>
+		{#if showRules}
+			<div class="rules-panel">
+				<p class="rules-note">
+					Questo testo entra nel contesto di <strong>ogni agente della stanza a ogni turno</strong>.
+					Non può ampliare i permessi di chi lo legge.
+				</p>
+				{#if rules && rules.text && !rules.authoritative}
+					<p class="rules-legacy">
+						⚠️ Questo topic non è ancora migrato: il testo arriva dalla vecchia posizione
+						<code>files/AGENTS.md</code>, dove <strong>qualunque partecipante</strong> poteva
+						scriverlo. Finché resta lì viene passato agli agenti come materiale di contesto
+						<em>non fidato</em>. Salvando da qui diventa autorevole.
+					</p>
+				{/if}
+				<textarea class="rules-ta" bind:value={rulesDraft} rows="10" spellcheck="false"
+					placeholder="Es. «In questo topic si scrive in italiano. I documenti finali vanno in files/consegne/.»"
+				></textarea>
+				{#if rulesErr}<div class="err">{rulesErr}</div>{/if}
+				<div class="rules-actions">
+					<button type="button" class="btn primary" on:click={saveRules} disabled={rulesBusy}>
+						{rulesBusy ? 'Salvo…' : 'Salva regole'}
+					</button>
+					<button type="button" class="btn" on:click={loadRules} disabled={rulesBusy}>Ricarica</button>
+					<span class="rules-hint">
+						{#if rulesDraft.trim() === ''}Salvando vuoto le regole vengono rimosse.{:else}Riservato agli admin.{/if}
+					</span>
+				</div>
+			</div>
+		{/if}
 	</header>
 
 	{#if loadErr}<div class="err">{loadErr}</div>{/if}
@@ -2601,4 +2690,23 @@
 	.invite-item:hover { background: rgba(255, 107, 61, 0.12); }
 	.addp button { font-size: 11.5px; border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; background: transparent; color: var(--fg); cursor: pointer; white-space: nowrap; }
 	.muted { color: var(--fg-muted); font-size: 12px; }
+
+	/* Regole dello scope: distinte dai file del topic anche visivamente, perché
+	   sono control-plane e non contenuto. */
+	.rules-btn { display: inline-flex; align-items: center; gap: .4rem; background: none;
+		border: 1px solid var(--border, #3a3a3a); border-radius: 6px; padding: .25rem .6rem;
+		font: inherit; font-size: .82rem; color: inherit; cursor: pointer; opacity: .85; }
+	.rules-btn:hover { opacity: 1; }
+	.rules-dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
+	.rules-caret { opacity: .6; }
+	.rules-panel { margin: .5rem 0 .25rem; padding: .7rem; border: 1px solid var(--border, #3a3a3a);
+		border-radius: 8px; }
+	.rules-note { margin: 0 0 .5rem; font-size: .8rem; opacity: .8; }
+	.rules-legacy { margin: 0 0 .5rem; padding: .5rem .6rem; border-radius: 6px; font-size: .8rem;
+		background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .4); }
+	.rules-ta { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace;
+		font-size: .82rem; padding: .5rem; border-radius: 6px;
+		border: 1px solid var(--border, #3a3a3a); background: transparent; color: inherit; }
+	.rules-actions { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
+	.rules-hint { font-size: .76rem; opacity: .65; }
 </style>
