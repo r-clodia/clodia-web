@@ -186,7 +186,7 @@
 		void refreshAdmin();
 	});
 
-	// --- Nuovo topic/canale ---
+	// --- Nuovo topic ---
 	let showNew = false;
 	let nName = '';
 	let nTitle = '';
@@ -465,8 +465,8 @@
 		on:click={() => (showNew = false)} on:keydown={(e) => e.key === 'Escape' && (showNew = false)}>
 		<div class="nt-modal" role="dialog" aria-modal="true" aria-label="Nuovo topic" tabindex="-1"
 			on:click|stopPropagation on:keydown|stopPropagation>
-			<h2>{$instanceProfile.vocabulary?.nuovo_topic || 'Nuovo topic / canale'}</h2>
-			<p class="nt-note">Sei l'owner; partecipanti AI iniziali: <code>{(($instanceProfile.topics_defaults?.participants?.length ? $instanceProfile.topics_defaults.participants : [$instanceProfile.topics_defaults?.contact_agent || 'clodia'])).join(', ')}</code>. Potrai invitarne altri nel canale.</p>
+			<h2>{$instanceProfile.vocabulary?.nuovo_topic || 'Nuovo topic'}</h2>
+			<p class="nt-note">Sei l'owner; partecipanti AI iniziali: <code>{(($instanceProfile.topics_defaults?.participants?.length ? $instanceProfile.topics_defaults.participants : [$instanceProfile.topics_defaults?.contact_agent || 'clodia'])).join(', ')}</code>. Potrai invitarne altri nel topic.</p>
 			<label class="nt-field"><span>Nome</span>
 				<input type="text" bind:value={nName} placeholder="es. progetto-acme" autocomplete="off" />
 				<span class="nt-hint">minuscole, cifre, <code>-</code> e <code>_</code></span>
@@ -699,7 +699,7 @@
 						{/if}
 						<div class="card-foot">
 							{#if t.owner}
-								<div class="member-row" title="Owner del canale">
+								<div class="member-row" title="Owner del topic">
 									<span class="member-label">Owner</span>
 									<span class="member">
 										<AgentAvatar name={t.owner} size={22} />
@@ -708,7 +708,7 @@
 								</div>
 							{/if}
 							{#if t.participants?.length}
-								<div class="member-row" title="Partecipanti del canale">
+								<div class="member-row" title="Partecipanti del topic">
 									<span class="member-label">Partecipanti</span>
 									<span class="members">
 										{#each t.participants as p}
