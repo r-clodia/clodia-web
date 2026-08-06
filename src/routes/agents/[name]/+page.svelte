@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, getAgentVerbs, type ProfileFile, type Connector, type AgentProfile, type AgentVerbs, type AgentVerb, type AgentVerbNode } from '$lib/api/client';
 	import { session } from '$lib/auth/session';
@@ -239,6 +240,22 @@
 			return `${v.verb} — riservato agli admin. Per una persona il lucchetto non è un consenso per-uso: è il ruolo.`;
 		return `${v.verb} — consenso umano richiesto a ogni uso per questo agente (lo stesso verbo può essere libero per altri)`;
 	}
+
+	// Ricarica quando la finestra torna in primo piano. Una scheda che descrive
+	// un'autorità non deve poter restare aperta a mostrare uno stato superato: il
+	// 6 ago l'insieme di clodia è cambiato tre volte in un pomeriggio e la pagina
+	// aperta continuava a mostrare quello di mezzo, il che si legge come «il
+	// sistema non ubbidisce» invece che «sto guardando una fotografia».
+	function refetchOnFocus() {
+		if (typeof window === 'undefined') return () => {};
+		const h = () => { if (name) void loadVerbs(name); };
+		window.addEventListener('focus', h);
+		document.addEventListener('visibilitychange', () => {
+			if (document.visibilityState === 'visible') h();
+		});
+		return () => window.removeEventListener('focus', h);
+	}
+	onMount(refetchOnFocus);
 
 	async function loadVerbs(n: string) {
 		verbs = null;
