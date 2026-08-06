@@ -1652,6 +1652,8 @@ export interface AgentVerbs {
 	 * direbbe «bloccato» dove il sistema è «aperto».
 	 */
 	matrix_declared?: boolean;
+	/** Conteggi: raggiungibili in totale, liberi (il mestiere), su approvazione. */
+	summary?: { reachable: number; free: number; on_approval: number };
 	/** Verbi gated solo DENTRO un canale (quarto motivo di gate). */
 	gated_in_channel?: string[];
 }
