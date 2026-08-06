@@ -207,6 +207,21 @@
 	function isOpen(node: { namespace: string; open_by_default: boolean }): boolean {
 		return nodeOpen[node.namespace] ?? node.open_by_default;
 	}
+	// Dentro un nodo aperto si mostra il MESTIERE; ciò che passa da
+	// un'approvazione sta dietro un conteggio. Senza questa seconda piega, la
+	// scheda di clodia — 53 verbi liberi su 130 raggiungibili — tornava a essere
+	// un muro di 130 righe, che è il difetto che questa vista esiste per evitare.
+	let showOnApproval: Record<string, boolean> = {};
+	function toggleOnApproval(ns: string) {
+		showOnApproval = { ...showOnApproval, [ns]: !showOnApproval[ns] };
+	}
+	function freeVerbs(node: { verbs: AgentVerb[] }): AgentVerb[] {
+		return node.verbs.filter((v) => !v.gated && v.in_profile !== false);
+	}
+	function gatedVerbs(node: { verbs: AgentVerb[] }): AgentVerb[] {
+		return node.verbs.filter((v) => v.gated || v.in_profile === false);
+	}
+
 	function toggleNode(ns: string) {
 		const node = verbs?.tree?.find((n) => n.namespace === ns);
 		nodeOpen = { ...nodeOpen, [ns]: !(nodeOpen[ns] ?? node?.open_by_default ?? false) };
@@ -903,9 +918,12 @@
 						{#if verbs?.tree?.length}
 							{#if verbs.has_profile}
 								<p class="vnote">
-									Profilo dichiarato: <strong>{verbs.profile?.length}</strong> verbi, il
-									mestiere di questo agente. Gli altri restano raggiungibili ma
-									passano da un’approvazione — 🔒 li segna tutti.
+									<strong>{verbs.summary?.free ?? verbs.profile?.length}</strong> verbi
+									liberi — il mestiere di questo agente — e
+									<strong>{verbs.summary?.on_approval ?? 0}</strong> raggiungibili
+									passando da un’approvazione. Sotto si vede il mestiere; il resto sta
+									dietro «su approvazione», perché la prima domanda su un agente è cosa
+									<em>fa</em>, non fin dove potrebbe arrivare chiedendo.
 								</p>
 							{/if}
 							<ul class="vtree">
@@ -922,15 +940,33 @@
 										</button>
 										{#if isOpen(node)}
 											<ul class="vleaves">
-												{#each node.verbs as v (v.verb)}
-													<li class:off={v.in_profile === false}>
-														<span class="vlead">
-															{#if v.gated}<span class="vlock" title={lockTitle(v)}>🔒</span>{/if}
-															<code class:gated={v.gated}>{v.verb}</code>
-														</span>
+												{#each freeVerbs(node) as v (v.verb)}
+													<li>
+														<span class="vlead"><code>{v.verb}</code></span>
 														{#if v.description}<span class="vdesc">{v.description}</span>{/if}
 													</li>
 												{/each}
+												{#if gatedVerbs(node).length}
+													<li class="vmore">
+														<button type="button" class="vmore-btn"
+															aria-expanded={!!showOnApproval[node.namespace]}
+															on:click={() => toggleOnApproval(node.namespace)}>
+															{showOnApproval[node.namespace] ? '▾' : '▸'}
+															{gatedVerbs(node).length} su approvazione
+														</button>
+													</li>
+													{#if showOnApproval[node.namespace]}
+														{#each gatedVerbs(node) as v (v.verb)}
+															<li class:off={v.in_profile === false}>
+																<span class="vlead">
+																	{#if v.gated}<span class="vlock" title={lockTitle(v)}>🔒</span>{/if}
+																	<code class:gated={v.gated}>{v.verb}</code>
+																</span>
+																{#if v.description}<span class="vdesc">{v.description}</span>{/if}
+															</li>
+														{/each}
+													{/if}
+												{/if}
 											</ul>
 										{/if}
 									</li>
@@ -1383,6 +1419,10 @@
 	.vnote { font-size: 11px; color: var(--fg-muted); margin: 6px 0 0; line-height: 1.5; }
 	/* L'avviso «nessuna matrice» descrive uno stato APERTO: deve leggersi come
 	   un allarme, non come un'informazione neutra fra le altre. */
+	.vmore { list-style: none; margin-top: 2px; }
+	.vmore-btn { background: none; border: 0; padding: 1px 0; font: inherit;
+		font-size: 11px; color: var(--fg-muted); cursor: pointer; }
+	.vmore-btn:hover { color: var(--fg); }
 	.vnote.warn { color: var(--fg); background: rgba(217, 119, 6, .1);
 		border-left: 2px solid #d97706; padding: 6px 8px; border-radius: 3px; }
 
