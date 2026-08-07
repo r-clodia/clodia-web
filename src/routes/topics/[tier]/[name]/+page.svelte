@@ -44,7 +44,7 @@
 		type ChannelFile,
 	} from '$lib/api/client';
 	import { getTopicAgentsMd, saveTopicAgentsMd, type TopicAgentsMd } from '$lib/api/client';
-	import { toastSuccess } from '$lib/stores/toasts';
+	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import type { TierWarning } from '$lib/api/types';
 
@@ -924,7 +924,33 @@
 	}
 	// Seed multi-spawn (issue#94): participant → true se materializza N istanze.
 	let multiSpawn: Record<string, boolean> = {};
-	$: participants = info?.meta?.participants ?? [];
+	// I partecipanti sono una MAPPA nome→ruolo dal 7 ago 2026, ma un topic che
+	// nessuno ha ancora toccato conserva la lista: si converte alla prima
+	// modifica, quindi la UI deve saper leggere entrambe le forme.
+	$: participantsRaw = info?.meta?.participants ?? [];
+	$: participants = Array.isArray(participantsRaw)
+		? participantsRaw
+		: Object.keys(participantsRaw ?? {});
+	$: roleOf = (p: string): string =>
+		p === info?.meta?.owner
+			? 'owner'
+			: Array.isArray(participantsRaw)
+				? 'contributor'
+				: ((participantsRaw as Record<string, string>)?.[p] || 'contributor');
+	let roleBusy = '';
+	async function setRole(p: string, role: 'contributor' | 'reader') {
+		if (roleBusy) return;
+		roleBusy = p;
+		try {
+			await setChannelParticipant(tier, name, p, true, role);
+			await refreshInfo();
+			toastSuccess(`${p}: ${role}`);
+		} catch (e) {
+			toastError('Ruolo non cambiato', e instanceof Error ? e.message : String(e));
+		} finally {
+			roleBusy = '';
+		}
+	}
 	// Partecipanti mostrati: nascondi i non idonei al tier (eligible=false). I super
 	// sotto tier restano (eligible=true) e li marchiamo con ⚠️ via eligibility[p].warn.
 	$: shownParticipants = participants.filter((p) => eligibility[p]?.eligible ?? true);
@@ -1981,7 +2007,21 @@
 								{/if}
 							</span>
 							{#if isOwner && p !== info?.meta?.owner}
+								<!-- Il ruolo lo decide l'owner, qui, accanto a chi riguarda.
+								     Un contributor scrive nella stanza; un reader legge e
+								     parla, e se chiede una mutazione diventa un gate
+								     rivolto a te invece che un rifiuto. -->
+								<select class="role-sel" value={roleOf(p)} disabled={roleBusy === p}
+									title="contributor: può modificare · reader: legge e parla"
+									on:change={(e) => setRole(p, (e.currentTarget as HTMLSelectElement).value as 'contributor' | 'reader')}>
+									<option value="contributor">contributor</option>
+									<option value="reader">reader</option>
+								</select>
 								<button class="x" type="button" on:click={() => removeParticipant(p)} aria-label="Rimuovi">×</button>
+							{:else if p === info?.meta?.owner}
+								<span class="role-fixed" title="La proprietà dello scope, non un grado di accesso">owner</span>
+							{:else}
+								<span class="role-fixed">{roleOf(p)}</span>
 							{/if}
 						</li>
 					{/each}
@@ -2808,4 +2848,11 @@
 		font-size: .72rem; color: inherit; opacity: .7; cursor: pointer;
 		text-decoration: underline; }
 	.link-btn:hover { opacity: 1; }
+
+	/* Ruolo nello scope: si vede sempre, si cambia solo se sei l'owner. */
+	.role-sel { font-size: .7rem; padding: .1rem .2rem; border-radius: 4px;
+		border: 1px solid var(--border, #3a3a3a); background: transparent;
+		color: inherit; opacity: .75; }
+	.role-sel:hover { opacity: 1; }
+	.role-fixed { font-size: .7rem; opacity: .55; padding: 0 .3rem; }
 </style>

@@ -636,7 +636,11 @@ export interface ChannelInfo {
 	meta: {
 		title?: string;
 		owner?: string;
-		participants?: string[];
+		/** Mappa nome→ruolo dal 7 ago 2026. Un topic che nessuno ha ancora
+		 *  toccato conserva la LISTA legacy, che vale tutta `contributor`: la
+		 *  conversione avviene alla prima modifica, quindi entrambe le forme
+		 *  circolano e chi legge deve saperle distinguere. */
+		participants?: string[] | Record<string, string>;
 		tier?: string;
 		status?: string;
 		deadline?: string | null;
@@ -991,13 +995,26 @@ export async function getChannelEligibility(
 ): Promise<{ tier: string; agents: AgentEligibility[] }> {
 	return apiGet(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/eligibility`, opts);
 }
-export async function setChannelParticipant(tier: string, name: string, agent: string, add: boolean): Promise<{ participants: string[] }> {
+/** Ruolo di un ospite nello scope. `owner` non si assegna invitando: è la
+ *  proprietà del topic, non un grado di accesso. */
+export type ScopeRole = 'contributor' | 'reader';
+
+/** Invita, rimuove, o cambia il ruolo di chi è già dentro. Il cambio passa da
+ *  qui e non da togli-e-rimetti: quello farebbe uscire la persona dal canale e
+ *  le manderebbe un messaggio di uscita e uno di rientro per un cambio di grado. */
+export async function setChannelParticipant(
+	tier: string,
+	name: string,
+	agent: string,
+	add: boolean,
+	role?: ScopeRole
+): Promise<{ participants: Record<string, string> | string[] }> {
 	const res = await fetch(
 		joinUrl(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/participants`),
 		{
 			method: add ? 'POST' : 'DELETE',
 			headers: { 'Content-Type': 'application/json', ...authHeaders() },
-			body: JSON.stringify({ agent })
+			body: JSON.stringify(role ? { agent, role } : { agent })
 		}
 	);
 	if (!res.ok) throw await parseError(res);
