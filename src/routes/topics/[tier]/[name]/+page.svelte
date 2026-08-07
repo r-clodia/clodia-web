@@ -275,15 +275,32 @@
 	// resta visibile e navigabile finché non si conferma o si annulla.
 	let remoteForm: 'git' | 'drive' | null = null;
 	let remoteInput = '';
-	function openRemoteForm(kind: 'git' | 'drive') { remoteForm = kind; remoteInput = ''; }
-	function cancelRemoteForm() { remoteForm = null; remoteInput = ''; }
+	// Credenziale del solo SCOPE, chiesta qui perché questo è l'unico momento in
+	// cui chi la fornisce sa a quale repository serve. Vuota = si usa quella
+	// della piattaforma, e il pannello lo dice a chiare lettere: un ripiego
+	// silenzioso costruisce la convinzione di un isolamento che non c'è.
+	let remoteCred = '';
+	function openRemoteForm(kind: 'git' | 'drive') {
+		remoteForm = kind; remoteInput = ''; remoteCred = '';
+	}
+	function cancelRemoteForm() { remoteForm = null; remoteInput = ''; remoteCred = ''; }
 	function submitRemoteForm() {
 		const v = remoteInput.trim();
+		const cred = remoteCred.trim();
 		const payload = remoteForm === 'git'
-			? { type: 'git', config: v ? { url: v } : {} }
+			? { type: 'git', config: v ? { url: v } : {}, ...(cred ? { credential: cred } : {}) }
 			: { type: 'drive', config: v ? { folder: v } : {} };
-		remoteForm = null; remoteInput = '';
+		remoteForm = null; remoteInput = ''; remoteCred = '';
 		void doRemote('enable', payload);
+	}
+	// Rotazione: cambiare o togliere la credenziale senza ricollegare il remote.
+	// Senza questa via, una credenziale per topic diventa una credenziale che
+	// nessuno rinnova — è il costo ricorrente di questo disegno.
+	let rotating = false;
+	let rotateCred = '';
+	async function rotateCredential() {
+		await doRemote('set_credential', { credential: rotateCred.trim() });
+		rotateCred = ''; rotating = false;
 	}
 	// Timeline dei recap (TLDR storici): il recap sotto al titolo è cliccabile.
 	let showRecap = false;
@@ -2142,6 +2159,17 @@
 									: 'Link/ID cartella Drive (vuoto = nuova)'}
 								autocomplete="off" spellcheck="false"
 								on:keydown={(e) => e.key === 'Escape' && cancelRemoteForm()} />
+							{#if remoteForm === 'git'}
+								<input class="remote-url-input" type="password" bind:value={remoteCred}
+									placeholder="token per QUESTO topic (vuoto = credenziale della piattaforma)"
+									autocomplete="off" spellcheck="false" />
+								<p class="cred-hint">
+									Un token ristretto a questo repository limita il danno di una stanza
+									compromessa a questo repository. Lasciandolo vuoto il topic userà la
+									credenziale della piattaforma, che raggiunge <strong>tutti</strong> i
+									repo per cui ha i permessi.
+								</p>
+							{/if}
 							<div class="remote-actions">
 								<button type="submit" disabled={remoteBusy}>collega {remoteForm}</button>
 								<button type="button" on:click={cancelRemoteForm} disabled={remoteBusy}>annulla</button>
@@ -2166,6 +2194,32 @@
 						{/if}
 						{#if remoteBusy}<span class="files-spinner" style="margin-left:6px"></span>{/if}
 					</p>
+					{#if remoteMeta.type === 'git' && remoteStatus?.credential_source}
+						<!-- La provenienza della credenziale, sempre visibile. Il valore
+						     non compare mai: si mostra CHI la fornisce, non qual è. -->
+						<p class="remote-info">
+							{#if remoteStatus.credential_source === 'scope'}
+								<span class="cred-source scope">🔑 credenziale di questo topic</span>
+							{:else if remoteStatus.credential_source === 'platform'}
+								<span class="cred-source platform">🔑 credenziale della piattaforma</span>
+								<span class="muted"> · raggiunge tutti i repo per cui ha i permessi</span>
+							{:else}
+								<span class="cred-source platform">🔑 nessuna credenziale</span>
+							{/if}
+							{#if isOwner}
+								<button type="button" class="link-btn"
+									on:click={() => (rotating = !rotating)}>cambia</button>
+							{/if}
+						</p>
+						{#if rotating && isOwner}
+							<div class="cred-rotate">
+								<input type="password" bind:value={rotateCred} autocomplete="off"
+									placeholder="nuovo token (vuoto = torna a quella di piattaforma)" />
+								<button type="button" on:click={rotateCredential} disabled={remoteBusy}>salva</button>
+								<button type="button" on:click={() => { rotating = false; rotateCred = ''; }}>annulla</button>
+							</div>
+						{/if}
+					{/if}
 					<div class="remote-actions">
 						{#if !isDriveRemote}
 							<button type="button" on:click={() => doRemote('pull')} disabled={remoteBusy}>⬇︎ pull</button>
@@ -2739,4 +2793,19 @@
 		font-family: ui-monospace, monospace; font-size: .72rem; line-height: 1.45;
 		max-height: 16rem; overflow: auto; white-space: pre-wrap; word-break: break-word; }
 	.meta-doc-empty { margin: .35rem 0 0; font-size: .76rem; opacity: .6; }
+
+	/* Credenziale di scope: la provenienza si vede, il valore mai. */
+	.cred-hint { margin: .3rem 0 0; font-size: .72rem; opacity: .7; line-height: 1.4; }
+	.cred-source { display: inline-flex; align-items: center; gap: .3rem;
+		font-size: .72rem; padding: .1rem .4rem; border-radius: 4px; }
+	.cred-source.scope { background: rgba(34, 197, 94, .14); border: 1px solid rgba(34, 197, 94, .4); }
+	.cred-source.platform { background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .4); }
+	.cred-rotate { display: flex; gap: .4rem; margin-top: .4rem; flex-wrap: wrap; }
+	.cred-rotate input { flex: 1 1 10rem; min-width: 0; padding: .3rem .4rem;
+		border-radius: 5px; border: 1px solid var(--border, #3a3a3a);
+		background: transparent; color: inherit; font-size: .78rem; }
+	.link-btn { background: none; border: none; padding: 0 0 0 .4rem; font: inherit;
+		font-size: .72rem; color: inherit; opacity: .7; cursor: pointer;
+		text-decoration: underline; }
+	.link-btn:hover { opacity: 1; }
 </style>
