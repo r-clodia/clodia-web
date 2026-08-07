@@ -937,6 +937,12 @@ export async function deleteTopicCronTrigger(
 export interface RemoteStatus {
 	type?: 'git' | 'drive' | string;
 	enabled?: boolean;
+	/** Da quale credenziale passa questo remote. `scope` = il topic ha la sua e
+	 *  raggiunge un solo repository; `platform` = usa quella condivisa, che
+	 *  raggiunge tutti i repo per cui ha i permessi; `none` = non ce n'è alcuna.
+	 *  Il VALORE non arriva mai al frontend: solo la provenienza. Un ripiego
+	 *  silenzioso è il modo in cui ci si convince di un isolamento che non c'è. */
+	credential_source?: 'scope' | 'platform' | 'none';
 	origin?: boolean;
 	dirty?: number;
 	folder?: string | null;
