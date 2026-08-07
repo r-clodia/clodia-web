@@ -1890,9 +1890,27 @@
 							<span class="meta-value">{info?.meta?.deadline ?? '—'}</span>
 						{/if}
 					</label>
+
+					<!-- summary.md e meta.json sono usciti dalla vista file il 7 ago 2026
+					     (la radice dell'albero mostra i due mount e basta). Non dovevano
+					     sparire: sono il control-plane del topic e vanno letti, solo non
+					     navigati come se fossero dati. Qui, in sola lettura. -->
+					<details class="meta-doc">
+						<summary>summary.md<span class="meta-doc-size"
+							>{(info?.summary?.length ?? 0).toLocaleString('it-IT')} car.</span></summary>
+						{#if info?.summary}
+							<pre class="meta-doc-body">{info.summary}</pre>
+						{:else}
+							<p class="meta-doc-empty">Nessun summary.</p>
+						{/if}
+					</details>
+					<details class="meta-doc">
+						<summary>meta.json</summary>
+						<pre class="meta-doc-body">{JSON.stringify(info?.meta ?? {}, null, 2)}</pre>
+					</details>
 				</details>
 				{#if isOwner}
-					<details class="side-section" open>
+					<details class="side-section">
 						<summary>
 							<span>Lessons</span>
 							<span class="section-count">{feedbackLessons.length}</span>
@@ -1976,14 +1994,14 @@
 					{/if}
 				</details>
 				{#if isOwner}
-					<details class="side-section trigger-section" open>
+					<details class="side-section trigger-section">
 						<summary>Trigger</summary>
 						{#key `${tier}/${name}`}
 							<TopicTriggersPanel {tier} {name} agents={triggerAgents} />
 						{/key}
 					</details>
 				{/if}
-				<details class="side-section" open>
+				<details class="side-section">
 					<summary>
 						<span>File</span>
 						<span class="section-count">{files.length}</span>
@@ -2071,7 +2089,7 @@
 				</details>
 
 				{#if remoteMeta?.type === 'git' && syncGroups.length}
-					<details class="side-section sync-status" open>
+					<details class="side-section sync-status">
 						<summary>
 							<span>Sync status</span>
 							<span class="section-count">{syncGroups.reduce((total, group) => total + group.paths.length, 0)}</span>
@@ -2109,7 +2127,7 @@
 					</details>
 				{/if}
 
-				<details class="side-section remote-panel" open>
+				<details class="side-section remote-panel">
 					<summary>
 						<span>Remote</span>
 						{#if remoteMeta}<span class="section-status">{remoteMeta.type}</span>{/if}
@@ -2709,4 +2727,16 @@
 		border: 1px solid var(--border, #3a3a3a); background: transparent; color: inherit; }
 	.rules-actions { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; flex-wrap: wrap; }
 	.rules-hint { font-size: .76rem; opacity: .65; }
+
+	/* Control-plane in sola lettura dentro Meta: si legge, non si naviga. */
+	.meta-doc { margin-top: .5rem; }
+	.meta-doc > summary { cursor: pointer; font-size: .78rem; opacity: .8;
+		display: flex; justify-content: space-between; gap: .5rem; }
+	.meta-doc > summary:hover { opacity: 1; }
+	.meta-doc-size { opacity: .55; font-variant-numeric: tabular-nums; }
+	.meta-doc-body { margin: .35rem 0 0; padding: .5rem; border-radius: 6px;
+		border: 1px solid var(--border, #3a3a3a); background: transparent;
+		font-family: ui-monospace, monospace; font-size: .72rem; line-height: 1.45;
+		max-height: 16rem; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+	.meta-doc-empty { margin: .35rem 0 0; font-size: .76rem; opacity: .6; }
 </style>
