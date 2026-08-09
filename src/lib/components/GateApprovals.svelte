@@ -12,6 +12,13 @@
 		id: string; agent: string; instance: string; verb: string;
 		context?: string; human?: string; chat?: string; mode?: string;
 		reason?: string; age_s: number;
+		/** Cosa attraversa questa azione, e chi ha titolo a sbloccarla. Arrivano
+		 *  dal backend da UNA sola regola (`_standing`), la stessa che poi
+		 *  applica il controllo: ricalcolarli qui a partire dalla classe
+		 *  significherebbe una seconda copia della regola, e la copia che
+		 *  diverge è sempre quella che spiega — si finirebbe a scrivere «decide
+		 *  un admin» su un gate che solo l'owner può sbloccare. */
+		crosses?: string; decided_by?: string; decider_name?: string; scope?: string;
 	};
 	let requests: Req[] = [];
 	let busy = '';
@@ -72,6 +79,23 @@
 					<div class="gate-head">🛡️ <b>{q.agent}</b> vuole usare <code>{q.verb}</code></div>
 				{/if}
 				{#if q.reason}<div class="gate-reason">{q.reason}</div>{/if}
+				{#if q.crosses}
+					<!-- Cosa si sta per attraversare. Un gate non è una proprietà del
+					     verbo: è ciò che accade quando un'azione supera un confine, e
+					     senza dire QUALE la richiesta è solo un nome di funzione. -->
+					<div class="gate-crosses">
+						↦ attraversa {q.crosses}{#if q.scope} · <code>{q.scope}</code>{/if}
+					</div>
+				{/if}
+				{#if q.decided_by}
+					<div class="gate-who">
+						{#if q.decided_by.startsWith('owner:')}
+							decide l'<b>owner</b>{#if q.decider_name}: <b>{q.decider_name}</b>{/if}
+						{:else}
+							decide un <b>admin</b>
+						{/if}
+					</div>
+				{/if}
 				<div class="gate-meta">
 					verbo sotto supervisione umana{#if q.human} · nel contesto di <b>{q.human}</b>{/if}
 				</div>
@@ -92,6 +116,9 @@
 	.gate-head { font-size: 14px; margin-bottom: 4px; }
 	.gate-head code { font-family: var(--mono); font-size: 12px; }
 	.gate-reason { font-size: 13px; color: var(--fg); margin: 4px 0 6px; }
+	.gate-crosses { font-size: 12px; margin: 2px 0; }
+	.gate-crosses code { font-family: var(--mono); font-size: 11px; }
+	.gate-who { font-size: 12px; margin: 0 0 4px; }
 	.gate-meta { font-size: 11px; color: var(--fg-muted); margin-bottom: 10px; }
 	.gate-actions { display: flex; gap: 8px; justify-content: flex-end; }
 	.btn { font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--fg); }
