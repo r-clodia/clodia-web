@@ -644,6 +644,10 @@ export interface ChannelInfo {
 		tier?: string;
 		status?: string;
 		deadline?: string | null;
+		/** Portabilità dichiarata DAL TOPIC (non dall'agente): i partecipanti ne
+		 *  leggono i contenuti anche da altre stanze, entro il tier della stanza
+		 *  in cui si trovano. */
+		portable?: boolean;
 		schema_version?: number;
 	};
 	summary?: string;
@@ -2275,6 +2279,16 @@ export async function downloadTopicZip(tier: string, name: string): Promise<void
 	const a = document.createElement('a');
 	a.href = url; a.download = `${name}.zip`; a.click();
 	URL.revokeObjectURL(url);
+}
+
+/** POST `/api/topics/{tier}/{name}/portable` — dichiara o revoca la portabilità.
+ *  Portabile = i PARTECIPANTI di questo topic ne leggono i contenuti anche da
+ *  altre stanze, entro il tier della stanza in cui si trovano. Lo decide
+ *  l'owner: è un atto sui muri dello scope, non una preferenza. */
+export async function setTopicPortable(tier: string, name: string, portable: boolean,
+	opts: RequestOptions = {}): Promise<{ ok: boolean; portable: boolean }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/portable`,
+		{ portable }, opts);
 }
 
 /** POST `/api/topics/{tier}/{name}/archive` — imposta status=archived. */
