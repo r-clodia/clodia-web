@@ -39,7 +39,6 @@
 		if (p.counts.skills) parts.push(`${p.counts.skills} skill`);
 		if (p.counts.rules) parts.push(`${p.counts.rules} rule`);
 		if (p.counts.mcp_servers) parts.push(`${p.counts.mcp_servers} MCP`);
-		if (p.counts.workflows) parts.push(`${p.counts.workflows} workflow`);
 		if (p.counts.datastores) parts.push(`${p.counts.datastores} datastore`);
 		if (p.counts.rag_collections) parts.push(`${p.counts.rag_collections} RAG`);
 		return parts.join(' · ') || 'vuoto';
@@ -103,16 +102,6 @@
 					</div>
 				{/each}
 			{/if}
-			{#if plugin.workflows?.length}
-				<div class="group-label">Workflows</div>
-				{#each plugin.workflows as w (w.name)}
-					<a class="child workflow" href="/workflows">
-						<span class="child-kind kind-wf">wf</span>
-						<span class="child-name">{w.name}</span>
-						<span class="child-desc">{w.stages.map((st) => st.lane + (st.human_gate ? ' 🔒' : '')).join(' → ')}</span>
-					</a>
-				{/each}
-			{/if}
 			{#if plugin.datastores?.length}
 				<div class="group-label">Datastore</div>
 				{#each plugin.datastores as d (d.path)}
@@ -135,7 +124,7 @@
 					{/each}
 				{/each}
 			{/if}
-			{#if !plugin.skills.length && !plugin.rules.length && !plugin.mcp_servers.length && !plugin.workflows?.length && !plugin.datastores?.length && !plugin.rag_collections?.length}
+			{#if !plugin.skills.length && !plugin.rules.length && !plugin.mcp_servers.length && !plugin.datastores?.length && !plugin.rag_collections?.length}
 				<div class="child empty-child">plugin vuoto</div>
 			{/if}
 		</div>

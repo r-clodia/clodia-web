@@ -2084,14 +2084,6 @@ export async function removeMailbox(account: string, opts: RequestOptions = {}):
 	await apiDelete(`/tools/email/mailboxes/${encodeURIComponent(account)}`, opts);
 }
 
-/** POST `/tools/trello/connect` — deposita API key + token Trello nel vault. */
-export async function connectTrello(
-	api_key: string,
-	token: string,
-	opts: RequestOptions = {}
-): Promise<{ connected: boolean }> {
-	return apiPost('/tools/trello/connect', { api_key, token }, opts);
-}
 
 /** POST `/tools/github/connect` — deposita il PAT GitHub nel vault e registra il
  *  backend MCP ufficiale. PAT vuoto → disconnette. */

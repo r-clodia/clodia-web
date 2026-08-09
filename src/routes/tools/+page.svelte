@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, connectOpenAI, connectTrello, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
+	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, connectOpenAI, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
 	import type { ConnectorIssue, MailboxStatus } from '$lib/api/client';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { askWainston } from '$lib/stores/helpdesk';
@@ -27,7 +27,7 @@
 		accounts: string[];
 		issues?: ConnectorIssue[];
 		provider?: string; // etichetta provider (google, openai, storage, …)
-		kind?: 'gmail' | 'gworkspace' | 'google' | 'openai' | 'trello' | 'mailbox' | 'github' | 'telegram'; // flusso di connessione da usare
+		kind?: 'gmail' | 'gworkspace' | 'google' | 'openai' | 'mailbox' | 'github' | 'telegram'; // flusso di connessione da usare
 		bot_username?: string; // Telegram: @username del bot connesso
 		mcp?: boolean; // backend MCP montato (Add-MCP)
 		builtin?: boolean; // integrazione interna (es. storage topic local-fs)
@@ -46,10 +46,6 @@
 		  provider: 'openai', kind: 'openai',
 		  blurb: 'Generazione avatar/immagini via gpt-image-2 (PFP degli agenti). Key custodita nel vault.',
 		  scope: 'api.openai.com/v1/images' },
-		{ id: 'trello', name: 'Trello', wired: true, connected: false, accounts: [],
-		  provider: 'trello', kind: 'trello',
-		  blurb: 'Board/liste/card Trello (nostra implementazione, tool trello.*). Connetti con API key + token.',
-		  scope: 'api.trello.com/1' },
 		{ id: 'github', name: 'GitHub', wired: true, connected: false, accounts: [],
 		  provider: 'github', kind: 'github',
 		  blurb: 'Repo, issue, PR e code search via il server MCP ufficiale GitHub (tool github.*). Connetti con un Personal Access Token.',
@@ -283,42 +279,6 @@
 			keyError = err instanceof ApiError ? err.message : String(err);
 		} finally {
 			keyBusy = false;
-		}
-	}
-
-	// ─── Connessione Trello — API key + token ───
-	let trelloOpen = false;
-	let trelloKey = '';
-	let trelloToken = '';
-	let trelloBusy = false;
-	let trelloError = '';
-
-	function openTrello() {
-		trelloKey = '';
-		trelloToken = '';
-		trelloError = '';
-		trelloOpen = true;
-	}
-	function closeTrello() {
-		trelloOpen = false;
-		trelloBusy = false;
-	}
-	async function submitTrello() {
-		if (!trelloKey.trim() || !trelloToken.trim()) {
-			trelloError = 'Servono sia la API key sia il token Trello.';
-			return;
-		}
-		trelloBusy = true;
-		trelloError = '';
-		try {
-			await connectTrello(trelloKey.trim(), trelloToken.trim());
-			toastSuccess('Trello connesso', 'credenziali nel vault');
-			closeTrello();
-			await load();
-		} catch (err) {
-			trelloError = err instanceof ApiError ? err.message : String(err);
-		} finally {
-			trelloBusy = false;
 		}
 	}
 
@@ -580,12 +540,12 @@
 					{#if c.kind === 'telegram'}
 						<button type="button" class="btn ghost" on:click={() => askWainston(TELEGRAM_HELP)}>💬 Aiuto</button>
 					{/if}
-					<button type="button" class="btn ghost" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'google' ? 'google' : c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Riconnetti</button>
+					<button type="button" class="btn ghost" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'google' ? 'google' : c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Riconnetti</button>
 				{:else}
 					{#if c.kind === 'telegram'}
 						<button type="button" class="btn ghost" on:click={() => askWainston(TELEGRAM_HELP)}>💬 Aiuto setup</button>
 					{/if}
-					<button type="button" class="btn primary" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'trello' ? openTrello() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'google' ? 'google' : c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Connetti</button>
+					<button type="button" class="btn primary" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'google' ? 'google' : c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Connetti</button>
 				{/if}
 			</div>
 		</div>
@@ -689,36 +649,6 @@
 	</div>
 {/if}
 
-{#if trelloOpen}
-	<div class="overlay" on:click|self={closeTrello} role="presentation">
-		<div class="modal" role="dialog" aria-modal="true" aria-label="Connetti Trello">
-			<div class="modal-head">
-				<strong>Connetti Trello</strong>
-				<button class="x" type="button" on:click={closeTrello} aria-label="Chiudi">×</button>
-			</div>
-			<p class="note">
-				Inserisci la <strong>API key</strong> e il <strong>token</strong> Trello
-				(<code>trello.com/app-key</code>): la API key è in cima, il token lo generi col link
-				"Token" nella stessa pagina. Vengono custoditi nel <strong>vault</strong>, mai esposti agli agent.
-			</p>
-			<label class="field">
-				<span>API key</span>
-				<input type="password" bind:value={trelloKey} placeholder="trello api key" autocomplete="off" spellcheck="false" />
-			</label>
-			<label class="field">
-				<span>Token</span>
-				<input type="password" bind:value={trelloToken} placeholder="trello token" autocomplete="off" spellcheck="false" />
-			</label>
-			{#if trelloError}<div class="modal-err">{trelloError}</div>{/if}
-			<div class="modal-foot">
-				<button type="button" class="btn" on:click={closeTrello} disabled={trelloBusy}>Annulla</button>
-				<button type="button" class="btn primary" on:click={submitTrello} disabled={trelloBusy}>
-					{trelloBusy ? 'Connessione…' : 'Connetti'}
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 {#if githubOpen}
 	<div class="overlay" on:click|self={closeGithub} role="presentation">
