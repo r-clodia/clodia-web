@@ -102,7 +102,23 @@
 	// --- Remote: git usa il sync; Drive è il filesystem live del topic. -------
 	let remoteStatus: RemoteStatus | null = null;
 	let remoteBusy = false;
-	$: remoteMeta = (info?.meta as Record<string, any> | undefined)?.remote ?? null;
+	// Uno scope può avere più mount (voce 33). Il legacy `meta.remote` è un
+	// oggetto singolo e si converte QUI, in lettura: i topic già collegati non
+	// hanno ancora `mounts`, e un frontend che non li vedesse mostrerebbe
+	// «storage locale» a un topic con Drive collegato — un errore che non si
+	// annuncia, perché la schermata resta plausibile.
+	$: topicMounts = (() => {
+		const m = info?.meta as Record<string, any> | undefined;
+		if (Array.isArray(m?.mounts)) return m!.mounts as Record<string, any>[];
+		return m?.remote ? [{ name: m.remote.type ?? 'remote', ...m.remote }] : [];
+	})();
+	// Quale mount guarda il pannello. Il nome, non l'indice: dopo uno scollega
+	// l'indice punta a un altro mount, e le azioni andrebbero sul mount sbagliato.
+	let mountSel: string | null = null;
+	$: if (topicMounts.length && !topicMounts.some((m) => m.name === mountSel)) {
+		mountSel = topicMounts[0].name ?? null;
+	}
+	$: remoteMeta = topicMounts.find((m) => m.name === mountSel) ?? topicMounts[0] ?? null;
 	$: isDriveRemote = remoteMeta?.type === 'drive';
 	// Nome umano del remote (cartella Drive / repo git): dal backend
 	// (config.name, gateway ≥0.90) con fallback client-side sul basename
@@ -149,7 +165,7 @@
 	}
 	async function loadRemoteStatus() {
 		if (!remoteMeta) { remoteStatus = null; return; }
-		try { remoteStatus = (await topicRemote(tier, name, 'status')) as RemoteStatus; } catch { /* ignore */ }
+		try { remoteStatus = (await topicRemote(tier, name, 'status', mountArg())) as RemoteStatus; } catch { /* ignore */ }
 	}
 	// --- Stato sync PER-FILE Git: rel → synced|modified|staged|unsynced. -------
 	$: syncFiles = ((remoteStatus as unknown as { files?: Record<string, string> })?.files ?? {}) as Record<string, string>;
@@ -171,8 +187,8 @@
 		remoteBusy = true;
 		loadErr = '';
 		try {
-			if (paths === null) await topicRemote(tier, name, 'unstage', {});
-			else for (const p of paths) await topicRemote(tier, name, 'unstage', { path: p });
+			if (paths === null) await topicRemote(tier, name, 'unstage', mountArg());
+			else for (const p of paths) await topicRemote(tier, name, 'unstage', { path: p, ...mountArg() });
 			await loadRemoteStatus();
 		} catch (e) {
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
@@ -186,7 +202,7 @@
 		remoteBusy = true;
 		loadErr = '';
 		try {
-			for (const p of paths) await topicRemote(tier, name, 'add', { path: p });
+			for (const p of paths) await topicRemote(tier, name, 'add', { path: p, ...mountArg() });
 			await loadRemoteStatus();
 		} catch (e) {
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
@@ -226,10 +242,20 @@
 	let confirmRemote: { message: string; field: string;
 		action: string; params: Record<string, unknown> } | null = null;
 
+	/** Il mount su cui agisce un verbo. Omesso quando non c'è: il backend
+	 *  senza `mount` si comporta come prima, e mandare `undefined` sarebbe un
+	 *  nome vuoto — che non è la stessa cosa di nessun nome. */
+	function mountArg(): Record<string, string> {
+		return remoteMeta?.name ? { mount: String(remoteMeta.name) } : {};
+	}
+
 	async function doRemote(action: string, params: Record<string, unknown> = {}) {
 		remoteBusy = true; loadErr = '';
 		try {
-			const res = (await topicRemote(tier, name, action, params)) as Record<string, unknown>;
+			// `enable` crea un mount NUOVO: passargli quello selezionato lo
+			// sostituirebbe, che è il difetto per cui esiste questa modifica.
+			const conMount = action === 'enable' ? params : { ...mountArg(), ...params };
+			const res = (await topicRemote(tier, name, action, conMount)) as Record<string, unknown>;
 			const rep = (res?.report ?? null) as { counts?: Record<string, number> } | null;
 			if ((action === 'pull' || action === 'push' || action === 'commit') && rep?.counts) {
 				lastSyncReport = { action, counts: rep.counts };
@@ -281,17 +307,24 @@
 	// silenzioso costruisce la convinzione di un isolamento che non c'è.
 	let remoteCred = '';
 	function openRemoteForm(kind: 'git' | 'drive') {
-		remoteForm = kind; remoteInput = ''; remoteCred = '';
+		remoteForm = kind; remoteInput = ''; remoteCred = ''; remoteMountName = '';
 	}
-	function cancelRemoteForm() { remoteForm = null; remoteInput = ''; remoteCred = ''; }
+	function cancelRemoteForm() {
+		remoteForm = null; remoteInput = ''; remoteCred = ''; remoteMountName = '';
+	}
+	// Il nome del mount lo sceglie chi lo collega: è il segmento che comparirà
+	// in `remote/<nome>/`, e con due cartelle Drive «drive» e «drive-2» non
+	// direbbero quale è quale. Vuoto = il backend usa il tipo.
+	let remoteMountName = '';
 	function submitRemoteForm() {
 		const v = remoteInput.trim();
 		const cred = remoteCred.trim();
+		const mn = remoteMountName.trim();
 		const payload = remoteForm === 'git'
 			? { type: 'git', config: v ? { url: v } : {}, ...(cred ? { credential: cred } : {}) }
 			: { type: 'drive', config: v ? { folder: v } : {} };
-		remoteForm = null; remoteInput = ''; remoteCred = '';
-		void doRemote('enable', payload);
+		remoteForm = null; remoteInput = ''; remoteCred = ''; remoteMountName = '';
+		void doRemote('enable', { ...payload, ...(mn ? { mount: mn } : {}) });
 	}
 	// Rotazione: cambiare o togliere la credenziale senza ricollegare il remote.
 	// Senza questa via, una credenziale per topic diventa una credenziale che
@@ -2187,8 +2220,22 @@
 				<details class="side-section remote-panel">
 					<summary>
 						<span>Remote</span>
-						{#if remoteMeta}<span class="section-status">{remoteMeta.type}</span>{/if}
+						{#if topicMounts.length > 1}
+							<span class="section-count">{topicMounts.length}</span>
+						{:else if remoteMeta}<span class="section-status">{remoteMeta.type}</span>{/if}
 					</summary>
+					{#if topicMounts.length > 1}
+						<!-- I mount di questo scope. Si sceglie quale guarda il pannello:
+						     senza, si vedrebbe sempre il primo e gli altri sarebbero
+						     collegati ma invisibili — cioè peggio che non averli. -->
+						<div class="mount-chips">
+							{#each topicMounts as m (m.name)}
+								<button type="button" class="mount-chip" class:sel={m.name === mountSel}
+									title={(m.config?.name ?? m.name) + ' · ' + m.type}
+									on:click={() => (mountSel = m.name)}>{m.name}</button>
+							{/each}
+						</div>
+					{/if}
 					{#if !remoteMeta}
 					<p class="muted">Storage locale. Attiva un remote per sincronizzare i file, o esporta uno ZIP.</p>
 					{#if remoteForm}
@@ -2199,6 +2246,9 @@
 									: 'Link/ID cartella Drive (vuoto = nuova)'}
 								autocomplete="off" spellcheck="false"
 								on:keydown={(e) => e.key === 'Escape' && cancelRemoteForm()} />
+							<input class="remote-url-input" type="text" bind:value={remoteMountName}
+								placeholder="nome del mount, es. contratti (vuoto = {remoteForm})"
+								autocomplete="off" spellcheck="false" />
 							{#if remoteForm === 'git'}
 								<input class="remote-url-input" type="password" bind:value={remoteCred}
 									placeholder="token per QUESTO topic (vuoto = credenziale della piattaforma)"
@@ -2238,7 +2288,9 @@
 						<!-- La provenienza della credenziale, sempre visibile. Il valore
 						     non compare mai: si mostra CHI la fornisce, non qual è. -->
 						<p class="remote-info">
-							{#if remoteStatus.credential_source === 'scope'}
+							{#if remoteStatus.credential_source === 'mount'}
+								<span class="cred-source scope">🔑 credenziale di questo mount</span>
+							{:else if remoteStatus.credential_source === 'scope'}
 								<span class="cred-source scope">🔑 credenziale di questo topic</span>
 							{:else if remoteStatus.credential_source === 'platform'}
 								<span class="cred-source platform">🔑 credenziale della piattaforma</span>
@@ -2260,6 +2312,40 @@
 							</div>
 						{/if}
 					{/if}
+					{#if remoteForm}
+						<!-- Lo stesso form del primo collegamento: un mount in più non è
+						     un'operazione diversa dal primo, e due form divergerebbero. -->
+						<form class="remote-form" on:submit|preventDefault={submitRemoteForm}>
+							<input class="remote-url-input" type="text" bind:value={remoteInput}
+								placeholder={remoteForm === 'git'
+									? 'URL repo git (vuoto = solo commit locali)'
+									: 'Link/ID cartella Drive (vuoto = nuova)'}
+								autocomplete="off" spellcheck="false"
+								on:keydown={(e) => e.key === 'Escape' && cancelRemoteForm()} />
+							<input class="remote-url-input" type="text" bind:value={remoteMountName}
+								placeholder="nome del mount, es. contratti (vuoto = {remoteForm})"
+								autocomplete="off" spellcheck="false" />
+							{#if remoteForm === 'git'}
+								<input class="remote-url-input" type="password" bind:value={remoteCred}
+									placeholder="token per QUESTO mount (vuoto = credenziale della piattaforma)"
+									autocomplete="off" spellcheck="false" />
+							{/if}
+							<div class="remote-actions">
+								<button type="submit" disabled={remoteBusy}>collega {remoteForm}</button>
+								<button type="button" on:click={cancelRemoteForm} disabled={remoteBusy}>annulla</button>
+							</div>
+						</form>
+					{:else if isOwner}
+						<!-- Solo l'owner monta e smonta (voce 33): il mount porta la sua
+						     credenziale, e chi lo cambia sposta il perimetro dello scope.
+						     L'export ZIP resta di tutti. -->
+						<div class="remote-actions">
+							<button type="button" class="link-btn" disabled={remoteBusy}
+								on:click={() => openRemoteForm('git')}>+ git</button>
+							<button type="button" class="link-btn" disabled={remoteBusy}
+								on:click={() => openRemoteForm('drive')}>+ Drive</button>
+						</div>
+					{/if}
 					<div class="remote-actions">
 						{#if !isDriveRemote}
 							<button type="button" on:click={() => doRemote('pull')} disabled={remoteBusy}>⬇︎ pull</button>
@@ -2276,8 +2362,8 @@
 							on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
 						<button type="button" class="danger"
 							on:click={() => confirm(isDriveRemote
-								? 'Disattivare Drive live? I file remoti verranno copiati nel topic locale.'
-								: 'Disattivare il remote? I file locali restano.') && doRemote('disable')}
+								? `Scollegare il mount '${remoteMeta.name}' (Drive)? I file remoti verranno copiati nel topic locale.`
+								: `Scollegare il mount '${remoteMeta.name}'? I file locali restano.`) && doRemote('disable')}
 							disabled={remoteBusy}>disattiva</button>
 					</div>
 					{#if syncReportEntries.length}
@@ -2848,6 +2934,15 @@
 		font-size: .72rem; color: inherit; opacity: .7; cursor: pointer;
 		text-decoration: underline; }
 	.link-btn:hover { opacity: 1; }
+
+	/* I mount dello scope: si sceglie quale guarda il pannello. */
+	.mount-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+	.mount-chip {
+		font-size: 11px; padding: 2px 8px; border-radius: 10px; cursor: pointer;
+		border: 1px solid var(--border, #d0d0d0); background: transparent;
+		color: inherit; opacity: 0.7;
+	}
+	.mount-chip.sel { opacity: 1; border-color: currentColor; font-weight: 600; }
 
 	/* Ruolo nello scope: si vede sempre, si cambia solo se sei l'owner. */
 	.role-sel { font-size: .7rem; padding: .1rem .2rem; border-radius: 4px;
