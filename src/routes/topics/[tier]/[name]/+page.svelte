@@ -3,6 +3,7 @@
 	import { activeTopic, markSeen, ackMentions, topicKey } from '$lib/stores/unread';
 	import { page } from '$app/stores';
 	import { session } from '$lib/auth/session';
+	import { isAdmin } from '$lib/stores/capabilities';
 	import { onEventStream, startEventStream } from '$lib/stores/events-stream';
 	import { renderMarkdown } from '$lib/markdown';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
@@ -27,6 +28,7 @@
 		type RemoteStatus,
 		setChannelParticipant,
 		decideJobProposal,
+		apiGet,
 		apiPost,
 		getChannelEligibility,
 		recordRoutingFeedback,
@@ -812,6 +814,38 @@
 		if (parts.length < 3) return null;
 		return { id, agent: parts[0], instance: parts[1], verb: parts.slice(2).join('|') };
 	}
+	// COSA attraversa il gate e CHI ha titolo a decidere: dal backend, dove la
+	// regola vive una volta sola. Il marker nel messaggio porta solo
+	// agent|instance|verb — non la classe — e senza questi campi la card inline
+	// dovrebbe indovinare, cioè riscrivere la regola. Lo faceva già: dava per
+	// scontato che decidesse l'owner, che è falso per i gate di SISTEMA sollevati
+	// dentro una stanza, dove decide un admin. A un owner non-admin la card
+	// offriva un bottone che il backend poi rifiuta.
+	type GateInfo = { crosses?: string; decided_by?: string; decider_name?: string; scope?: string };
+	let gateInfo: Record<string, GateInfo> = {};
+	async function refreshGateInfo() {
+		try {
+			const r = await apiGet<{ requests: Array<GateInfo & { agent: string; instance: string; verb: string }> }>(
+				'/api/gate/pending');
+			const m: Record<string, GateInfo> = {};
+			for (const q of r?.requests ?? []) {
+				m[`${q.agent}|${q.instance || '-'}|${q.verb}`] =
+					{ crosses: q.crosses, decided_by: q.decided_by,
+					  decider_name: q.decider_name, scope: q.scope };
+			}
+			gateInfo = m;
+		} catch { /* la card resta senza spiegazione, non sparisce */ }
+	}
+	/** Vero se l'utente può decidere QUESTO gate. In dubbio (nessuna
+	 *  informazione dal backend) si ricade sull'owner: è la regola per la grande
+	 *  maggioranza dei gate di canale, e mostrare il bottone a chi non ha titolo
+	 *  costa un rifiuto leggibile — nasconderlo a chi ce l'ha costa un blocco
+	 *  senza spiegazione. */
+	function canDecideGate(id: string): boolean {
+		const info = gateInfo[id];
+		if (!info?.decided_by) return isOwner;
+		return info.decided_by.startsWith('owner:') ? isOwner : $isAdmin;
+	}
 	let gateDeciding = false;
 	let gateDecided: Record<string, string> = {};
 	async function decideGate(g: { id: string; agent: string; instance: string; verb: string }, approve: boolean) {
@@ -1176,6 +1210,7 @@
 			refreshMessages(),
 			loadFiles(true),
 			refreshInfo(),
+			refreshGateInfo(),
 			isOwner ? loadFeedbackLessons() : Promise.resolve()
 		]);
 	}
@@ -1493,6 +1528,7 @@
 			if (raw) sideWidth = clampSideWidth(Number(raw) || sideWidth);
 		} catch {}
 		poll = setInterval(refreshLive, 5000);
+		void refreshGateInfo();
 		getAgents()
 			.then((as) => {
 				allAgents = as.map((a) => a.name);
@@ -1781,14 +1817,27 @@
 								<div class="jobprop">
 									{#if gateDecided[g.id]}
 										<span class="jobprop-done">Gate {gateDecided[g.id]}.</span>
-									{:else if isOwner}
+									{:else if canDecideGate(g.id)}
 										<span class="jobprop-q">🛡️ <b>{g.agent}</b> {g.verb.startsWith('topic-access:') ? 'vuole accedere al topic ' : 'vuole usare '}<code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code> — approvi?</span>
 										<button type="button" class="jobprop-ok" disabled={gateDeciding}
 											on:click={() => decideGate(g, true)}>{gateDeciding ? '…' : '✓ Approva'}</button>
 										<button type="button" class="jobprop-no" disabled={gateDeciding}
 											on:click={() => decideGate(g, false)}>Nega</button>
 									{:else}
-										<span class="invite-note">solo l'owner può approvare</span>
+										<span class="invite-note">
+											{#if gateInfo[g.id]?.decided_by === 'admin'}
+												lo sblocca un admin della piattaforma
+											{:else if gateInfo[g.id]?.decider_name}
+												lo sblocca <b>{gateInfo[g.id].decider_name}</b>, owner di questo topic
+											{:else}
+												solo l'owner può approvare
+											{/if}
+										</span>
+									{/if}
+									{#if gateInfo[g.id]?.crosses}
+										<!-- Cosa si attraversa: senza, la richiesta è solo il nome
+										     di una funzione, e chi decide non sa cosa sta decidendo. -->
+										<span class="gate-crosses">↦ attraversa {gateInfo[g.id].crosses}</span>
 									{/if}
 								</div>
 							{/if}
@@ -2976,6 +3025,9 @@
 		font-size: .72rem; color: inherit; opacity: .7; cursor: pointer;
 		text-decoration: underline; }
 	.link-btn:hover { opacity: 1; }
+
+	/* Cosa attraversa il gate: sotto la domanda, prima dei bottoni. */
+	.gate-crosses { display: block; font-size: 11px; opacity: .75; margin-top: 4px; }
 
 	/* I mount dello scope: si sceglie quale guarda il pannello. */
 	.mount-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
