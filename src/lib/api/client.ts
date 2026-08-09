@@ -941,12 +941,14 @@ export async function deleteTopicCronTrigger(
 export interface RemoteStatus {
 	type?: 'git' | 'drive' | string;
 	enabled?: boolean;
-	/** Da quale credenziale passa questo remote. `scope` = il topic ha la sua e
-	 *  raggiunge un solo repository; `platform` = usa quella condivisa, che
-	 *  raggiunge tutti i repo per cui ha i permessi; `none` = non ce n'è alcuna.
-	 *  Il VALORE non arriva mai al frontend: solo la provenienza. Un ripiego
-	 *  silenzioso è il modo in cui ci si convince di un isolamento che non c'è. */
-	credential_source?: 'scope' | 'platform' | 'none';
+	/** Da quale credenziale passa questo remote, dal perimetro più stretto al
+	 *  più largo. `mount` = la porta questo mount, e ne raggiunge la sola
+	 *  risorsa; `scope` = è del topic (forma storica); `platform` = quella
+	 *  condivisa, che raggiunge tutti i repo per cui ha i permessi; `none` =
+	 *  non ce n'è alcuna. Il VALORE non arriva mai al frontend: solo la
+	 *  provenienza. Un ripiego silenzioso è il modo in cui ci si convince di un
+	 *  isolamento che non c'è. */
+	credential_source?: 'mount' | 'scope' | 'platform' | 'none';
 	origin?: boolean;
 	dirty?: number;
 	folder?: string | null;
@@ -955,6 +957,11 @@ export interface RemoteStatus {
 	last_write_wins?: boolean;
 	synced?: number;
 	pending?: number;
+	/** Il mount interrogato e l'ELENCO di quelli dello scope. L'elenco arriva
+	 *  sempre, anche interrogandone uno: uno stato che descrive solo il primo
+	 *  lascerebbe la sidebar a tacere degli altri. */
+	mount?: string | null;
+	mounts?: { name?: string; type?: string; label?: string | null }[];
 }
 /** Verbi Remote (git/drive) di un topic: status|enable|disable|add|commit|push|pull. */
 export async function topicRemote(
