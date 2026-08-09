@@ -331,8 +331,31 @@
 	// nessuno rinnova — è il costo ricorrente di questo disegno.
 	let rotating = false;
 	let rotateCred = '';
+	let credErr = '';
 	async function rotateCredential() {
-		await doRemote('set_credential', { credential: rotateCred.trim() });
+		credErr = '';
+		const grezzo = rotateCred.trim();
+		let payload: unknown = grezzo;
+		if (isDriveRemote && grezzo) {
+			// Per Drive la credenziale è un consenso OAuth, non una stringa: si
+			// incolla il bundle. Il JSON si valida QUI perché un errore di
+			// battitura è un errore dell'utente, non del gateway, e mandarlo
+			// giù tornerebbe come "credenziale incompleta" senza dire dove.
+			try {
+				payload = JSON.parse(grezzo);
+			} catch {
+				credErr = 'Non è JSON valido: incolla il bundle OAuth completo.';
+				return;
+			}
+			const b = payload as Record<string, unknown>;
+			const manca = ['refresh_token', 'client_id', 'client_secret'].filter((k) => !b[k]);
+			if (manca.length) {
+				credErr = `Mancano: ${manca.join(', ')}.`;
+				return;
+			}
+		}
+		await doRemote('set_credential',
+			{ credential: payload, kind: isDriveRemote ? 'drive' : 'git' });
 		rotateCred = ''; rotating = false;
 	}
 	// Timeline dei recap (TLDR storici): il recap sotto al titolo è cliccabile.
@@ -2284,7 +2307,7 @@
 						{/if}
 						{#if remoteBusy}<span class="files-spinner" style="margin-left:6px"></span>{/if}
 					</p>
-					{#if remoteMeta.type === 'git' && remoteStatus?.credential_source}
+					{#if remoteStatus?.credential_source}
 						<!-- La provenienza della credenziale, sempre visibile. Il valore
 						     non compare mai: si mostra CHI la fornisce, non qual è. -->
 						<p class="remote-info">
@@ -2294,7 +2317,13 @@
 								<span class="cred-source scope">🔑 credenziale di questo topic</span>
 							{:else if remoteStatus.credential_source === 'platform'}
 								<span class="cred-source platform">🔑 credenziale della piattaforma</span>
-								<span class="muted"> · raggiunge tutti i repo per cui ha i permessi</span>
+								{#if isDriveRemote}
+									<!-- Su Drive il salto è più grande che su git: la credenziale
+									     di piattaforma è un ACCOUNT Google intero. -->
+									<span class="muted"> · è un account Google intero, non questa cartella</span>
+								{:else}
+									<span class="muted"> · raggiunge tutti i repo per cui ha i permessi</span>
+								{/if}
 							{:else}
 								<span class="cred-source platform">🔑 nessuna credenziale</span>
 							{/if}
@@ -2305,11 +2334,19 @@
 						</p>
 						{#if rotating && isOwner}
 							<div class="cred-rotate">
-								<input type="password" bind:value={rotateCred} autocomplete="off"
-									placeholder="nuovo token (vuoto = torna a quella di piattaforma)" />
+								{#if isDriveRemote}
+									<textarea bind:value={rotateCred} rows="4" autocomplete="off"
+										placeholder={'{"refresh_token": "…", "client_id": "…", "client_secret": "…"}'}
+									></textarea>
+								{:else}
+									<input type="password" bind:value={rotateCred} autocomplete="off"
+										placeholder="nuovo token (vuoto = torna a quella di piattaforma)" />
+								{/if}
 								<button type="button" on:click={rotateCredential} disabled={remoteBusy}>salva</button>
-								<button type="button" on:click={() => { rotating = false; rotateCred = ''; }}>annulla</button>
+								<button type="button"
+									on:click={() => { rotating = false; rotateCred = ''; credErr = ''; }}>annulla</button>
 							</div>
+							{#if credErr}<p class="cred-hint" role="alert">{credErr}</p>{/if}
 						{/if}
 					{/if}
 					{#if remoteForm}
@@ -2927,9 +2964,14 @@
 	.cred-source.scope { background: rgba(34, 197, 94, .14); border: 1px solid rgba(34, 197, 94, .4); }
 	.cred-source.platform { background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .4); }
 	.cred-rotate { display: flex; gap: .4rem; margin-top: .4rem; flex-wrap: wrap; }
-	.cred-rotate input { flex: 1 1 10rem; min-width: 0; padding: .3rem .4rem;
+	.cred-rotate input, .cred-rotate textarea { flex: 1 1 10rem; min-width: 0;
+		padding: .3rem .4rem;
 		border-radius: 5px; border: 1px solid var(--border, #3a3a3a);
 		background: transparent; color: inherit; font-size: .78rem; }
+	/* Il bundle OAuth è JSON: monospazio, e larghezza piena — un consenso
+	   incollato a metà è il modo più facile di sbagliarlo. */
+	.cred-rotate textarea { flex-basis: 100%; font-family: ui-monospace, monospace;
+		resize: vertical; }
 	.link-btn { background: none; border: none; padding: 0 0 0 .4rem; font: inherit;
 		font-size: .72rem; color: inherit; opacity: .7; cursor: pointer;
 		text-decoration: underline; }
