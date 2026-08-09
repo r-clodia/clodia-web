@@ -1089,7 +1089,7 @@
 						<ul class="conn-list">
 							{#each connectors as c (c.id)}
 								<li class="conn-row">
-									<span class="conn-id">{c.type === 'trello' ? '📋 Trello' : `✉️ ${c.id}`}</span>
+									<span class="conn-id">{`✉️ ${c.id}`}</span>
 									<label class="conn-toggle">
 										<input type="checkbox" checked={c.granted} disabled={connBusy === c.id}
 											on:change={(e) => toggleConnector(c.id, (e.target as HTMLInputElement).checked)} />
@@ -1098,7 +1098,7 @@
 								</li>
 							{/each}
 						</ul>
-						<p class="conn-note">Abilitare un connettore concede a <strong>{name}</strong> i relativi tool (email send/receive o trello.*). Clodia e Ophelia hanno tutto di default.</p>
+						<p class="conn-note">Abilitare un connettore concede a <strong>{name}</strong> i relativi tool (email send/receive). Clodia e Ophelia hanno tutto di default.</p>
 					{/if}
 				</section>
 			{/if}

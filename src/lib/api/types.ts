@@ -118,7 +118,7 @@ export interface Agent {
 	readonly priority?: number;
 	/** Profilo di costo dichiarato: economy | standard | premium. */
 	readonly cost_profile?: string;
-	/** Permessi tool MCP granulari (es. ["trello.*", "email.send"]). */
+	/** Permessi tool MCP granulari (es. ["topic.*", "email.send"]). */
 	readonly tool_permissions?: ReadonlyArray<string>;
 	/** Volume montabili dichiarati (id da volumes.yaml). */
 	readonly volumes?: ReadonlyArray<string>;
@@ -403,7 +403,6 @@ export interface InstanceFeatures {
 	readonly activity: boolean;
 	readonly pwa: boolean;
 	readonly helpdesk: boolean;
-	readonly workflows: boolean;
 	readonly colony: boolean;
 }
 
@@ -463,14 +462,12 @@ export interface Plugin {
 	readonly skills: ReadonlyArray<PluginEntry>;
 	readonly rules: ReadonlyArray<PluginEntry>;
 	readonly mcp_servers: ReadonlyArray<PluginMcpServer>;
-	readonly workflows?: ReadonlyArray<PluginWorkflow>;
 	readonly datastores?: ReadonlyArray<PluginDatastore>;
 	readonly rag_collections?: ReadonlyArray<PluginRagCollection>;
 	readonly counts: {
 		readonly skills: number;
 		readonly rules: number;
 		readonly mcp_servers: number;
-		readonly workflows?: number;
 		readonly datastores?: number;
 		readonly rag_collections?: number;
 	};
@@ -491,12 +488,6 @@ export interface PluginRagCollection {
 }
 
 /** Workflow dichiarato da un plugin (composizione di skill in lane). */
-export interface PluginWorkflow {
-	readonly name: string;
-	readonly trigger: ReadonlyArray<string>;
-	readonly stages: ReadonlyArray<{ readonly lane: string; readonly skill: string; readonly human_gate: boolean }>;
-}
-
 /** Datastore dichiarato da un plugin (db locale posseduto dal suo MCP). */
 export interface PluginDatastore {
 	readonly path: string;
