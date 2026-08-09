@@ -1,40 +1,42 @@
-# Asset di brand
+# Brand assets
 
-`logo-master.png` è **l'unica sorgente** del marchio. Tutto ciò che sta in
-`static/` con il logo dentro è generato da qui:
+`logo-master.png` is the **only** source of the mark. Everything in `static/`
+that carries the logo is generated from it:
 
 ```sh
 pip install 'Pillow>=10,<12'
-python3 scripts/gen-brand-assets.py          # rigenera static/
-python3 scripts/gen-brand-assets.py --check  # verifica (gira in CI)
+python3 scripts/gen-brand-assets.py          # regenerate static/
+python3 scripts/gen-brand-assets.py --check  # verify (runs in CI)
 ```
 
-Cosa produrre, con quali dimensioni e su quale fondo sta in `assets.json`;
-lo script è uguale in tutti i repo che servono il marchio, cambia solo il
-manifest.
+What to produce, at which sizes and over which background, lives in
+`assets.json`. The script is the same in every repository that serves the mark;
+only the manifest differs.
 
-## Perché una pipeline e non i file a mano
+## Why a pipeline rather than files by hand
 
-Un'immagine caricata in chat che diventa asset servito dalla UI attraversa un
-confine di fiducia (clodia-platform#101). Il master arriva da `gpt-image` e porta
-un chunk `caBX` (manifest C2PA, ~25 KB: provenance, certificati, `instanceID`) che
-non ha ragione di finire in produzione. Ogni output viene quindi **ridecodificato
-e riscritto da zero**, mai copiato: sopravvivono solo `IHDR`/`IDAT`/`IEND`.
-`--check` fa fallire la CI se un asset viene aggiornato a mano scavalcando il
-re-encode, o se un PNG committato reintroduce metadata o byte dopo `IEND`.
+An image uploaded in a chat that becomes an asset served by the UI crosses a
+trust boundary (clodia-platform#101). The master comes from `gpt-image` and
+carries a `caBX` chunk — a C2PA manifest of about 25 KB: provenance,
+certificates, `instanceID` — which has no business reaching production. Every
+output is therefore **re-decoded and rewritten from scratch**, never copied:
+only `IHDR`, `IDAT` and `IEND` survive.
 
-## Due varianti del banner
+`--check` fails CI if an asset is updated by hand, bypassing the re-encode, or
+if a committed PNG reintroduces metadata or bytes after `IEND`.
 
-Il lockup è disegnato per fondo scuro: la wordmark è crema (`#e1dccf`), che su
-bianco dà 1.2:1 di contrasto. La pipeline genera perciò anche
-`clodia-brand-banner-light.png`, in cui il **colore** della wordmark è sostituito
-con l'inchiostro del marchio lasciando intatto il canale alpha — forma e
-antialiasing restano quelli del master. La scelta della variante avviene a runtime
-in `src/lib/brand.ts` in base al tema attivo.
+## Two variants of the banner
 
-## Se il master cambia
+The lockup is designed for a dark background: the wordmark is cream (`#e1dccf`),
+which on white gives a contrast ratio of 1.2:1. The pipeline therefore also
+generates `clodia-brand-banner-light.png`, in which the **colour** of the
+wordmark is replaced with the mark's ink while the alpha channel is left intact
+— shape and antialiasing stay those of the master. Which variant to use is
+chosen at runtime in `src/lib/brand.ts`, from the active theme.
 
-Le finestre di ritaglio in `assets.json` sono coordinate fisse sul master. Lo
-script confronta il bounding box del contenuto con `geometry.content_bbox` e
-**fallisce** se non combacia, invece di produrre favicon ritagliate a caso: in
-quel caso ricalcola la geometria prima di rigenerare.
+## If the master changes
+
+The crop windows in `assets.json` are fixed coordinates on the master. The
+script compares the bounding box of the content with `geometry.content_bbox` and
+**fails** when they do not match, rather than producing favicons cropped at
+random. Recompute the geometry before regenerating.
