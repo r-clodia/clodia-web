@@ -487,7 +487,6 @@ export interface PluginRagCollection {
 	}>;
 }
 
-/** Workflow dichiarato da un plugin (composizione di skill in lane). */
 /** Datastore dichiarato da un plugin (db locale posseduto dal suo MCP). */
 export interface PluginDatastore {
 	readonly path: string;

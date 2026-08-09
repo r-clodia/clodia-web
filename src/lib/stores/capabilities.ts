@@ -5,7 +5,7 @@
  * vede nemmeno i controlli che non può usare (es. "rimuovi MCP").
  *
  * Modello: le azioni di piattaforma (gestione MCP/integrations, pack, provider,
- * creazione agenti, lifecycle workflow, settings, backup) sono **admin-only** —
+ * creazione agenti, lifecycle dei job, settings, backup) sono **admin-only** —
  * specchiano la classe `super-only` del gateway. Le azioni sui topic
  * (stato/archiviazione) sono **owner-only** (o admin come operatore).
  *

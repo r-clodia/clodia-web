@@ -11,7 +11,14 @@
 	$: token = $page.params.token ?? '';
 
 	type GateData = {
-		title: string; workflow: string; lane: string;
+		title: string;
+		/** Cosa si sta decidendo. Il nome del campo è rimasto `workflow` dal
+		 *  tempo in cui questa pagina serviva anche i run: oggi porta la
+		 *  descrizione di una proposta di job. Rinominarlo richiede backend e
+		 *  frontend in lockstep — sono due container con due deploy — e un link
+		 *  aperto nella finestra fra i due mostrerebbe una pagina vuota. */
+		workflow: string;
+		lane: string;
 		summary: string; artefatto: string | null; choices: string[];
 	};
 	let data: GateData | null = null;
