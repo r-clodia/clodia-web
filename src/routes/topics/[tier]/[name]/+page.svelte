@@ -10,6 +10,7 @@
 	import ArtifactCanvas from '$lib/components/ArtifactCanvas.svelte';
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
+	import TopicMark from '$lib/components/TopicMark.svelte';
 	import SpawnTree from '$lib/components/SpawnTree.svelte';
 	import AgentLiveBox from '$lib/components/AgentLiveBox.svelte';
 	import {
@@ -1833,6 +1834,13 @@
 	<header class="head">
 		<a class="back" href="/topics">← Topics</a>
 		<div class="title-row">
+			<!-- Piccolo di proposito: la testata è già affollata (tier, badge,
+			     reset del contesto), e il segno qui serve a confermare in quale
+			     stanza si è — non a fare da copertina. `rev` lo fa rileggere dopo
+			     un caricamento, altrimenti resterebbe visibile la vecchia
+			     immagine e sembrerebbe che il salvataggio non abbia funzionato. -->
+			<TopicMark {tier} {name} logo={info?.meta?.logo} title={info?.meta?.title}
+				size={22} rev={logoRev} />
 			<h1>#{info?.meta?.title || name}</h1>
 			<span class="tier">{info?.tier || tier}</span>
 			<TrifectaBadge profile={info?.trifecta} taint={info?.taint} />

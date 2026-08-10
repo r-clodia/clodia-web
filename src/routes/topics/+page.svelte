@@ -25,6 +25,7 @@
 		TOPIC_STATUSES,
 		type TopicCatalogItem
 	} from '$lib/api/client';
+	import TopicMark from '$lib/components/TopicMark.svelte';
 	import type { Topic } from '$lib/api/types';
 	import { session } from '$lib/auth/session';
 	// owner-only (o admin): rispecchia _require_topic_owner del backend, reattivo.
@@ -646,15 +647,18 @@
 						{/if}
 						<span class="caret" class:open={expanded[keyOf(t)]}>▸</span>
 					</div>
-					<span class="topic-title">
-						{#if t.logo}
-							<!-- L'immagine è il primo appiglio in una lista lunga: sta
-							     accanto al titolo, non al posto suo. Un topic senza
-							     immagine resta esattamente com'era. -->
-							<img class="topic-logo" alt=""
-								src={`${API_BASE_URL}/api/topics/${encodeURIComponent(t.tier)}/${encodeURIComponent(t.name)}/logo`} />
-						{/if}
-						{t.title || t.name}
+					<!-- Il segno sta ACCANTO al titolo e FUORI dal suo blocco di testo:
+					     `.topic-title` è un `-webkit-box` con line-clamp, e un elemento
+					     inline messo lì dentro diventa una riga a sé — il marchio
+					     finirebbe sopra il titolo invece che a fianco.
+
+					     Ed è sempre presente: con l'immagine se c'è, col monogramma
+					     altrimenti. Mostrarlo solo a chi ha caricato un logo farebbe
+					     ballare l'allineamento dei titoli riga per riga, che in una
+					     lista lunga si legge come disordine. -->
+					<span class="title-line">
+						<TopicMark tier={t.tier} name={t.name} logo={t.logo} title={t.title} size={20} />
+						<span class="topic-title">{t.title || t.name}</span>
 					</span>
 					<code class="topic-name">{t.name}</code>
 				</button>
@@ -1085,9 +1089,12 @@
 		white-space: nowrap;
 	}
 
-	.topic-logo {
-		width: 18px; height: 18px; border-radius: 4px; object-fit: cover;
-		vertical-align: -3px; margin-right: 5px;
+	/* Segno e titolo su una riga, allineati in alto: con un titolo su tre righe
+	   il marchio deve restare in cima, non centrarsi a metà del blocco. */
+	.title-line {
+		display: flex;
+		align-items: flex-start;
+		min-width: 0;
 	}
 
 	.topic-title {
