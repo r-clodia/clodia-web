@@ -38,6 +38,7 @@
 		channelFileUrl,
 		signedChannelFileUrl,
 		setTopicPortable,
+		setTopicTelegram,
 		setTopicStatus,
 		setTopicDeadline,
 		TOPIC_STATUSES,
@@ -985,6 +986,71 @@
 		}
 	}
 
+	// ── Gruppo Telegram collegato allo scope ────────────────────────────────
+	// È un MOUNT come gli altri: sta in `meta.mounts` con `type: "telegram"`.
+	// Non compare nell'albero dei file perché la vista monta solo i tipi che
+	// sono davvero un filesystem — la stessa ragione per cui non c'è un mount
+	// `git` fra le cartelle.
+	$: tgMount = topicMounts.find((m) => m.type === 'telegram') ?? null;
+	let tgOpen = false;
+	let tgChatId = '';
+	let tgMode: 'notify' | 'excerpt' = 'excerpt';
+	/** Righe della mappa uid→utente. Una lista e non un oggetto: l'owner la
+	 *  compila una riga per volta, e un oggetto costringerebbe a inventare una
+	 *  chiave prima di avere il valore. */
+	let tgPeople: Array<{ uid: string; principal: string }> = [];
+	let tgErr = '';
+
+	function openTelegramForm() {
+		const c = tgMount?.config ?? {};
+		tgChatId = String(c.chat_id ?? '');
+		tgMode = (c.mode as 'notify' | 'excerpt') ?? 'excerpt';
+		tgPeople = Object.entries(c.people ?? {}).map(([uid, principal]) => ({
+			uid, principal: String(principal)
+		}));
+		if (!tgPeople.length) tgPeople = [{ uid: '', principal: '' }];
+		tgErr = '';
+		tgOpen = true;
+	}
+	async function saveTelegram() {
+		tgErr = '';
+		const people: Record<string, string> = {};
+		for (const r of tgPeople) {
+			const u = r.uid.trim();
+			const n = r.principal.trim().toLowerCase();
+			if (u && n) people[u] = n;
+		}
+		if (!tgChatId.trim()) { tgErr = "Serve l'id del gruppo."; return; }
+		if (!Object.keys(people).length) {
+			// Lo dice anche il gateway, ma dirlo qui evita un giro: un
+			// collegamento senza nessuno mappato non avviserebbe nessuno.
+			tgErr = 'Mappa almeno una persona: senza, nessuno verrebbe avvisato.';
+			return;
+		}
+		metaBusy = true;
+		try {
+			await setTopicTelegram(tier, name, { chat_id: tgChatId.trim(), mode: tgMode, people });
+			await refreshInfo();
+			tgOpen = false;
+		} catch (e) {
+			tgErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			metaBusy = false;
+		}
+	}
+	async function unbindTelegram() {
+		if (!confirm(`Scollegare il gruppo Telegram da «${info?.meta?.title ?? name}»? Le menzioni non verranno più riportate.`)) return;
+		metaBusy = true;
+		try {
+			await setTopicTelegram(tier, name, { action: 'unbind', mount: tgMount?.name });
+			await refreshInfo();
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			metaBusy = false;
+		}
+	}
+
 	function normalizeTopicStatus(status?: string | null): string {
 		const raw = String(status ?? 'active').trim().toLowerCase().replace(/[\s-]+/g, '_');
 		if (!raw || raw === 'attivo' || raw === 'idle' || raw === 'urgent') return 'active';
@@ -1726,7 +1792,11 @@
 			<div class="timeline">
 				<div class="stream" bind:this={stream} on:scroll={updateScrollPosition} on:click={handleStreamClick} role="presentation">
 					{#each shownMessages as m, i (m.id)}
-					<div class="msg" class:ai={m.kind === 'ai'} class:system={m.kind === 'system'} class:mine={m.author === me}>
+					<!-- `id="m-<id>"` è l'ancora che i link esterni citano — oggi la
+					     notifica di menzione su Telegram. Senza, il link porterebbe al
+					     topic e lascerebbe a cercare il messaggio: la meta ma non il
+					     punto, che su un telefono è quasi lo stesso che niente. -->
+					<div class="msg" id={`m-${m.id}`} class:ai={m.kind === 'ai'} class:system={m.kind === 'system'} class:mine={m.author === me}>
 						<div class="msg-head">
 							{#if m.kind === 'system'}
 								<span class="system-icon" aria-hidden="true">ℹ</span>
@@ -2323,6 +2393,92 @@
 						{/each}
 					</details>
 				{/if}
+
+				<details class="side-section tg-panel">
+					<summary>
+						<span>Telegram</span>
+						{#if tgMount}<span class="section-status">collegato</span>{/if}
+					</summary>
+					{#if !isOwner}
+						<p class="muted">
+							{#if tgMount}
+								Le menzioni delle persone mappate vengono riportate su un gruppo
+								Telegram. Il collegamento lo gestisce l'owner.
+							{:else}
+								Nessun gruppo collegato.
+							{/if}
+						</p>
+					{:else if tgOpen}
+						<form class="tg-form" on:submit|preventDefault={saveTelegram}>
+							<input class="remote-url-input" type="text" bind:value={tgChatId}
+								placeholder="id del gruppo (es. -1001234567890)"
+								autocomplete="off" spellcheck="false" />
+							<label class="tg-mode">
+								<span>Cosa esce</span>
+								<select bind:value={tgMode}>
+									<option value="excerpt">la riga della menzione + link</option>
+									<option value="notify">solo l'avviso + link</option>
+								</select>
+							</label>
+							<p class="meta-note">
+								{#if tgMode === 'excerpt'}
+									Esce <b>la riga</b> in cui il nome compare, troncata, con il link
+									alla conversazione. Non il resto del messaggio: nel gruppo ci sono
+									persone che in questo topic non entrano.
+								{:else}
+									Esce solo il fatto — chi ti ha menzionato e dove — con il link.
+									Nessun contenuto della stanza.
+								{/if}
+							</p>
+							<div class="tg-people">
+								<span class="tg-people-h">Chi è chi</span>
+								{#each tgPeople as riga, i}
+									<div class="tg-row">
+										<input type="text" bind:value={riga.uid} placeholder="uid Telegram"
+											autocomplete="off" spellcheck="false" />
+										<input type="text" bind:value={riga.principal} placeholder="utente su Clodia"
+											autocomplete="off" spellcheck="false" />
+										<button type="button" title="Togli questa riga"
+											on:click={() => (tgPeople = tgPeople.filter((_, j) => j !== i))}>×</button>
+									</div>
+								{/each}
+								<button type="button" class="link-btn"
+									on:click={() => (tgPeople = [...tgPeople, { uid: '', principal: '' }])}>+ persona</button>
+								<p class="meta-note">
+									Solo chi è in questa mappa viene avvisato. L'uid compare quando la
+									persona scrive nel gruppo — Telegram non lo espone altrimenti.
+								</p>
+							</div>
+							{#if tgErr}<p class="cred-hint" role="alert">{tgErr}</p>{/if}
+							<div class="remote-actions">
+								<button type="submit" disabled={metaBusy}>{tgMount ? 'aggiorna' : 'collega'}</button>
+								<button type="button" on:click={() => (tgOpen = false)} disabled={metaBusy}>annulla</button>
+							</div>
+						</form>
+					{:else if tgMount}
+						<p class="remote-info">
+							💬 <code>{tgMount.config?.chat_id}</code>
+							<span class="muted"> · {tgMount.config?.mode === 'notify' ? 'solo avviso' : 'con la riga'}</span>
+						</p>
+						<p class="meta-note">
+							{Object.keys(tgMount.config?.people ?? {}).length} persone mappate:
+							{Object.values(tgMount.config?.people ?? {}).join(', ')}
+						</p>
+						<div class="remote-actions">
+							<button type="button" on:click={openTelegramForm} disabled={metaBusy}>modifica</button>
+							<button type="button" class="danger" on:click={unbindTelegram} disabled={metaBusy}>scollega</button>
+						</div>
+					{:else}
+						<p class="muted">
+							Collega un gruppo Telegram: le menzioni delle persone mappate vengono
+							riportate lì, con il link alla conversazione. Il bot deve già essere
+							membro del gruppo.
+						</p>
+						<div class="remote-actions">
+							<button type="button" on:click={openTelegramForm} disabled={metaBusy}>collega un gruppo</button>
+						</div>
+					{/if}
+				</details>
 
 				<details class="side-section remote-panel">
 					<summary>
@@ -3063,6 +3219,22 @@
 
 	/* Nota esplicativa sotto un campo meta: dice cosa comporta la scelta. */
 	.meta-note { font-size: 11px; opacity: .7; margin: 2px 0 8px; line-height: 1.4; }
+
+	/* Il gruppo Telegram dello scope: mappa uid → utente, una riga per volta. */
+	.tg-form { display: flex; flex-direction: column; gap: 6px; }
+	.tg-mode { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+	.tg-mode select { flex: 1; font: inherit; font-size: 12px; padding: 2px 4px;
+		background: transparent; color: inherit;
+		border: 1px solid var(--border, #3a3a3a); border-radius: 5px; }
+	.tg-people { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+	.tg-people-h { font-size: 11px; opacity: .7; }
+	.tg-row { display: flex; gap: 4px; }
+	.tg-row input { flex: 1; min-width: 0; font: inherit; font-size: 12px;
+		padding: 3px 5px; background: transparent; color: inherit;
+		border: 1px solid var(--border, #3a3a3a); border-radius: 5px; }
+	.tg-row button { border: none; background: none; color: inherit; opacity: .6;
+		cursor: pointer; font-size: 14px; padding: 0 4px; }
+	.tg-row button:hover { opacity: 1; }
 
 	/* Cosa attraversa il gate: sotto la domanda, prima dei bottoni. */
 	.gate-crosses { display: block; font-size: 11px; opacity: .75; margin-top: 4px; }
