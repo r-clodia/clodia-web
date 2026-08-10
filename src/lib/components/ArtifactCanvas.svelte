@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { withInject } from '$lib/artifact-frame';
+	import { MIN_ZOOM_INTERO, withInject } from '$lib/artifact-frame';
 	// Pannello CANVAS inline del topic: mostra LIVE l'artefatto HTML che gli agenti
 	// producono con artifact.render (→ files/artifact.html). Appare da solo quando il
 	// file esiste, si nasconde quando non c'è. Stesso modello di sicurezza della
@@ -47,13 +47,29 @@
 		window.open(url, `artifact-${tier}-${name}`, 'popup,width=1024,height=720');
 	}
 
+	// Se il documento è molto più largo del pannello, qui dentro non si legge:
+	// lo si dice invece di mostrare una miniatura. La soglia è la stessa scala
+	// minima leggibile usata per decidere se mostrare intero un artefatto.
+	let frame: HTMLIFrameElement | null = null;
+	let tropoStretto = false;
+	function misura() {
+		try {
+			const d = frame?.contentDocument;
+			const w = Math.max(d?.documentElement?.scrollWidth ?? 0, d?.body?.scrollWidth ?? 0);
+			const disponibile = frame?.clientWidth ?? 0;
+			tropoStretto = !!w && !!disponibile && disponibile / w < MIN_ZOOM_INTERO;
+		} catch {
+			tropoStretto = false;   // iframe non ispezionabile: non si indovina
+		}
+	}
+
 	// Riparte quando cambia topic.
 	$: if (tier && name) { lastKey = ''; }
 
 	onMount(() => {
 		try { open = localStorage.getItem('canvas-open') !== '0'; } catch {}
 		void refresh();
-		timer = setInterval(refresh, 2000);
+		timer = setInterval(() => { void refresh(); misura(); }, 2000);
 	});
 	onDestroy(() => { if (timer) clearInterval(timer); });
 </script>
@@ -75,7 +91,16 @@
 			</div>
 		</div>
 		{#if open}
-			<iframe class="canvas-frame" title="Canvas live" sandbox="allow-scripts" srcdoc={html}></iframe>
+			<iframe class="canvas-frame" title="Canvas live" sandbox="allow-scripts"
+				srcdoc={html} bind:this={frame}></iframe>
+			{#if tropoStretto}
+				<!-- Il pannello è largo quanto la sidebar. Un documento da 1180px lì
+				     starebbe al 30%: una miniatura che nessuno può leggere, e che fa
+				     credere che l'artefatto sia venuto male. Meglio dire cosa fare. -->
+				<button type="button" class="canvas-hint" on:click={openFull}>
+					⛶ Troppo stretto per leggerlo qui — aprilo a schermo intero
+				</button>
+			{/if}
 		{/if}
 	</section>
 {/if}
@@ -87,5 +112,10 @@
 	.canvas-actions { display: flex; align-items: center; gap: 6px; }
 	.canvas-btn { background: none; border: none; cursor: pointer; color: var(--fg-muted); font-size: 15px; line-height: 1; padding: 0 2px; }
 	.canvas-btn:hover { color: var(--accent); }
+	.canvas-hint { display: block; width: 100%; margin-top: 6px; padding: 6px 8px;
+		font: inherit; font-size: 11px; text-align: left; cursor: pointer;
+		color: inherit; opacity: .8; background: transparent;
+		border: 1px dashed var(--border, #3a3a3a); border-radius: 6px; }
+	.canvas-hint:hover { opacity: 1; }
 	.canvas-frame { width: 100%; height: 260px; border: 1px solid var(--border); border-radius: 8px; background: #fff; display: block; }
 </style>
