@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { CSP, HEAD_INJECT } from '$lib/artifact-frame';
 	// Anteprima LIVE di un artefatto HTML del topic, in una finestra "chromeless"
 	// (aperta via window.open popup). L'artefatto gira in un iframe `sandbox` SENZA
 	// `allow-same-origin` → origine opaca: NON può leggere token/cookie/localStorage
@@ -18,26 +19,6 @@
 	let lastKey = '';
 	let timer: ReturnType<typeof setInterval> | null = null;
 
-	const CSP =
-		'<meta http-equiv="Content-Security-Policy" content="' +
-		"default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; " +
-		"script-src 'unsafe-inline'; font-src data: https:; media-src data: blob: https:" +
-		'">';
-
-	// Fit-to-window: molti artefatti sono TELE a dimensione fissa (es. cover
-	// 1200×1500). Uno script misura il contenuto e applica uno `zoom` così l'intero
-	// artefatto rientra nella finestra (come la webui fa per il font-scale). Vale sia
-	// per canvas a misura fissa sia per una singola immagine grande.
-	const FIT =
-		'<style>html,body{margin:0}html{overflow:hidden}</style>' +
-		'<script>(function(){function f(){var e=document.documentElement,b=document.body;' +
-		'if(!b)return;e.style.zoom="1";' +
-		'var w=Math.max(e.scrollWidth,b.scrollWidth),h=Math.max(e.scrollHeight,b.scrollHeight);' +
-		'if(!w||!h)return;e.style.zoom=String(Math.min(innerWidth/w,innerHeight/h,1));}' +
-		'addEventListener("load",f);addEventListener("resize",f);' +
-		'setTimeout(f,0);setTimeout(f,250);setTimeout(f,800);})();<\/script>';
-
-	const HEAD_INJECT = CSP + FIT;
 	const MARKDOWN_HEAD_INJECT = CSP;
 
 	function withInject(raw: string): string {

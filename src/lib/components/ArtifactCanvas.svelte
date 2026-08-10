@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { withInject } from '$lib/artifact-frame';
 	// Pannello CANVAS inline del topic: mostra LIVE l'artefatto HTML che gli agenti
 	// producono con artifact.render (→ files/artifact.html). Appare da solo quando il
 	// file esiste, si nasconde quando non c'è. Stesso modello di sicurezza della
@@ -24,25 +25,6 @@
 		try { localStorage.setItem('canvas-open', open ? '1' : '0'); } catch {}
 	}
 
-	const CSP =
-		'<meta http-equiv="Content-Security-Policy" content="' +
-		"default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; " +
-		"script-src 'unsafe-inline'; font-src data: https:; media-src data: blob: https:" +
-		'">';
-	const FIT =
-		'<style>html,body{margin:0}html{overflow:hidden}</style>' +
-		'<script>(function(){function f(){var e=document.documentElement,b=document.body;' +
-		'if(!b)return;e.style.zoom="1";' +
-		'var w=Math.max(e.scrollWidth,b.scrollWidth),h=Math.max(e.scrollHeight,b.scrollHeight);' +
-		'if(!w||!h)return;e.style.zoom=String(Math.min(innerWidth/w,innerHeight/h,1));}' +
-		'addEventListener("load",f);addEventListener("resize",f);' +
-		'setTimeout(f,0);setTimeout(f,250);setTimeout(f,800);})();<\/script>';
-	const HEAD_INJECT = CSP + FIT;
-
-	function withInject(raw: string): string {
-		if (/<head[^>]*>/i.test(raw)) return raw.replace(/<head[^>]*>/i, (m) => m + HEAD_INJECT);
-		return HEAD_INJECT + raw;
-	}
 	function setExists(v: boolean) {
 		if (v !== exists) { exists = v; onExists?.(v); }
 	}
