@@ -644,6 +644,8 @@ export interface ChannelInfo {
 		tier?: string;
 		status?: string;
 		deadline?: string | null;
+		/** I mount dello scope: cartelle Drive, repository, gruppi Telegram. */
+		mounts?: TelegramMount[];
 		/** Portabilità dichiarata DAL TOPIC (non dall'agente): i partecipanti ne
 		 *  leggono i contenuti anche da altre stanze, entro il tier della stanza
 		 *  in cui si trovano. */
@@ -2289,6 +2291,35 @@ export async function setTopicPortable(tier: string, name: string, portable: boo
 	opts: RequestOptions = {}): Promise<{ ok: boolean; portable: boolean }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/portable`,
 		{ portable }, opts);
+}
+
+/** Un gruppo Telegram collegato a un topic: è un **mount** dello scope, come una
+ *  cartella Drive o un repository. Le menzioni delle persone mappate vengono
+ *  riportate lì, con il link alla conversazione. */
+export interface TelegramMount {
+	readonly name?: string;
+	readonly type?: string;
+	readonly config?: {
+		readonly chat_id?: string;
+		/** `notify` = solo il fatto · `excerpt` = anche la riga della menzione. */
+		readonly mode?: 'notify' | 'excerpt';
+		/** uid Telegram → nome utente su Clodia. Chi non è qui non viene avvisato. */
+		readonly people?: Record<string, string>;
+	};
+}
+
+/** POST `/api/topics/{tier}/{name}/telegram` — collega, aggiorna o scollega.
+ *  Una chiamata sola per le tre cose: nella UI sono un gesto solo, e separarle
+ *  farebbe esistere lo stato «collegato ma senza nessuno mappato», cioè il
+ *  collegamento che sembra funzionare e non avvisa nessuno. */
+export async function setTopicTelegram(
+	tier: string, name: string,
+	payload: { chat_id?: string; mode?: string; people?: Record<string, string>;
+	           action?: 'unbind'; mount?: string },
+	opts: RequestOptions = {}
+): Promise<{ ok: boolean; mount?: TelegramMount; unbound?: string }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/telegram`,
+		payload, opts);
 }
 
 /** POST `/api/topics/{tier}/{name}/archive` — imposta status=archived. */
