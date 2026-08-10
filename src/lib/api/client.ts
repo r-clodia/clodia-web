@@ -2327,6 +2327,40 @@ export async function setTopicTelegram(
 		payload, opts);
 }
 
+/** Un client MCP di una persona collegato a questo topic. Mai il token: il
+ *  valore si consegna una volta sola, poi si revoca soltanto. */
+export interface McpClientGrant {
+	id: string;
+	principal: string;
+	provider: string;
+	tier: string;
+	topic: string;
+	created: number;
+	expires: number;
+	expired?: boolean;
+	created_by?: string;
+}
+
+/** GET `/api/topics/{tier}/{name}/mcp-clients` — i client collegati. */
+export async function listTopicMcpClients(
+	tier: string, name: string, opts: RequestOptions = {}
+): Promise<{ grants: McpClientGrant[] }> {
+	return apiGet(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mcp-clients`, opts);
+}
+
+/** POST `/api/topics/{tier}/{name}/mcp-clients` — conia o revoca. */
+export async function issueTopicMcpClient(
+	tier: string, name: string,
+	payload: { principal?: string; provider?: string; ttl_days?: number;
+	           tier_consent?: boolean; base_url?: string;
+	           action?: 'revoke'; id?: string },
+	opts: RequestOptions = {}
+): Promise<{ id: string; token?: string; expires?: number; verbs?: string[];
+             config?: unknown; revoked?: boolean }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mcp-clients`,
+		payload, opts);
+}
+
 /** POST `/api/topics/{tier}/{name}/archive` — imposta status=archived. */
 export async function archiveTopic(tier: string, name: string, opts: RequestOptions = {}): Promise<{ archived: boolean }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/archive`, {}, opts);

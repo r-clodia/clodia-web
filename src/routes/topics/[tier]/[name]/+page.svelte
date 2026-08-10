@@ -39,6 +39,9 @@
 		signedChannelFileUrl,
 		setTopicPortable,
 		setTopicTelegram,
+		listTopicMcpClients,
+		issueTopicMcpClient,
+		type McpClientGrant,
 		setTopicStatus,
 		setTopicDeadline,
 		TOPIC_STATUSES,
@@ -1066,6 +1069,81 @@
 		} finally {
 			metaBusy = false;
 		}
+	}
+
+	// ── Client MCP di una persona ───────────────────────────────────────────
+	// Giovanni collega il suo Claude Code a QUESTA stanza e ci parla come sé
+	// stesso. Non è una nuova autenticazione: è un token firmato come tutti gli
+	// altri, coniato per una persona invece che per un agente e legato a un solo
+	// topic.
+	let mcpGrants: McpClientGrant[] = [];
+	let mcpOpen = false;
+	let mcpPrincipal = '';
+	let mcpProvider = 'anthropic-api';
+	let mcpTtl = 30;
+	let mcpConsent = false;
+	let mcpErr = '';
+	/** Il frammento da incollare. Vive SOLO qui, in memoria, finché la persona
+	 *  non chiude il pannello: appena si ricarica la pagina è perduto, ed è
+	 *  giusto così — un segreto che la schermata sa rimostrare è un segreto in
+	 *  più posti. */
+	let mcpFresh: { id: string; config: string; expires: number } | null = null;
+	$: mcpTierAlto = ['SEAL-2', 'SEAL-3', 'SEAL-4'].includes(String(info?.meta?.tier ?? tier));
+
+	async function loadMcpClients() {
+		if (!isOwner) return;
+		try {
+			mcpGrants = (await listTopicMcpClients(tier, name)).grants ?? [];
+		} catch {
+			mcpGrants = [];
+		}
+	}
+	function openMcpForm() {
+		mcpPrincipal = me ?? '';
+		mcpProvider = 'anthropic-api';
+		mcpTtl = 30;
+		mcpConsent = false;
+		mcpErr = '';
+		mcpFresh = null;
+		mcpOpen = true;
+		loadMcpClients();
+	}
+	async function issueMcp() {
+		mcpErr = '';
+		if (!mcpPrincipal.trim()) { mcpErr = 'Per chi è questo client?'; return; }
+		metaBusy = true;
+		try {
+			const r = await issueTopicMcpClient(tier, name, {
+				principal: mcpPrincipal.trim().toLowerCase(),
+				provider: mcpProvider.trim(),
+				ttl_days: mcpTtl,
+				tier_consent: mcpConsent,
+				base_url: window.location.origin
+			});
+			mcpFresh = { id: r.id, config: JSON.stringify(r.config ?? {}, null, 2),
+			             expires: r.expires ?? 0 };
+			await loadMcpClients();
+		} catch (e) {
+			mcpErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			metaBusy = false;
+		}
+	}
+	async function revokeMcp(g: McpClientGrant) {
+		if (!confirm(`Revocare il client MCP di ${g.principal}? Smette di funzionare subito.`)) return;
+		metaBusy = true;
+		try {
+			await issueTopicMcpClient(tier, name, { action: 'revoke', id: g.id });
+			await loadMcpClients();
+		} catch (e) {
+			mcpErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			metaBusy = false;
+		}
+	}
+	function giorniAllaScadenza(ts: number): string {
+		const g = Math.ceil((ts * 1000 - Date.now()) / 86400000);
+		return g <= 0 ? 'scaduto' : `${g} giorn${g === 1 ? 'o' : 'i'}`;
 	}
 
 	function normalizeTopicStatus(status?: string | null): string {
@@ -2504,6 +2582,99 @@
 					{/if}
 				</details>
 
+				<details class="side-section mcp-panel" on:toggle={loadMcpClients}>
+					<summary>
+						<span>Client MCP</span>
+						{#if mcpGrants.length}<span class="section-status">{mcpGrants.length}</span>{/if}
+					</summary>
+					{#if !isOwner}
+						<p class="muted">
+							Chi partecipa può collegare il proprio Claude Code a questa stanza e
+							parlarci da lì. L'elenco dei collegamenti lo vede l'owner.
+						</p>
+					{:else if mcpFresh}
+						<p class="meta-note">
+							Incolla questo nella configurazione MCP del client. <b>Compare una volta
+							sola</b>: chiuso questo pannello non è più rileggibile da nessuna parte —
+							se si perde, se ne conia un altro e si revoca questo.
+						</p>
+						<pre class="mcp-config">{mcpFresh.config}</pre>
+						<p class="meta-note">Scade fra {giorniAllaScadenza(mcpFresh.expires)}.</p>
+						<div class="remote-actions">
+							<button type="button" on:click={() => navigator.clipboard?.writeText(mcpFresh?.config ?? '')}>copia</button>
+							<button type="button" on:click={() => { mcpFresh = null; mcpOpen = false; }}>ho finito</button>
+						</div>
+					{:else if mcpOpen}
+						<form class="tg-form" on:submit|preventDefault={issueMcp}>
+							<input class="remote-url-input" type="text" bind:value={mcpPrincipal}
+								placeholder="utente su Clodia (es. giovanni)"
+								autocomplete="off" spellcheck="false" />
+							<label class="tg-mode">
+								<span>Su cosa gira</span>
+								<select bind:value={mcpProvider}>
+									<option value="anthropic-api">Claude Code (Anthropic)</option>
+									<option value="claude-pro-max">Claude Pro/Max</option>
+									<option value="openai-api">OpenAI</option>
+									<option value="codex">Codex</option>
+									<option value="altro">altro</option>
+								</select>
+							</label>
+							<p class="meta-note">
+								Quello che la persona legge da lì <b>entra nel suo motore di
+								inferenza</b>: il tier di questa stanza è un tetto anche su quello.
+								La dichiarazione resta scritta nel token — serve a sapere, dopo, dove
+								è finito ciò che è stato letto.
+							</p>
+							<label class="tg-mode">
+								<span>Per quanto</span>
+								<select bind:value={mcpTtl}>
+									<option value={7}>7 giorni</option>
+									<option value={30}>30 giorni</option>
+									<option value={90}>90 giorni</option>
+								</select>
+							</label>
+							{#if mcpTierAlto}
+								<label class="mcp-consent">
+									<input type="checkbox" bind:checked={mcpConsent} />
+									<span>
+										Questa stanza è {info?.meta?.tier ?? tier}: il provider dichiarato
+										non è verificabile e me ne assumo la dichiarazione.
+									</span>
+								</label>
+							{/if}
+							{#if mcpErr}<p class="cred-hint" role="alert">{mcpErr}</p>{/if}
+							<div class="remote-actions">
+								<button type="submit" disabled={metaBusy}>conia</button>
+								<button type="button" on:click={() => (mcpOpen = false)} disabled={metaBusy}>annulla</button>
+							</div>
+						</form>
+					{:else}
+						{#if mcpGrants.length}
+							<ul class="mcp-list">
+								{#each mcpGrants as g}
+									<li class:expired={g.expired}>
+										<span class="mcp-who">{g.principal}</span>
+										<span class="muted">{g.provider || 'provider non dichiarato'}</span>
+										<span class="muted">· {g.expired ? 'scaduto' : giorniAllaScadenza(g.expires)}</span>
+										<button type="button" class="link-btn danger"
+											on:click={() => revokeMcp(g)} disabled={metaBusy}>revoca</button>
+									</li>
+								{/each}
+							</ul>
+						{:else}
+							<p class="muted">
+								Nessun client collegato. Chi partecipa può collegare il proprio Claude
+								Code a questa stanza: legge la conversazione e i file, parla come sé
+								stesso e chiede se qualcuno l'ha menzionato.
+							</p>
+						{/if}
+						{#if mcpErr}<p class="cred-hint" role="alert">{mcpErr}</p>{/if}
+						<div class="remote-actions">
+							<button type="button" on:click={openMcpForm} disabled={metaBusy}>collega un client</button>
+						</div>
+					{/if}
+				</details>
+
 				<details class="side-section remote-panel">
 					<summary>
 						<span>Remote</span>
@@ -3246,6 +3417,21 @@
 
 	/* Il gruppo Telegram dello scope: mappa uid → utente, una riga per volta. */
 	.tg-form { display: flex; flex-direction: column; gap: 6px; }
+
+	/* Client MCP: il frammento da incollare, e l'elenco di chi è collegato. */
+	.mcp-config {
+		margin: 6px 0; padding: 8px; border-radius: 6px;
+		background: var(--surface-2, rgba(127, 127, 127, 0.12));
+		font-size: 11px; line-height: 1.35; overflow-x: auto; white-space: pre;
+		max-height: 220px; overflow-y: auto;
+	}
+	.mcp-list { list-style: none; margin: 4px 0; padding: 0; display: flex;
+		flex-direction: column; gap: 4px; font-size: 12px; }
+	.mcp-list li { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+	.mcp-list li.expired { opacity: 0.55; }
+	.mcp-who { font-weight: 600; }
+	.mcp-consent { display: flex; gap: 6px; align-items: flex-start;
+		font-size: 12px; line-height: 1.35; }
 	.tg-mode { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 	.tg-mode select { flex: 1; font: inherit; font-size: 12px; padding: 2px 4px;
 		background: transparent; color: inherit;
