@@ -1000,27 +1000,42 @@
 	/** Righe della mappa uid→utente. Una lista e non un oggetto: l'owner la
 	 *  compila una riga per volta, e un oggetto costringerebbe a inventare una
 	 *  chiave prima di avere il valore. */
-	let tgPeople: Array<{ uid: string; principal: string }> = [];
+	/** Righe della mappa. L'HANDLE è la colonna che conta: è quella che finisce
+	 *  nel messaggio, ed è l'unica che una persona conosce di sé — l'uid
+	 *  Telegram non lo espone a nessuno se non a un bot. L'uid resta come campo
+	 *  facoltativo perché è l'identificatore stabile: un username si cambia. */
+	let tgPeople: Array<{ handle: string; uid: string; principal: string }> = [];
 	let tgErr = '';
 
 	function openTelegramForm() {
 		const c = tgMount?.config ?? {};
 		tgChatId = String(c.chat_id ?? '');
 		tgMode = (c.mode as 'notify' | 'excerpt') ?? 'excerpt';
-		tgPeople = Object.entries(c.people ?? {}).map(([uid, principal]) => ({
-			uid, principal: String(principal)
-		}));
-		if (!tgPeople.length) tgPeople = [{ uid: '', principal: '' }];
+		// La forma sul disco è duplice: `{chiave: "principal"}` (com'era, e come
+		// l'ha compilata l'owner) oppure `{chiave: {principal, username}}`. Si
+		// leggono entrambe, perché i mount già collegati hanno la prima.
+		tgPeople = Object.entries(c.people ?? {}).map(([chiave, v]) => {
+			const o = (typeof v === 'object' && v) ? (v as Record<string, string>) : null;
+			return {
+				handle: String(o?.username ?? (/^-?\d+$/.test(chiave) ? '' : chiave)).replace(/^@/, ''),
+				uid: /^-?\d+$/.test(chiave) ? chiave : '',
+				principal: String(o?.principal ?? v ?? '')
+			};
+		});
+		if (!tgPeople.length) tgPeople = [{ handle: '', uid: '', principal: '' }];
 		tgErr = '';
 		tgOpen = true;
 	}
 	async function saveTelegram() {
 		tgErr = '';
-		const people: Record<string, string> = {};
+		const people: Record<string, { principal: string; username?: string }> = {};
 		for (const r of tgPeople) {
+			const h = r.handle.trim().replace(/^@/, '');
 			const u = r.uid.trim();
 			const n = r.principal.trim().toLowerCase();
-			if (u && n) people[u] = n;
+			if (!n || (!h && !u)) continue;
+			// La chiave è l'uid quando c'è — è stabile — altrimenti l'handle.
+			people[u || h] = h ? { principal: n, username: h } : { principal: n };
 		}
 		if (!tgChatId.trim()) { tgErr = "Serve l'id del gruppo."; return; }
 		if (!Object.keys(people).length) {
@@ -2439,7 +2454,7 @@
 								<span class="tg-people-h">Chi è chi</span>
 								{#each tgPeople as riga, i}
 									<div class="tg-row">
-										<input type="text" bind:value={riga.uid} placeholder="uid Telegram"
+										<input type="text" bind:value={riga.handle} placeholder="@handle Telegram"
 											autocomplete="off" spellcheck="false" />
 										<input type="text" bind:value={riga.principal} placeholder="utente su Clodia"
 											autocomplete="off" spellcheck="false" />
@@ -2448,10 +2463,12 @@
 									</div>
 								{/each}
 								<button type="button" class="link-btn"
-									on:click={() => (tgPeople = [...tgPeople, { uid: '', principal: '' }])}>+ persona</button>
+									on:click={() => (tgPeople = [...tgPeople, { handle: '', uid: '', principal: '' }])}>+ persona</button>
 								<p class="meta-note">
-									Solo chi è in questa mappa viene avvisato. L'uid compare quando la
-									persona scrive nel gruppo — Telegram non lo espone altrimenti.
+									Solo chi è in questa mappa viene avvisato. L'<b>handle</b> è quello
+									che finisce nel messaggio: <code>@giovanni</code> nel canale diventa
+									<code>@giocasu75</code> sul gruppo — scriverci il nome di Clodia non
+									farebbe arrivare nessuna notifica a quella persona.
 								</p>
 							</div>
 							{#if tgErr}<p class="cred-hint" role="alert">{tgErr}</p>{/if}
@@ -2467,7 +2484,9 @@
 						</p>
 						<p class="meta-note">
 							{Object.keys(tgMount.config?.people ?? {}).length} persone mappate:
-							{Object.values(tgMount.config?.people ?? {}).join(', ')}
+							{Object.values(tgMount.config?.people ?? {})
+								.map((v) => (typeof v === 'object' && v ? (v as Record<string, string>).principal : v))
+								.join(', ')}
 						</p>
 						<div class="remote-actions">
 							<button type="button" on:click={openTelegramForm} disabled={metaBusy}>modifica</button>

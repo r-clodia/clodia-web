@@ -2303,8 +2303,12 @@ export interface TelegramMount {
 		readonly chat_id?: string;
 		/** `notify` = solo il fatto · `excerpt` = anche la riga della menzione. */
 		readonly mode?: 'notify' | 'excerpt';
-		/** uid Telegram → nome utente su Clodia. Chi non è qui non viene avvisato. */
-		readonly people?: Record<string, string>;
+		/** Chi è chi. La chiave è l'uid Telegram quando si conosce, altrimenti
+		 *  l'handle: l'uid è stabile, l'handle è quello che una persona conosce
+		 *  di sé. Il valore porta il nome su Clodia e l'handle da scrivere nel
+		 *  messaggio. La forma piatta `chiave → "principal"` è quella di prima
+		 *  del 10 ago 2026 e resta letta. Chi non è qui non viene avvisato. */
+		readonly people?: Record<string, string | { principal: string; username?: string }>;
 	};
 }
 
@@ -2314,7 +2318,8 @@ export interface TelegramMount {
  *  collegamento che sembra funzionare e non avvisa nessuno. */
 export async function setTopicTelegram(
 	tier: string, name: string,
-	payload: { chat_id?: string; mode?: string; people?: Record<string, string>;
+	payload: { chat_id?: string; mode?: string;
+	           people?: Record<string, string | { principal: string; username?: string }>;
 	           action?: 'unbind'; mount?: string },
 	opts: RequestOptions = {}
 ): Promise<{ ok: boolean; mount?: TelegramMount; unbound?: string }> {
