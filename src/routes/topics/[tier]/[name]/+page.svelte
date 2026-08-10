@@ -834,19 +834,34 @@
 	type GateInfo = { crosses?: string; decided_by?: string; decider_name?: string;
 	                  scope?: string; asker_role?: string; asker_note?: string };
 	let gateInfo: Record<string, GateInfo> = {};
+	/** Gate ancora APERTI. Serve a distinguere «da decidere» da «già deciso»:
+	 *  senza, dopo un ricarico un gate risolto tornava a mostrare i bottoni,
+	 *  perché la memoria della decisione vive solo in questa pagina. Offrire di
+	 *  decidere una cosa già decisa è peggio che non offrirlo: si preme, il
+	 *  backend rifiuta, e sembra rotto ciò che ha funzionato. */
+	let gateAperti = new Set<string>();
+	let gateInfoCaricato = false;
 	async function refreshGateInfo() {
 		try {
 			const r = await apiGet<{ requests: Array<GateInfo & { agent: string; instance: string; verb: string }> }>(
 				'/api/gate/pending');
 			const m: Record<string, GateInfo> = {};
+			const aperti = new Set<string>();
 			for (const q of r?.requests ?? []) {
-				m[`${q.agent}|${q.instance || '-'}|${q.verb}`] =
-					{ crosses: q.crosses, decided_by: q.decided_by,
-					  decider_name: q.decider_name, scope: q.scope,
-					  asker_role: q.asker_role, asker_note: q.asker_note };
+				const k = `${q.agent}|${q.instance || '-'}|${q.verb}`;
+				aperti.add(k);
+				m[k] = { crosses: q.crosses, decided_by: q.decided_by,
+				         decider_name: q.decider_name, scope: q.scope,
+				         asker_role: q.asker_role, asker_note: q.asker_note };
 			}
 			gateInfo = m;
-		} catch { /* la card resta senza spiegazione, non sparisce */ }
+			gateAperti = aperti;
+			gateInfoCaricato = true;
+		} catch {
+			// La card resta senza spiegazione, non sparisce — e soprattutto NON
+			// si conclude che i gate siano chiusi: una lista che non è arrivata
+			// non è una lista vuota.
+		}
 	}
 	/** Vero se l'utente può decidere QUESTO gate. In dubbio (nessuna
 	 *  informazione dal backend) si ricade sull'owner: è la regola per la grande
@@ -2094,7 +2109,24 @@
 							{#if g !== null}
 								<div class="jobprop">
 									{#if gateDecided[g.id]}
-										<span class="jobprop-done">Gate {gateDecided[g.id]}.</span>
+										<!-- L'esito NON cancella la domanda: la richiesta resta
+										     leggibile accanto alla risposta. Un «approvato» da solo
+										     racconta che qualcuno ha premuto un bottone, non cosa ha
+										     concesso — ed è precisamente ciò che serve rileggere mesi
+										     dopo. Il testo del messaggio porta il motivo; qui restano
+										     chi e cosa, che vengono dal marcatore e non dalla coda. -->
+										<span class="jobprop-done">
+											🛡️ <b>{g.agent}</b> · <code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code>
+											— {gateDecided[g.id]}
+										</span>
+									{:else if gateInfoCaricato && !gateAperti.has(g.id)}
+										<!-- Già deciso, ma non da questa pagina (o prima di un
+										     ricarico): la richiesta non è più in coda. Si dice, invece
+										     di riproporre bottoni che il backend rifiuterebbe. -->
+										<span class="jobprop-done">
+											🛡️ <b>{g.agent}</b> · <code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code>
+											— già deciso
+										</span>
 									{:else if canDecideGate(g.id)}
 										<span class="jobprop-q">🛡️ <b>{g.agent}</b> {g.verb.startsWith('topic-access:') ? 'vuole accedere al topic ' : 'vuole usare '}<code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code> — approvi?</span>
 										<button type="button" class="jobprop-ok" disabled={gateDeciding}
