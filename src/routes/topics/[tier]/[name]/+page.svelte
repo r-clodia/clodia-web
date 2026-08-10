@@ -41,6 +41,9 @@
 		setTopicTelegram,
 		listTopicMcpClients,
 		issueTopicMcpClient,
+		setTopicLogo,
+		clearTopicLogo,
+		API_BASE_URL,
 		type McpClientGrant,
 		setTopicStatus,
 		setTopicDeadline,
@@ -1068,6 +1071,53 @@
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
 			metaBusy = false;
+		}
+	}
+
+	// ── Immagine del topic ──────────────────────────────────────────────────
+	// La vede chi partecipa, la cambia solo l'owner. Non è una decorazione: in
+	// una lista di venti stanze l'immagine è ciò che si guarda per primo, quindi
+	// cambiarla è un modo di far sembrare una stanza un'altra.
+	let logoBusy = false;
+	let logoErr = '';
+	/** Cambia a ogni salvataggio per bucare la cache del browser: senza, dopo un
+	 *  caricamento resterebbe visibile la vecchia immagine e sembrerebbe che il
+	 *  salvataggio non abbia funzionato. */
+	let logoRev = 0;
+	$: topicLogoUrl = info?.meta?.logo
+		? `${API_BASE_URL}/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/logo?v=${logoRev}`
+		: '';
+
+	async function caricaLogo(e: Event) {
+		const f = (e.target as HTMLInputElement).files?.[0];
+		if (!f) return;
+		logoErr = '';
+		logoBusy = true;
+		try {
+			const buf = new Uint8Array(await f.arrayBuffer());
+			let bin = '';
+			for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+			await setTopicLogo(tier, name, btoa(bin));
+			logoRev++;
+			await refreshInfo();
+		} catch (err) {
+			logoErr = err instanceof ApiError || err instanceof Error ? err.message : String(err);
+		} finally {
+			logoBusy = false;
+			(e.target as HTMLInputElement).value = '';
+		}
+	}
+	async function togliLogo() {
+		logoBusy = true;
+		logoErr = '';
+		try {
+			await clearTopicLogo(tier, name);
+			logoRev++;
+			await refreshInfo();
+		} catch (err) {
+			logoErr = err instanceof ApiError || err instanceof Error ? err.message : String(err);
+		} finally {
+			logoBusy = false;
 		}
 	}
 
@@ -2582,6 +2632,40 @@
 					{/if}
 				</details>
 
+				<details class="side-section logo-panel">
+					<summary>
+						<span>Immagine</span>
+						{#if topicLogoUrl}<span class="section-status">impostata</span>{/if}
+					</summary>
+					{#if topicLogoUrl}
+						<img class="topic-logo-big" src={topicLogoUrl} alt="" />
+					{/if}
+					{#if !isOwner}
+						<p class="muted">
+							{topicLogoUrl
+								? "L'immagine con cui questo topic si presenta. La cambia l'owner."
+								: 'Nessuna immagine. La imposta l\'owner.'}
+						</p>
+					{:else}
+						<p class="meta-note">
+							PNG, JPEG, GIF o WebP, fino a 512 KB. Niente SVG: può contenere
+							script, e verrebbe eseguito nella pagina di chi apre il topic.
+						</p>
+						{#if logoErr}<p class="cred-hint" role="alert">{logoErr}</p>{/if}
+						<div class="remote-actions">
+							<label class="link-btn" class:disabled={logoBusy}>
+								{topicLogoUrl ? 'sostituisci' : 'scegli un file'}
+								<input type="file" accept="image/png,image/jpeg,image/gif,image/webp"
+									on:change={caricaLogo} disabled={logoBusy} hidden />
+							</label>
+							{#if topicLogoUrl}
+								<button type="button" class="danger" on:click={togliLogo}
+									disabled={logoBusy}>togli</button>
+							{/if}
+						</div>
+					{/if}
+				</details>
+
 				<details class="side-section mcp-panel" on:toggle={loadMcpClients}>
 					<summary>
 						<span>Client MCP</span>
@@ -3417,6 +3501,13 @@
 
 	/* Il gruppo Telegram dello scope: mappa uid → utente, una riga per volta. */
 	.tg-form { display: flex; flex-direction: column; gap: 6px; }
+
+	/* Immagine del topic. */
+	.topic-logo-big {
+		display: block; max-width: 100%; max-height: 120px; margin: 4px 0 8px;
+		border-radius: 8px; object-fit: contain;
+	}
+	.link-btn.disabled { opacity: 0.5; pointer-events: none; }
 
 	/* Client MCP: il frammento da incollare, e l'elenco di chi è collegato. */
 	.mcp-config {

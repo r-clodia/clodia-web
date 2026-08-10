@@ -119,15 +119,20 @@
 <div class="screen">
 	<div class="card">
 		<div class="brand">
-			{#if $instanceProfile.edition !== 'full' && $instanceProfile.branding.logo}
+			<!-- Il marchio va mostrato PRIMA che esista una sessione: è qui che
+			     chi installa la piattaforma per la propria azienda vede il proprio
+			     nome invece del nostro. Per questo `/profile/logo` non chiede
+			     autenticazione. -->
+			{#if $instanceProfile.branding.logo}
 				<img class="brand-img" src={`${_ABU}/profile/logo`} alt="" />
 			{:else}
 				<span class="mark">●</span>
 			{/if}
-			{$instanceProfile.edition !== 'full' && $instanceProfile.branding.name
-				? $instanceProfile.branding.name
-				: 'Clodia'}
+			{$instanceProfile.branding.name || 'Clodia'}
 		</div>
+		{#if $instanceProfile.branding.legal_name}
+			<p class="legal">{$instanceProfile.branding.legal_name}</p>
+		{/if}
 
 		{#if mode === 'login'}
 			<h1>Accedi</h1>

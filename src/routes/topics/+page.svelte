@@ -646,7 +646,16 @@
 						{/if}
 						<span class="caret" class:open={expanded[keyOf(t)]}>▸</span>
 					</div>
-					<span class="topic-title">{t.title || t.name}</span>
+					<span class="topic-title">
+						{#if t.logo}
+							<!-- L'immagine è il primo appiglio in una lista lunga: sta
+							     accanto al titolo, non al posto suo. Un topic senza
+							     immagine resta esattamente com'era. -->
+							<img class="topic-logo" alt=""
+								src={`${API_BASE_URL}/api/topics/${encodeURIComponent(t.tier)}/${encodeURIComponent(t.name)}/logo`} />
+						{/if}
+						{t.title || t.name}
+					</span>
 					<code class="topic-name">{t.name}</code>
 				</button>
 
@@ -1074,6 +1083,11 @@
 		font-size: 10.5px;
 		color: var(--fg-muted);
 		white-space: nowrap;
+	}
+
+	.topic-logo {
+		width: 18px; height: 18px; border-radius: 4px; object-fit: cover;
+		vertical-align: -3px; margin-right: 5px;
 	}
 
 	.topic-title {

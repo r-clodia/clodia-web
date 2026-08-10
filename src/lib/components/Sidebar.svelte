@@ -48,14 +48,25 @@
 				}])
 	] as NavItem[]).filter((it) => $isAdmin || !it.adminOnly);
 
-	// Branding: solo per le edizioni custom (full = aspetto storico invariato).
-	$: brandName = prof.edition !== 'full' && prof.branding.name ? prof.branding.name : 'Clodia';
-	$: brandLogo = prof.edition !== 'full' && prof.branding.logo ? `${API_BASE_URL}/profile/logo` : '';
-	$: if (typeof document !== 'undefined' && prof.edition !== 'full' && prof.branding.name) {
+	// Branding: vale ovunque sia CONFIGURATO, edizione compresa.
+	//
+	// Prima era condizionato a `edition !== 'full'`, e la condizione teneva
+	// l'aspetto storico al riparo — al prezzo di rendere il branding
+	// irraggiungibile proprio sull'istanza di chi lo voleva: chi installa la
+	// piattaforma per la propria azienda gira in edizione `full`. Scriveva il
+	// nome nel profilo e non cambiava niente, senza un errore che glielo
+	// dicesse. Un campo che si può compilare e che non fa nulla è peggio di un
+	// campo assente.
+	//
+	// L'aspetto storico resta il DEFAULT — non un'edizione: se nel profilo non
+	// c'è branding, non cambia una virgola.
+	$: brandName = prof.branding.name || 'Clodia';
+	$: brandLogo = prof.branding.logo ? `${API_BASE_URL}/profile/logo` : '';
+	$: if (typeof document !== 'undefined' && prof.branding.name) {
 		document.title = prof.branding.name;
 	}
 	$: if (typeof document !== 'undefined') {
-		if (prof.edition !== 'full' && prof.branding.accent) {
+		if (prof.branding.accent) {
 			document.documentElement.style.setProperty('--accent', prof.branding.accent);
 		}
 	}

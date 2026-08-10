@@ -26,7 +26,9 @@ export const FULL_PROFILE: InstanceProfile = {
 		helpdesk: true,
 		colony: false
 	},
-	branding: { name: 'Clodia Agency', logo: '', accent: '' },
+	// Vuoto = nessuna opinione → l'interfaccia resta com'è. Un default non vuoto
+	// qui rinominerebbe ogni istanza che non ha configurato niente.
+	branding: { name: '', legal_name: '', logo: '', accent: '' },
 	rag: {},
 	helpdesk: { agent: 'wainston' },
 	vocabulary: {},

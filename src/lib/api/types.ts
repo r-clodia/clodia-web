@@ -407,7 +407,11 @@ export interface InstanceFeatures {
 }
 
 export interface InstanceBranding {
+	/** Nome dell'istanza nell'interfaccia. Vuoto = nessuna opinione. */
 	readonly name: string;
+	/** Ragione sociale con cui l'azienda si firma. Distinta da `name`: un
+	 *  titolo in sidebar e una firma legale non sono la stessa stringa. */
+	readonly legal_name: string;
 	readonly logo: string;
 	readonly accent: string;
 }
@@ -582,6 +586,11 @@ export interface Topic {
 	/** Nome amichevole del tier: Public/Internal/Confidential/Restricted. */
 	readonly tier_name?: string;
 	readonly title?: string;
+	/** Path dell'immagine del topic, se l'owner ne ha impostata una. Qui serve
+	 *  solo come flag: i byte si chiedono a `/api/topics/{tier}/{name}/logo`,
+	 *  perché una lista di venti stanze non deve portarsi dietro venti
+	 *  immagini in ogni risposta. */
+	readonly logo?: string;
 	readonly last_commit?: string | null;
 	readonly last_commit_hash?: string | null;
 	readonly last_commit_subject?: string | null;

@@ -650,6 +650,12 @@ export interface ChannelInfo {
 		 *  leggono i contenuti anche da altre stanze, entro il tier della stanza
 		 *  in cui si trovano. */
 		portable?: boolean;
+		/** Path (dentro il topic) dell'immagine con cui la stanza si presenta.
+		 *  La imposta solo l'owner; `logo_kind` è il tipo rilevato dai byte al
+		 *  caricamento — il file non ha estensione, quindi chi lo serve non
+		 *  potrebbe indovinarlo. */
+		logo?: string;
+		logo_kind?: string;
 		schema_version?: number;
 	};
 	summary?: string;
@@ -2325,6 +2331,22 @@ export async function setTopicTelegram(
 ): Promise<{ ok: boolean; mount?: TelegramMount; unbound?: string }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/telegram`,
 		payload, opts);
+}
+
+/** POST `/api/topics/{tier}/{name}/logo` — immagine del topic (solo owner).
+ *  I byte viaggiano in base64: un logo è piccolo per definizione. */
+export async function setTopicLogo(
+	tier: string, name: string, data: string, opts: RequestOptions = {}
+): Promise<{ logo: string; kind: string; size: number }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/logo`,
+		{ data }, opts);
+}
+
+/** DELETE `/api/topics/{tier}/{name}/logo` — toglie l'immagine (solo owner). */
+export async function clearTopicLogo(
+	tier: string, name: string, opts: RequestOptions = {}
+): Promise<{ logo: string }> {
+	return apiDelete(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/logo`, opts);
 }
 
 /** Un client MCP di una persona collegato a questo topic. Mai il token: il
