@@ -41,12 +41,25 @@
 		}
 	}
 
-	async function approve(q: Req) {
+	/** Un gate su una DESTINAZIONE si può ricordare; uno su un'azione no.
+	 *  «Approva sempre l'invio di mail» non è una decisione prendibile guardando
+	 *  un dialog — non si sa a chi. «Approva sempre questo indirizzo» sì. */
+	function isDestinationGate(verb: string): boolean {
+		return /^(egress|ingress):/.test(verb || '');
+	}
+
+	async function approve(q: Req, remember: 'once' | 'topic' | 'global' = 'once') {
 		busy = q.id;
 		try {
-			await apiPost('/api/gate/approve', {
-				agent: q.agent, instance: q.instance, verb: q.verb, chat: q.chat
+			const r = await apiPost<{ memory?: { remembered?: boolean; error?: string } }>(
+				'/api/gate/approve', {
+				agent: q.agent, instance: q.instance, verb: q.verb, chat: q.chat, remember
 			});
+			// Un ricordo fallito non annulla l'approvazione, ma la riduce a
+			// «stavolta»: dirlo, o la stessa domanda torna e il gate sembra rotto.
+			if (remember !== 'once' && r?.memory && r.memory.remembered === false) {
+				toastError('Approvato solo per stavolta', r.memory.error ?? 'ricordo non riuscito');
+			}
 			toastSuccess('Gate approvato', `${q.agent} · ${q.verb}`);
 			await refresh();
 		} catch (e) {
@@ -109,6 +122,14 @@
 				</div>
 				<div class="gate-actions">
 					<button class="btn deny" on:click={() => deny(q)} disabled={busy === q.id}>Nega</button>
+					{#if isDestinationGate(q.verb) && q.scope}
+						<button class="btn ok" on:click={() => approve(q, 'topic')} disabled={busy === q.id}
+							title="Aggiunge questa destinazione alla whitelist di {q.scope}">Sempre qui</button>
+					{/if}
+					{#if isDestinationGate(q.verb) && q.decided_by === 'admin'}
+						<button class="btn ok" on:click={() => approve(q, 'global')} disabled={busy === q.id}
+							title="Aggiunge questa destinazione alla whitelist dell'intera istanza">Ovunque</button>
+					{/if}
 					<button class="btn ok" on:click={() => approve(q)} disabled={busy === q.id}>
 						{busy === q.id ? '…' : 'Approva'}
 					</button>

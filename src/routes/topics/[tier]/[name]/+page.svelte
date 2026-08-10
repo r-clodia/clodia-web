@@ -858,15 +858,40 @@
 		if (!info?.decided_by) return isOwner;
 		return info.decided_by.startsWith('owner:') ? isOwner : $isAdmin;
 	}
+	/** Un gate su una DESTINAZIONE (egress/ingress) si può ricordare; uno su
+	 *  un'azione no. «Approva sempre l'invio di mail» non è una decisione che un
+	 *  umano possa prendere guardando un dialog: non sa a chi. «Approva sempre
+	 *  questo indirizzo» sì — ed è precisamente la differenza fra un gate che
+	 *  informa e uno che si spegne per riflesso. */
+	function isDestinationGate(verb: string): boolean {
+		return /^(egress|ingress):/.test(verb || '');
+	}
 	let gateDeciding = false;
 	let gateDecided: Record<string, string> = {};
-	async function decideGate(g: { id: string; agent: string; instance: string; verb: string }, approve: boolean) {
+	async function decideGate(
+		g: { id: string; agent: string; instance: string; verb: string },
+		approve: boolean,
+		remember: 'once' | 'topic' | 'global' = 'once'
+	) {
 		if (gateDeciding) return;
 		gateDeciding = true;
 		try {
-			await apiPost(approve ? '/api/gate/approve' : '/api/gate/deny',
-				{ agent: g.agent, instance: g.instance, verb: g.verb });
-			gateDecided = { ...gateDecided, [g.id]: approve ? 'approvato' : 'negato' };
+			const r = await apiPost<{ memory?: { remembered?: boolean; error?: string } }>(
+				approve ? '/api/gate/approve' : '/api/gate/deny',
+				{ agent: g.agent, instance: g.instance, verb: g.verb, remember });
+			// Se il ricordo non è riuscito, l'approvazione resta valida ma vale
+			// solo per stavolta: dirlo, altrimenti la stessa domanda torna domani
+			// e sembra che il gate sia rotto.
+			const mem = r?.memory;
+			gateDecided = {
+				...gateDecided,
+				[g.id]: !approve ? 'negato'
+					: remember === 'once' ? 'approvato'
+					: mem && mem.remembered === false ? 'approvato (solo per stavolta)'
+					: remember === 'topic' ? 'approvato e ricordato qui'
+					: 'approvato ovunque'
+			};
+			if (mem && mem.remembered === false && mem.error) loadErr = mem.error;
 		} catch (e) {
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
@@ -2074,6 +2099,22 @@
 										<span class="jobprop-q">🛡️ <b>{g.agent}</b> {g.verb.startsWith('topic-access:') ? 'vuole accedere al topic ' : 'vuole usare '}<code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code> — approvi?</span>
 										<button type="button" class="jobprop-ok" disabled={gateDeciding}
 											on:click={() => decideGate(g, true)}>{gateDeciding ? '…' : '✓ Approva'}</button>
+										{#if isDestinationGate(g.verb)}
+											<!-- Solo per i gate su una DESTINAZIONE: «sempre» ha senso
+											     su un indirizzo, non su un'azione. E le due portate hanno
+											     titolari diversi — la stanza è dell'owner, l'istanza è
+											     dell'admin — quindi il secondo bottone compare solo a chi
+											     può usarlo: offrirlo a chi verrà rifiutato è insegnare a
+											     ignorare i bottoni. -->
+											<button type="button" class="jobprop-ok" disabled={gateDeciding}
+												title="Aggiunge questa destinazione alla whitelist di questa stanza: non verrà più chiesto qui"
+												on:click={() => decideGate(g, true, 'topic')}>✓ Sempre qui</button>
+											{#if $isAdmin}
+												<button type="button" class="jobprop-ok" disabled={gateDeciding}
+													title="Aggiunge questa destinazione alla whitelist dell'INTERA istanza, tutte le stanze comprese"
+													on:click={() => decideGate(g, true, 'global')}>✓ Ovunque</button>
+											{/if}
+										{/if}
 										<button type="button" class="jobprop-no" disabled={gateDeciding}
 											on:click={() => decideGate(g, false)}>Nega</button>
 									{:else}
