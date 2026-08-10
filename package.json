@@ -1,13 +1,13 @@
 {
   "name": "webui-v2",
-  "version": "0.146.0",
+  "version": "0.147.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 7843 --host",
     "build": "vite build",
     "preview": "vite preview --port 7843",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && node scripts/check-img-auth.mjs",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "devDependencies": {

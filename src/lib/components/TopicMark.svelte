@@ -17,7 +17,7 @@
 	 * disegnano la stessa cosa divergono, e diverge sempre quello che si guarda
 	 * meno.
 	 */
-	import { API_BASE_URL } from '$lib/api/client';
+	import { topicLogoUrl } from '$lib/topicLogo';
 
 	export let tier: string;
 	export let name: string;
@@ -28,9 +28,29 @@
 	/** Cambia per bucare la cache dopo un caricamento. */
 	export let rev = 0;
 
-	$: src = logo
-		? `${API_BASE_URL}/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/logo${rev ? `?v=${rev}` : ''}`
-		: '';
+	// L'immagine si SCARICA con l'autenticazione e si consegna come blob.
+	//
+	// Un `<img src>` verso l'endpoint non porta l'header `Authorization`: il
+	// browser emette una richiesta anonima, il server risponde 401, e l'immagine
+	// resta rotta **senza segnalare niente** — si vede solo il segnaposto, e
+	// sembra che il caricamento non abbia funzionato invece che un problema di
+	// identità. È così che questo difetto è arrivato in produzione: il gateway
+	// leggeva i byte, la rotta rispondeva 200, e la pagina mostrava il
+	// monogramma. Provato ovunque tranne dove sta il browser.
+	//
+	// L'endpoint degli avatar (`/api/agents/<n>/pfp`) è invece APERTO, ed è la
+	// ragione per cui lì un `<img src>` funziona: un avatar non sta in un
+	// compartimento. Il logo di un topic sì, e aprirlo direbbe a chiunque
+	// indovini tier e nome che quella stanza esiste.
+	let src = '';
+	$: if (logo) {
+		const t = tier, n = name, r = rev;
+		topicLogoUrl(t, n, r).then((u) => {
+			if (t === tier && n === name && r === rev) src = u ?? '';
+		});
+	} else {
+		src = '';
+	}
 
 	// Iniziale: dal titolo se c'è, altrimenti dal nome. Le cifre e i simboli
 	// restano come sono — «#» come monogramma è comunque un segno.

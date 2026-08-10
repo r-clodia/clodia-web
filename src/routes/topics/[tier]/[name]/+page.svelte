@@ -11,6 +11,7 @@
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
 	import TopicMark from '$lib/components/TopicMark.svelte';
+	import { topicLogoUrl as logoObjectUrl, dimenticaLogo } from '$lib/topicLogo';
 	import SpawnTree from '$lib/components/SpawnTree.svelte';
 	import AgentLiveBox from '$lib/components/AgentLiveBox.svelte';
 	import {
@@ -1085,9 +1086,18 @@
 	 *  caricamento resterebbe visibile la vecchia immagine e sembrerebbe che il
 	 *  salvataggio non abbia funzionato. */
 	let logoRev = 0;
-	$: topicLogoUrl = info?.meta?.logo
-		? `${API_BASE_URL}/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/logo?v=${logoRev}`
-		: '';
+	/** Come per il segno: si SCARICA con l'autenticazione e si consegna un blob.
+	 *  Un `<img src>` verso l'endpoint prenderebbe 401 e resterebbe rotto senza
+	 *  dire niente — la sezione direbbe «impostata» mostrando il vuoto. */
+	let topicLogoUrl = '';
+	$: if (info?.meta?.logo) {
+		const r = logoRev;
+		logoObjectUrl(tier, name, r).then((u) => {
+			if (r === logoRev) topicLogoUrl = u ?? '';
+		});
+	} else {
+		topicLogoUrl = '';
+	}
 
 	async function caricaLogo(e: Event) {
 		const f = (e.target as HTMLInputElement).files?.[0];
@@ -1099,6 +1109,10 @@
 			let bin = '';
 			for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
 			await setTopicLogo(tier, name, btoa(bin));
+			// Prima si butta via la copia in cache, poi si cambia `rev`: senza,
+			// resterebbe visibile l'immagine sostituita e sembrerebbe che il
+			// salvataggio non abbia funzionato.
+			dimenticaLogo(tier, name);
 			logoRev++;
 			await refreshInfo();
 		} catch (err) {
@@ -1113,6 +1127,7 @@
 		logoErr = '';
 		try {
 			await clearTopicLogo(tier, name);
+			dimenticaLogo(tier, name);
 			logoRev++;
 			await refreshInfo();
 		} catch (err) {
