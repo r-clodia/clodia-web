@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, connectOpenAI, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
-	import type { ConnectorIssue, MailboxStatus } from '$lib/api/client';
+	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, connectOpenAI, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, getConnectors, grantConnector, getAgents, ApiError } from '$lib/api/client';
+	import type { ConnectorIssue, MailboxStatus, Connector } from '$lib/api/client';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { askWainston } from '$lib/stores/helpdesk';
 	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
@@ -121,6 +121,9 @@
 			}
 			mailboxes = boxes;
 			mailboxStatuses = statuses;
+			// Chi può usare quali caselle: senza, la sezione mostra «operativa» e
+			// tace sulla sola cosa che decide se un agente la vedrà.
+			caricaGrant();
 			const base = BASE.map((c) => {
 				const live = connectors.find((x) => x.id === c.id);
 				if (c.id === 'mailboxes') {
@@ -351,6 +354,52 @@
 	}
 
 	const TELEGRAM_HELP = 'Aiuto, sto configurando l’integrazione Telegram. Da dove parto?';
+
+	// ─── Chi può usare una casella ──────────────────────────────────────────
+	//
+	// Aggiungere un account NON lo rende utilizzabile da nessuno: le credenziali
+	// vanno nel vault e la delega è per-agent. Era vero anche prima, e stava
+	// scritto — «delegabili poi per-agent dal profilo» — ma il «poi» era in
+	// un'altra pagina, e il gesto restava a metà: l'account risultava
+	// «operativa» e l'agente non lo vedeva, senza che niente segnalasse il passo
+	// mancante.
+	//
+	// La delega si fa dove si aggiunge l'account. Non è una scorciatoia: chi
+	// aggiunge una casella sa già a chi serve, e chiederglielo in quel momento è
+	// l'unico momento in cui la risposta è ovvia.
+	let connettori: Connector[] = [];
+	let agentiNoti: string[] = [];
+	let grantBusy = '';
+
+	function chiHa(account: string): string[] {
+		return connettori.find((c) => c.id === account)?.agents ?? [];
+	}
+
+	async function caricaGrant() {
+		try {
+			connettori = await getConnectors('clodia');
+			agentiNoti = (await getAgents())
+				.filter((a) => (a as { type?: string }).type !== 'human')
+				.map((a) => a.name)
+				.sort();
+		} catch {
+			connettori = [];
+		}
+	}
+
+	async function cambiaGrant(account: string, agente: string, concedi: boolean) {
+		if (!agente) return;
+		grantBusy = `${account}:${agente}`;
+		try {
+			await grantConnector(agente, account, concedi);
+			await caricaGrant();
+			toastSuccess(concedi ? `${account} concessa a ${agente}` : `${account} revocata a ${agente}`);
+		} catch (err) {
+			toastError('Delega fallita', err instanceof ApiError ? err.message : String(err));
+		} finally {
+			grantBusy = '';
+		}
+	}
 
 	// ─── Caselle email (IMAP/SMTP) — connettore multi-mailbox ───
 	let mailboxes: string[] = [];
@@ -718,18 +767,47 @@
 			{#if mailboxStatuses.length}
 				<ul class="mb-list">
 					{#each mailboxStatuses as mailbox (mailbox.account)}
-						<li>
+						<li class="mb-row">
 							<span class="mb-name">✉︎ {mailbox.account}
 								<small class:mb-broken={!mailbox.operational}>{mailbox.operational ? 'operativa' : `non operativa${mailbox.missing?.length ? ` · mancano ${mailbox.missing.join(', ')}` : ''}`}</small>
 							</span>
 							<button type="button" class="btn ghost sm" on:click={() => deleteMailbox(mailbox.account)}>Rimuovi</button>
+							<!-- Chi può usarla. «Operativa» dice che la casella funziona, non
+							     che qualcuno la veda: senza delega un agente non la trova
+							     nemmeno in elenco, e conclude che non esiste. -->
+							{#if $isAdmin}
+								<div class="mb-grants">
+									{#if chiHa(mailbox.account).length}
+										{#each chiHa(mailbox.account) as ag}
+											<button type="button" class="grant-chip" title="Revoca a {ag}"
+												disabled={grantBusy === `${mailbox.account}:${ag}`}
+												on:click={() => cambiaGrant(mailbox.account, ag, false)}>{ag} ×</button>
+										{/each}
+									{:else}
+										<span class="grant-none">nessun agente la può usare</span>
+									{/if}
+									<select
+										disabled={!!grantBusy}
+										on:change={(e) => {
+											const v = (e.currentTarget as HTMLSelectElement).value;
+											(e.currentTarget as HTMLSelectElement).value = '';
+											cambiaGrant(mailbox.account, v, true);
+										}}
+									>
+										<option value="">+ concedi a…</option>
+										{#each agentiNoti.filter((a) => !chiHa(mailbox.account).includes(a)) as a}
+											<option value={a}>{a}</option>
+										{/each}
+									</select>
+								</div>
+							{/if}
 						</li>
 					{/each}
 				</ul>
 			{:else}
 				<p class="note">Nessuna casella ancora. Aggiungine una qui sotto.</p>
 			{/if}
-			<p class="note">Aggiungi una casella IMAP/SMTP. Le credenziali vanno nel <strong>vault</strong> (mai esposte agli agent); delegabili poi per-agent dal profilo.</p>
+			<p class="note">Aggiungi una casella IMAP/SMTP. Le credenziali vanno nel <strong>vault</strong> (mai esposte agli agent). Aggiungerla non basta: finché non la <strong>concedi</strong> a un agente, quell'agente non la vede nemmeno in elenco.</p>
 			<div class="mb-grid">
 				<label class="field"><span>Account (id)</span><input type="text" bind:value={mbForm.account} placeholder="studio" autocomplete="off" /></label>
 				<label class="field"><span>Email</span><input type="text" bind:value={mbForm.email} placeholder="user@domain.com" autocomplete="off" /></label>
@@ -848,6 +926,20 @@
 	.mb-name { display: flex; min-width: 0; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; }
 	.mb-name small { color: var(--success); font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
 	.mb-name small.mb-broken { color: var(--danger); }
+	/* Chi può usare una casella: sotto il nome, non accanto, perché è una riga
+	   che può crescere con gli agenti e non deve spingere via il bottone. */
+	.mb-row { flex-wrap: wrap; }
+	.mb-grants {
+		flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center;
+		gap: 5px; margin-top: 5px; font-size: 11px;
+	}
+	.grant-chip {
+		border: 1px solid var(--border); background: var(--surface-2, transparent);
+		border-radius: 999px; padding: 1px 8px; font-size: 11px; cursor: pointer;
+	}
+	.grant-chip:hover { border-color: var(--danger); color: var(--danger); }
+	.grant-none { color: var(--fg-muted); font-style: italic; }
+	.mb-grants select { font-size: 11px; padding: 1px 4px; }
 	.mb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0; }
 	.btn.sm { font-size: 11px; padding: 3px 9px; }
 </style>
