@@ -2066,8 +2066,10 @@ export interface MailboxInput {
 	account: string;
 	email: string;
 	password: string;
-	imap_server: string;
 	smtp_server: string;
+	/** Opzionale: senza IMAP la casella è di **solo invio** — un alias con SMTP
+	 *  e nessuna casella dietro. È una forma legittima, non una mancanza. */
+	imap_server?: string;
 	imap_port?: number;
 	smtp_port?: number;
 	display_name?: string;
@@ -2076,6 +2078,8 @@ export interface MailboxInput {
 }
 export interface MailboxStatus extends ConnectorIssue {
 	operational: boolean;
+	/** Casella di solo invio (nessun IMAP): si spedisce, non si legge. */
+	send_only?: boolean;
 }
 export interface MailboxesResponse {
 	mailboxes: string[];

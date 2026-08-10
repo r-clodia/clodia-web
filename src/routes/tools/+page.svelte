@@ -420,8 +420,8 @@
 	}
 	async function submitMailbox() {
 		const f = mbForm;
-		if (!f.account.trim() || !f.email.trim() || !f.password || !f.imap_server.trim() || !f.smtp_server.trim()) {
-			mbError = 'Compila account, email, password, IMAP e SMTP server.';
+		if (!f.account.trim() || !f.email.trim() || !f.password || !f.smtp_server.trim()) {
+			mbError = 'Compila account, email, password e SMTP server.';
 			return;
 		}
 		mbBusy = true;
@@ -429,7 +429,12 @@
 		try {
 			await addMailbox({
 				account: f.account.trim().toLowerCase(), email: f.email.trim(), password: f.password,
-				imap_server: f.imap_server.trim(), imap_port: Number(f.imap_port) || 993,
+				// IMAP vuoto = casella di SOLO INVIO. Non si manda una stringa
+				// vuota: il backend distingue «assente» da «vuoto», e mandare ''
+				// creerebbe una casella che dichiara un IMAP inesistente.
+				...(f.imap_server.trim()
+					? { imap_server: f.imap_server.trim(), imap_port: Number(f.imap_port) || 993 }
+					: {}),
 				smtp_server: f.smtp_server.trim(), smtp_port: Number(f.smtp_port) || 587,
 				display_name: f.display_name.trim() || undefined
 			});
@@ -769,7 +774,9 @@
 					{#each mailboxStatuses as mailbox (mailbox.account)}
 						<li class="mb-row">
 							<span class="mb-name">✉︎ {mailbox.account}
-								<small class:mb-broken={!mailbox.operational}>{mailbox.operational ? 'operativa' : `non operativa${mailbox.missing?.length ? ` · mancano ${mailbox.missing.join(', ')}` : ''}`}</small>
+								<small class:mb-broken={!mailbox.operational}>{mailbox.operational
+									? (mailbox.send_only ? 'operativa · solo invio (nessun IMAP)' : 'operativa')
+									: `non operativa${mailbox.missing?.length ? ` · mancano ${mailbox.missing.join(', ')}` : ''}`}</small>
 							</span>
 							<button type="button" class="btn ghost sm" on:click={() => deleteMailbox(mailbox.account)}>Rimuovi</button>
 							<!-- Chi può usarla. «Operativa» dice che la casella funziona, non
@@ -813,7 +820,7 @@
 				<label class="field"><span>Email</span><input type="text" bind:value={mbForm.email} placeholder="user@domain.com" autocomplete="off" /></label>
 				<label class="field"><span>Password / app-password</span><input type="password" bind:value={mbForm.password} autocomplete="off" /></label>
 				<label class="field"><span>Display name (opz.)</span><input type="text" bind:value={mbForm.display_name} autocomplete="off" /></label>
-				<label class="field"><span>IMAP server</span><input type="text" bind:value={mbForm.imap_server} placeholder="imap.ionos.it" autocomplete="off" /></label>
+				<label class="field"><span>IMAP server <small>(vuoto = solo invio)</small></span><input type="text" bind:value={mbForm.imap_server} placeholder="imap.ionos.it" autocomplete="off" /></label>
 				<label class="field"><span>IMAP porta</span><input type="number" bind:value={mbForm.imap_port} /></label>
 				<label class="field"><span>SMTP server</span><input type="text" bind:value={mbForm.smtp_server} placeholder="smtp.ionos.it" autocomplete="off" /></label>
 				<label class="field"><span>SMTP porta</span><input type="number" bind:value={mbForm.smtp_port} /></label>
