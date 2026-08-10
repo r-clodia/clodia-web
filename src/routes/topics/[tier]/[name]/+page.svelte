@@ -823,7 +823,8 @@
 	// scontato che decidesse l'owner, che è falso per i gate di SISTEMA sollevati
 	// dentro una stanza, dove decide un admin. A un owner non-admin la card
 	// offriva un bottone che il backend poi rifiuta.
-	type GateInfo = { crosses?: string; decided_by?: string; decider_name?: string; scope?: string };
+	type GateInfo = { crosses?: string; decided_by?: string; decider_name?: string;
+	                  scope?: string; asker_role?: string; asker_note?: string };
 	let gateInfo: Record<string, GateInfo> = {};
 	async function refreshGateInfo() {
 		try {
@@ -833,7 +834,8 @@
 			for (const q of r?.requests ?? []) {
 				m[`${q.agent}|${q.instance || '-'}|${q.verb}`] =
 					{ crosses: q.crosses, decided_by: q.decided_by,
-					  decider_name: q.decider_name, scope: q.scope };
+					  decider_name: q.decider_name, scope: q.scope,
+					  asker_role: q.asker_role, asker_note: q.asker_note };
 			}
 			gateInfo = m;
 		} catch { /* la card resta senza spiegazione, non sparisce */ }
@@ -1918,6 +1920,9 @@
 												solo l'owner può approvare
 											{/if}
 										</span>
+									{/if}
+									{#if gateInfo[g.id]?.asker_note}
+										<span class="gate-crosses">🔎 {gateInfo[g.id].asker_note}</span>
 									{/if}
 									{#if gateInfo[g.id]?.crosses}
 										<!-- Cosa si attraversa: senza, la richiesta è solo il nome

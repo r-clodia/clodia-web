@@ -19,6 +19,11 @@
 		 *  diverge è sempre quella che spiega — si finirebbe a scrivere «decide
 		 *  un admin» su un gate che solo l'owner può sbloccare. */
 		crosses?: string; decided_by?: string; decider_name?: string; scope?: string;
+		/** Chi sta chiedendo, quando non è un partecipante ordinario. Oggi
+		 *  esiste un solo caso — il guardiano della modalità debug — e serve
+		 *  perché una presenza legittima che sembra un'intrusione costa quanto
+		 *  un'intrusione, finché qualcuno non la spiega. */
+		asker_role?: string; asker_note?: string;
 	};
 	let requests: Req[] = [];
 	let busy = '';
@@ -78,6 +83,9 @@
 				{:else}
 					<div class="gate-head">🛡️ <b>{q.agent}</b> vuole usare <code>{q.verb}</code></div>
 				{/if}
+				{#if q.asker_note}
+					<div class="gate-asker">🔎 {q.asker_note}</div>
+				{/if}
 				{#if q.reason}<div class="gate-reason">{q.reason}</div>{/if}
 				{#if q.crosses}
 					<!-- Cosa si sta per attraversare. Un gate non è una proprietà del
@@ -116,6 +124,7 @@
 	.gate-head { font-size: 14px; margin-bottom: 4px; }
 	.gate-head code { font-family: var(--mono); font-size: 12px; }
 	.gate-reason { font-size: 13px; color: var(--fg); margin: 4px 0 6px; }
+	.gate-asker { font-size: 12px; margin: 2px 0 4px; opacity: .85; }
 	.gate-crosses { font-size: 12px; margin: 2px 0; }
 	.gate-crosses code { font-family: var(--mono); font-size: 11px; }
 	.gate-who { font-size: 12px; margin: 0 0 4px; }
