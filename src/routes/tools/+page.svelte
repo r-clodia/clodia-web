@@ -407,10 +407,10 @@
 	let mbOpen = false;
 	let mbBusy = false;
 	let mbError = '';
-	let mbForm = { account: '', email: '', password: '', imap_server: '', imap_port: 993, smtp_server: '', smtp_port: 587, display_name: '' };
+	let mbForm = { account: '', email: '', password: '', imap_server: '', imap_port: 993, smtp_server: '', smtp_port: 587, smtp_user: '', display_name: '' };
 
 	function openMailboxes() {
-		mbForm = { account: '', email: '', password: '', imap_server: '', imap_port: 993, smtp_server: '', smtp_port: 587, display_name: '' };
+		mbForm = { account: '', email: '', password: '', imap_server: '', imap_port: 993, smtp_server: '', smtp_port: 587, smtp_user: '', display_name: '' };
 		mbError = '';
 		mbOpen = true;
 	}
@@ -436,10 +436,14 @@
 					? { imap_server: f.imap_server.trim(), imap_port: Number(f.imap_port) || 993 }
 					: {}),
 				smtp_server: f.smtp_server.trim(), smtp_port: Number(f.smtp_port) || 587,
+				// I relay (smtp2go, mailgun, …) autenticano con un utente dedicato:
+				// senza questo campo la password giusta viene rifiutata, e sembra
+				// sbagliata.
+				smtp_user: f.smtp_user.trim() || undefined,
 				display_name: f.display_name.trim() || undefined
 			});
 			toastSuccess('Casella aggiunta', f.account.trim());
-			mbForm = { account: '', email: '', password: '', imap_server: '', imap_port: 993, smtp_server: '', smtp_port: 587, display_name: '' };
+			mbForm = { account: '', email: '', password: '', imap_server: '', imap_port: 993, smtp_server: '', smtp_port: 587, smtp_user: '', display_name: '' };
 			await load();
 			({ mailboxes, statuses: mailboxStatuses } = await getMailboxes());
 		} catch (err) {
