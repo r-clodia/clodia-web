@@ -828,6 +828,12 @@
 				<label class="field"><span>IMAP porta</span><input type="number" bind:value={mbForm.imap_port} /></label>
 				<label class="field"><span>SMTP server</span><input type="text" bind:value={mbForm.smtp_server} placeholder="smtp.ionos.it" autocomplete="off" /></label>
 				<label class="field"><span>SMTP porta</span><input type="number" bind:value={mbForm.smtp_port} /></label>
+				<!-- I relay (smtp2go, mailgun, sendgrid, brevo) autenticano con un
+				     utente DEDICATO, non con l'indirizzo: senza questo campo la
+				     password giusta viene rifiutata e sembra sbagliata. Il backend
+				     lo accettava da sempre; mancava solo qui, ed è per questo che
+				     `team` non poteva funzionare. -->
+				<label class="field"><span>Utente SMTP <small>(solo per i relay)</small></span><input type="text" bind:value={mbForm.smtp_user} placeholder="vuoto = usa l'indirizzo" autocomplete="off" /></label>
 			</div>
 			{#if mbError}<div class="modal-err">{mbError}</div>{/if}
 			<div class="modal-foot">
