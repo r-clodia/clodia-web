@@ -19,6 +19,8 @@
 		getAgents,
 		getChannel,
 		getChannelMessages,
+		getChannelMessagesAndPresence,
+		type PresenceState,
 		getChannelAliases,
 		postChannelMessage,
 		sendMessageFeedback,
@@ -1116,6 +1118,24 @@
 		}
 	}
 
+	// ── Presenza degli umani in questa stanza ───────────────────────────────
+	//
+	// Quattro stati, perché le domande sono due e diverse: «mi sta leggendo
+	// adesso?» e «è raggiungibile?». Un pallino solo le fonderebbe, e chi guarda
+	// dedurrebbe la risposta sbagliata a una delle due — il caso peggiore è
+	// scrivere a qualcuno credendolo davanti allo schermo perché è «online».
+	//
+	// Arriva col polling dei messaggi, non da una rotta propria: cambia con la
+	// stessa cadenza, e una seconda chiamata ogni cinque secondi sarebbe il
+	// doppio del traffico per un dato che viaggia già.
+	let presenza: Record<string, PresenceState> = {};
+	const PRESENZA_TITOLO: Record<PresenceState, string> = {
+		here: 'sta guardando questa conversazione',
+		elsewhere: 'è nella webui, in un altro canale',
+		background: 'ha la webui aperta ma sta guardando altro',
+		away: 'non è collegato'
+	};
+
 	// ── Immagine del topic ──────────────────────────────────────────────────
 	// La vede chi partecipa, la cambia solo l'owner. Non è una decorazione: in
 	// una lista di venti stanze l'immagine è ciò che si guarda per primo, quindi
@@ -1433,11 +1453,14 @@
 		filePath = ''; // riparti dalla radice dei file
 		_ackedTs = ''; // l'ack delle mention è per-topic
 		try {
-			[info, messages, files] = await Promise.all([
+			let _mp: { messages: typeof messages; presence: typeof presenza };
+			[info, _mp, files] = await Promise.all([
 				getChannel(t, n),
-				getChannelMessages(t, n),
+				getChannelMessagesAndPresence(t, n),
 				getChannelFiles(t, n)
 			]);
+			messages = _mp.messages;
+			presenza = _mp.presence;
 			_lastMsgId = messages[messages.length - 1]?.id ?? '';
 			// turno in corso al caricamento (re-mount a metà turno) → mostra l'indicatore
 			workingResponders = info?.active_responders ?? [];
@@ -1502,7 +1525,7 @@
 		try {
 			const wasNearBottom = isNearBottom;
 			const previousLastId = _lastMsgId;
-			messages = await getChannelMessages(tier, name);
+			({ messages, presence: presenza } = await getChannelMessagesAndPresence(tier, name));
 			// smetti di mostrare "scrivendo" ogni agente che ha appena postato — non
 			// solo l'ultimo: con più agenti attivi, il penultimo restava "scrivendo"
 			// fino allo scadere del timeout di 90s.
@@ -2449,7 +2472,9 @@
 							<span class="part-id">
 								<AgentAvatar name={p} size={22} />
 								<span class="part-col">
-									<span class="part-name">{p}{#if multiSpawn[p]} <span class="multi-spawn" title="lavora con istanze multiple (@{p}#1, @{p}#2, …)">👯</span>{/if}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
+									<span class="part-name">{#if presenza[p]}<span
+											class="presenza presenza-{presenza[p]}"
+											title={PRESENZA_TITOLO[presenza[p]]}></span>{/if}{p}{#if multiSpawn[p]} <span class="multi-spawn" title="lavora con istanze multiple (@{p}#1, @{p}#2, …)">👯</span>{/if}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
 									{#if c}
 										<span class="ctx-bar" title={`Contesto ${Math.round(c.pct * 100)}% — ${c.used.toLocaleString()}/${c.window.toLocaleString()} token`}>
 											<span class="ctx-fill" style="width:{Math.min(100, c.pct * 100)}%; background:{ctxColor(c.pct)}"></span>
@@ -3524,6 +3549,19 @@
 	.part-id { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 	.part-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 	.part-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+	/* Presenza: quattro stati, quattro colori, e nessuno che si legge come un
+	   guasto. Il grigio è PIENO e non un cerchio vuoto: un contorno senza
+	   riempimento somiglia a qualcosa che non ha finito di caricare, e un
+	   indicatore che sembra rotto viene ignorato anche quando dice il vero. */
+	.presenza {
+		display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+		margin-right: 5px; vertical-align: 1px; flex: none;
+	}
+	.presenza-here { background: #16a34a; }        /* qui, in primo piano */
+	.presenza-elsewhere { background: #eab308; }   /* nella webui, altro canale */
+	.presenza-background { background: #3b82f6; }  /* webui aperta, guarda altro */
+	.presenza-away { background: var(--border); }  /* non collegato */
 	/* Termometro di contesto: occupazione della finestra del modello dell'agente. */
 	.ctx-bar { display: block; width: 84px; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
 	.ctx-fill { display: block; height: 100%; border-radius: 2px; transition: width .3s ease, background .3s ease; }

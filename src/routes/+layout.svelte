@@ -17,6 +17,7 @@
 	 * `<Toaster />` is mounted here so toasts can be pushed from anywhere.
 	 */
 	import { onDestroy, onMount } from 'svelte';
+	import { sendPresenceBeat } from '$lib/api/client';
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import '../app.css';
@@ -75,7 +76,39 @@
 			sessionTimer = setInterval(() => void ensureFreshSession(), 5 * 60 * 1000);
 			if (browser) document.addEventListener('visibilitychange', onVisible);
 		}
+		avviaBattito();
 	});
+
+	// ── Battito di presenza ─────────────────────────────────────────────────
+	//
+	// Dice due cose che nessuna altra chiamata può dire: in quale stanza sono e
+	// se la scheda è in PRIMO PIANO. La seconda la conosce solo il browser.
+	//
+	// Sta nel layout e non nella pagina del topic perché serve anche quando NON
+	// si è in un topic: è così che si distingue «è nella webui, altrove» da «ha
+	// la scheda dietro» da «non c'è». Metterlo nella pagina del canale avrebbe
+	// dato due stati su quattro.
+	let battito: ReturnType<typeof setInterval> | null = null;
+	function stanzaCorrente(): string | null {
+		const m = ($page?.url?.pathname || '').match(/^\/topics\/([^/]+)\/([^/]+)/);
+		return m ? `${decodeURIComponent(m[1])}/${decodeURIComponent(m[2])}` : null;
+	}
+	function batti() {
+		if (!browser || AUTH_DISABLED) return;
+		void sendPresenceBeat(stanzaCorrente(), document.visibilityState === 'visible');
+	}
+	function avviaBattito() {
+		if (!browser || battito) return;
+		batti();
+		// 30s: sotto il TTL di 150s con margine per tre battiti persi. Una
+		// scheda in secondo piano viene strozzata a un timer al minuto — per
+		// questo il TTL è largo e il cambio di stato NON aspetta il timer.
+		battito = setInterval(batti, 30_000);
+		// Il passaggio primo piano ↔ sfondo si manda SUBITO: è il momento in cui
+		// il pallino deve cambiare, e affidarlo al prossimo tick vorrebbe dire
+		// mostrare «ti sta leggendo» a chi ha appena cambiato finestra.
+		document.addEventListener('visibilitychange', batti);
+	}
 
 	// --- SSE lease (only while authenticated) --------------------------------
 	function startStream() {
@@ -96,6 +129,12 @@
 		});
 	}
 
+	function fermaBattito() {
+		if (battito) clearInterval(battito);
+		battito = null;
+		if (browser) document.removeEventListener('visibilitychange', batti);
+	}
+
 	function stopStream() {
 		if (offHandler) offHandler();
 		if (releaseStream) releaseStream();
@@ -112,6 +151,7 @@
 
 	onDestroy(() => {
 		stopStream();
+		fermaBattito();
 		if (sessionTimer) clearInterval(sessionTimer);
 		if (browser) document.removeEventListener('visibilitychange', onVisible);
 	});

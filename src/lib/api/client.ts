@@ -787,10 +787,40 @@ export async function createChannel(
 export async function getChannel(tier: string, name: string, opts: RequestOptions = {}): Promise<ChannelInfo> {
 	return apiGet(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}`, opts);
 }
+/** Stato di presenza di una persona rispetto a QUESTA stanza.
+ *  `here` la sta guardando · `elsewhere` è nella webui ma altrove ·
+ *  `background` ha la scheda dietro · `away` non c'è. */
+export type PresenceState = 'here' | 'elsewhere' | 'background' | 'away';
+
 export async function getChannelMessages(tier: string, name: string, opts: RequestOptions = {}): Promise<ChannelMessage[]> {
 	const d = await apiGet<{ messages: ChannelMessage[] }>(
 		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/messages`, opts);
 	return d.messages ?? [];
+}
+
+/** Messaggi + presenza degli umani, dalla stessa chiamata: il polling della
+ *  conversazione è già in corso ogni cinque secondi, e la presenza cambia con
+ *  la stessa cadenza — una rotta dedicata raddoppierebbe le richieste per un
+ *  dato che arriva insieme all'altro. */
+export async function getChannelMessagesAndPresence(
+	tier: string, name: string, opts: RequestOptions = {}
+): Promise<{ messages: ChannelMessage[]; presence: Record<string, PresenceState> }> {
+	const d = await apiGet<{ messages: ChannelMessage[]; presence?: Record<string, PresenceState> }>(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/messages`, opts);
+	return { messages: d.messages ?? [], presence: d.presence ?? {} };
+}
+
+/** Battito: dove sto guardando e se sono in primo piano. Non solleva mai — un
+ *  battito perso vale un pallino impreciso per un minuto, e non deve poter
+ *  rompere la pagina che lo manda. */
+export async function sendPresenceBeat(
+	chat: string | null, visible: boolean
+): Promise<void> {
+	try {
+		await apiPost('/api/presence', { chat, visible });
+	} catch {
+		/* silenzio deliberato */
+	}
 }
 export async function postChannelMessage(
 	tier: string,
