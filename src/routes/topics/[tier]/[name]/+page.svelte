@@ -326,9 +326,10 @@
 	function cancelRemoteForm() {
 		remoteForm = null; remoteInput = ''; remoteCred = ''; remoteMountName = '';
 	}
-	// Il nome del mount lo sceglie chi lo collega: è il segmento che comparirà
-	// in `remote/<nome>/`, e con due cartelle Drive «drive» e «drive-2» non
-	// direbbero quale è quale. Vuoto = il backend usa il tipo.
+	// Il nome del mount lo sceglie chi lo collega: è la CARTELLA DI PRIMO LIVELLO
+	// che comparirà nell'albero — `comms/` — e con due cartelle Drive «drive» e
+	// «drive-2» non direbbero quale è quale. Vuoto = il backend usa il tipo.
+	// Riservati `local`, `files`, `remote`: il backend li rifiuta.
 	let remoteMountName = '';
 	function submitRemoteForm() {
 		const v = remoteInput.trim();
@@ -960,17 +961,51 @@
 	function handleStreamClick(e: MouseEvent) {
 		const a = (e.target as HTMLElement)?.closest?.('a') as HTMLAnchorElement | null;
 		if (!a?.href) return;
+		// La lente: finestra di anteprima, non navigazione. Lasciarla navigare
+		// porterebbe fuori dalla conversazione che si stava leggendo, che è
+		// esattamente il costo che questa affordance esiste per togliere.
+		const pv = a.href.match(/\/preview\/[^/]+\/[^/]+\?path=([^&]+)/);
+		if (pv) {
+			e.preventDefault();
+			openArtifact(decodeURIComponent(pv[1]));
+			return;
+		}
 		const m = a.href.match(/\/topics\/[^/]+\/[^/]+\/download\?path=([^&]+)/);
 		if (!m) return;
 		e.preventDefault();
 		void openSignedFile(decodeURIComponent(m[1]));
 	}
+	// Le radici che un path può avere in questo scope. `local` c'è sempre; ogni
+	// mount è una cartella di primo livello col suo nome (`comms/`). `files` e
+	// `dump` restano perché compaiono nei messaggi già inviati: un link che
+	// smette di funzionare per un cambio di schema è una regressione per chi
+	// rilegge una conversazione di ieri.
+	$: fileRoots = Array.from(new Set([
+		'local', 'files', 'dump',
+		...topicMounts.filter((m) => m.type === 'drive')
+			.map((m) => String(m.name || '').trim()).filter(Boolean)
+	])).filter((r) => /^[\w.-]+$/.test(r));
+	// I formati che la finestra di anteprima sa rendere. Gli altri restano
+	// scaricabili: offrire una lente che apre una pagina illeggibile è peggio
+	// che non offrirla.
+	const PREVIEWABLE = /\.(md|markdown|mdown|mkd|html?|png|jpe?g)$/i;
 	function linkifyFiles(text: string): string {
-		const PATH = /(?<!\]\()(?<!\[)(?<![\w/])((?:files|dump)\/[\w.\-/]+\.[A-Za-z0-9]{1,8})/g;
-		const repl = (_m: string, p: string) => `[${p}](${channelFileUrl(tier, name, p)})`;
+		const radici = fileRoots.join('|');
+		const PATH = new RegExp(
+			`(?<!\\]\\()(?<!\\[)(?<![\\w/])((?:${radici})\\/[\\w.\\-/]+\\.[A-Za-z0-9]{1,8})`, 'g');
+		// Il link al file, più la lente quando c'è qualcosa da guardare. La lente è
+		// un secondo link: `handleStreamClick` lo riconosce dal path `/preview/` e
+		// apre la finestra invece di navigarci dentro.
+		const repl = (_m: string, p: string) => {
+			const dl = `[${p}](${channelFileUrl(tier, name, p)})`;
+			if (!PREVIEWABLE.test(p)) return dl;
+			const pv = `/preview/${encodeURIComponent(tier)}/${encodeURIComponent(name)}?path=${encodeURIComponent(p)}`;
+			return `${dl} [🔎](${pv})`;
+		};
 		// 1) code span che contengono SOLO un path → diventano link (tolgo i backtick:
 		//    gli LLM citano i path tra `…`, ma l'utente vuole il link cliccabile).
-		let s = (text || '').replace(/`((?:files|dump)\/[\w.\-/]+\.[A-Za-z0-9]{1,8})`/g, repl);
+		let s = (text || '').replace(
+			new RegExp(`\`((?:${radici})\\/[\\w.\\-/]+\\.[A-Za-z0-9]{1,8})\``, 'g'), repl);
 		// 2) path nudi, saltando i code span RIMASTI (codice vero, non solo-path).
 		return s
 			.split(/(```[\s\S]*?```|`[^`]*`)/g)

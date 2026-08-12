@@ -17,6 +17,44 @@
 	let html = '';
 	let err = '';
 	let lastKey = '';
+
+	const IMAGE_RE = /\.(png|jpe?g|gif|webp|avif)$/i;
+	function isImagePath(p: string): boolean {
+		return IMAGE_RE.test(p || '');
+	}
+	/** Data URL e non blob URL, e la ragione è l'iframe: gira `sandbox` SENZA
+	 *  `allow-same-origin`, quindi ha origine opaca e un blob creato qui — che è
+	 *  legato all'origine di chi lo crea — non gli è raggiungibile. Un data URL
+	 *  non ha origine, e la CSP lo ammette già (`img-src data:`). Costa il 33%
+	 *  di byte in più nel srcdoc: il prezzo di non allentare il sandbox. */
+	function toDataUrl(blob: Blob): Promise<string> {
+		return new Promise((ok, ko) => {
+			const r = new FileReader();
+			r.onload = () => ok(String(r.result || ''));
+			r.onerror = () => ko(r.error || new Error('lettura fallita'));
+			r.readAsDataURL(blob);
+		});
+	}
+	/** Documento minimo per un'immagine: centrata, ridimensionata alla finestra,
+	 *  fondo neutro. Nessuno stile del brand — è un visualizzatore, e ciò che si
+	 *  guarda deve essere l'immagine. */
+	function imageDocument(src: string): string {
+		const title = escapeHtml(path.split('/').pop() || path || 'Immagine');
+		return `<!doctype html>
+<html lang="it">
+<head>
+${CSP}
+<title>${title}</title>
+<style>
+	html, body { height: 100%; margin: 0; background: #14171a; }
+	body { display: flex; align-items: center; justify-content: center; padding: 12px; }
+	img { max-width: 100%; max-height: 100%; object-fit: contain;
+	      image-orientation: from-image; }
+</style>
+</head>
+<body><img src="${escapeHtml(src)}" alt="${title}"></body>
+</html>`;
+	}
 	let timer: ReturnType<typeof setInterval> | null = null;
 
 	const MARKDOWN_HEAD_INJECT = CSP;
@@ -121,6 +159,21 @@ ${MARKDOWN_HEAD_INJECT}
 		try {
 			const res = await fetch(channelFileUrl(tier, name, path), { cache: 'no-store', headers: authHeaders() });
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			// Un'immagine NON si legge come testo: `res.text()` su un PNG produce
+			// byte interpretati come UTF-8, cioè una pagina di caratteri di
+			// sostituzione. Ramo suo, e via blob — un `<img src>` verso la rotta
+			// autenticata non porta l'header Authorization e darebbe 401 in
+			// silenzio (stessa lezione del logo del topic, 11 ago).
+			if (isImagePath(path)) {
+				const blob = await res.blob();
+				const key = `img:${blob.size}:${blob.type}`;
+				if (key !== lastKey) {
+					lastKey = key;
+					html = imageDocument(await toDataUrl(blob));
+				}
+				err = '';
+				return;
+			}
 			const raw = await res.text();
 			// chiave veloce (hash+len) per ricaricare solo al cambio reale → niente flicker
 			let h = 0;
