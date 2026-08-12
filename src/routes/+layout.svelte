@@ -38,6 +38,7 @@
 	import { getAdminState } from '$lib/api/client';
 	import { refreshCapabilities } from '$lib/stores/capabilities';
 	import { noteMessage } from '$lib/stores/unread';
+	import { handleMentionEvent } from '$lib/stores/mentionNotifications';
 
 	let releaseStream: (() => void) | null = null;
 	let offHandler: (() => void) | null = null;
@@ -125,6 +126,7 @@
 				// dei segnali dal server (il conteggio non si fa più nel client).
 				const p = (ev.payload || {}) as { tier?: string; name?: string };
 				if (p.tier && p.name) noteMessage(p.tier, p.name);
+				handleMentionEvent(p);
 			}
 		});
 	}
