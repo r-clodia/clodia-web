@@ -36,6 +36,7 @@
 		apiPost,
 		getChannelEligibility,
 		recordRoutingFeedback,
+		resolveRoutingChoice,
 		getChannelFiles,
 		uploadChannelFile,
 		downloadTopicZip,
@@ -778,6 +779,31 @@
 		if (!m) return null;
 		const items = m[2].split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
 		return items.length ? { multi: !!m[1], items } : null;
+	}
+	// Marker ROUTER: il backend ha trovato più agenti entro il margine e chiede
+	// all'umano chi deve prendere il turno. Il click NON invia una chat normale:
+	// risolve il routing e salva l'esempio supervisionato.
+	const _ROUTE_RE = /<!--\s*routing-choices\s*=(.*?)-->/i;
+	function msgRoutingChoices(text: string): string[] | null {
+		const m = (text || '').match(_ROUTE_RE);
+		if (!m) return null;
+		const items = m[1].split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
+		return items.length ? Array.from(new Set(items)) : null;
+	}
+	let routingChoiceBusy = false;
+	let routingChoiceDone: Record<string, string> = {};
+	async function chooseRoute(agent: string, m: ChannelMessage) {
+		if (routingChoiceBusy) return;
+		routingChoiceBusy = true;
+		try {
+			const res = await resolveRoutingChoice(tier, name, agent);
+			routingChoiceDone = { ...routingChoiceDone, [m.id]: res.responder ?? agent };
+			await refreshMessages();
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			routingChoiceBusy = false;
+		}
 	}
 	// Marker di INVITO SQUADRA: un coordinatore (Clodia) propone chi invitare —
 	//   <!-- invite=aitiero,minerva,clodia -->
@@ -2120,6 +2146,19 @@
 									{/if}
 								</div>
 							{/if}
+							{@const routeChoices = msgRoutingChoices(m.text)}
+							{#if routeChoices}
+								<div class="pills route-pills">
+									{#if routingChoiceDone[m.id]}
+										<span class="route-done">Instradato a <b>{routingChoiceDone[m.id]}</b>.</span>
+									{:else}
+										{#each routeChoices as agent}
+											<button type="button" class="pill" disabled={routingChoiceBusy}
+												on:click={() => chooseRoute(agent, m)}>{agent}</button>
+										{/each}
+									{/if}
+								</div>
+							{/if}
 							{@const inv = msgInvite(m.text)}
 							{#if inv}
 								{@const pending = inv.filter((a) => !participants.includes(a))}
@@ -3344,6 +3383,8 @@
 	.pill.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 700; }
 	.pill-confirm { border-style: dashed; font-weight: 700; }
 	.pill:disabled { opacity: .5; cursor: not-allowed; }
+	.route-pills { padding-top: 6px; border-top: 1px dashed var(--border); }
+	.route-done { font-size: 12px; color: var(--fg-muted); }
 
 	/* widget invito squadra (marker <!-- invite=... -->) */
 	.invite-team { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 10px; background: rgba(127,127,127,.05); }
