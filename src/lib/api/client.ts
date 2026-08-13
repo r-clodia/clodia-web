@@ -1037,6 +1037,17 @@ export async function recordRoutingFeedback(
 ): Promise<{ ok: boolean; kind: 'confirm' | 'correction'; learned: string }> {
 	return apiPost('/clodia/routing/feedback', { tier, name, ...body });
 }
+
+export async function resolveRoutingChoice(
+	tier: string,
+	name: string,
+	agent: string
+): Promise<{ ok: boolean; queued: boolean; responder: string | null; learned: boolean }> {
+	return apiPost(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/routing-choice`,
+		{ agent }
+	);
+}
 export async function getChannelEligibility(
 	tier: string,
 	name: string,
@@ -2434,4 +2445,3 @@ export async function setTopicStatus(tier: string, name: string, status: string,
 export async function setTopicDeadline(tier: string, name: string, deadline: string | null, opts: RequestOptions = {}): Promise<{ deadline: string | null }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/deadline`, { deadline }, opts);
 }
-
