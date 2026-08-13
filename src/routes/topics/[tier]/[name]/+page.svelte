@@ -943,7 +943,7 @@
 		}
 	}
 	function stripChoices(text: string): string {
-		return (text || '').replace(_CH_RE, '').replace(_INV_RE, '').replace(_JOB_RE, '').replace(_GATE_RE, '').trim();
+		return (text || '').replace(_CH_RE, '').replace(_ROUTE_RE, '').replace(_INV_RE, '').replace(_JOB_RE, '').replace(_GATE_RE, '').trim();
 	}
 	// Agenti deselezionati nel widget di invito (default: tutti selezionati).
 	let inviteSkip = new Set<string>();
