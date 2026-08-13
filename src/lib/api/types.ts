@@ -120,6 +120,12 @@ export interface Agent {
 	readonly cost_profile?: string;
 	/** Permessi tool MCP granulari (es. ["topic.*", "email.send"]). */
 	readonly tool_permissions?: ReadonlyArray<string>;
+	/** Strumenti NATIVI del runtime concessi dal seed (Read, Bash, WebSearch…),
+	 *  che non passano dal gateway. */
+	readonly native_tools?: ReadonlyArray<string> | null;
+	/** Quanto di quella dichiarazione il runtime dell'agent applica davvero.
+	 *  `unenforced` non vuoto = il seed nega strumenti che l'agent CONSERVA. */
+	readonly native_tools_info?: NativeToolsInfo;
 	/** Volume montabili dichiarati (id da volumes.yaml). */
 	readonly volumes?: ReadonlyArray<string>;
 	/** Nomi delle credenziali dedicate attese in secrets/agents/<name>/.
@@ -142,6 +148,21 @@ export interface Agent {
 
 /** Identità PKI di un agent — sottoinsieme pubblico del certificato (mai
  *  la chiave privata). Da `GET /api/agents` campo `identity`. */
+/** Gli strumenti nativi del seed e quanto ne applica il suo runtime.
+ *
+ * Esiste perché lo stesso `native_tools` si legge uguale su claude, codex e
+ * opencode ma non vale uguale: Ophelia (codex) ha cercato sul web con la stessa
+ * identica dichiarazione con cui Clodia (claude) non poteva. `unenforced` è la
+ * risposta alla domanda che il file del seed non risponde. */
+export interface NativeToolsInfo {
+	/** La dichiarazione del seed. `null` = non si pronuncia → nessuna restrizione. */
+	readonly declared?: ReadonlyArray<string> | null;
+	/** Gli strumenti che la dichiarazione toglie (NOTI − concessi). */
+	readonly denied?: ReadonlyArray<string>;
+	/** Quelli che il runtime NON toglie comunque. Vuoto = la lista conta tutta. */
+	readonly unenforced?: ReadonlyArray<string>;
+}
+
 export interface AgentIdentity {
 	readonly cert_fingerprint_sha256: string;
 	readonly not_before?: string;

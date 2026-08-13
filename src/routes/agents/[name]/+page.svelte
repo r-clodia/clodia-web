@@ -1018,6 +1018,33 @@
 					</dd>
 				{/if}
 
+				<!-- Gli strumenti NATIVI del runtime: non passano dal gateway, quindi
+				     nessun lucchetto della sezione qui sopra li riguarda. Si mostra
+				     accanto alla dichiarazione QUANTO NE VALE, perché la stessa lista
+				     su codex e su claude non vale uguale — ed è così che Ophelia ha
+				     cercato sul web mentre Clodia, con lo stesso seed, non poteva. -->
+				{#if agent.native_tools_info?.declared || agent.native_tools?.length}
+					<dt>Strumenti nativi</dt>
+					<dd>
+						<ul class="chips">
+							{#each agent.native_tools_info?.declared ?? agent.native_tools ?? [] as t}
+								<li><code>{t}</code></li>
+							{/each}
+						</ul>
+						{#if agent.native_tools_info?.unenforced?.length}
+							<p class="vnote warn">⚠ Il runtime <code>{agent.agent_sdk}</code> NON
+								applica {agent.native_tools_info.unenforced.length} di questi
+								dinieghi: l'agent conserva
+								<code>{agent.native_tools_info.unenforced.join(', ')}</code>.
+								La dichiarazione qui sopra vale solo in parte.</p>
+						{:else if agent.native_tools_info?.denied?.length}
+							<p class="vnote">Tutto il resto è tolto
+								({agent.native_tools_info.denied.length} strumenti), e questo
+								runtime lo applica.</p>
+						{/if}
+					</dd>
+				{/if}
+
 				<dt>Sandbox</dt>
 				<dd>
 					{#if agent.sandbox}
