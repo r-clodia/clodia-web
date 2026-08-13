@@ -601,10 +601,10 @@
 	}
 
 	$: agent = detail.kind === 'ok' ? detail.agent : null;
-	// I principal UMANI non sono eseguiti: niente system prompt. Il tab Logs resta
-	// (mostra le azioni dell'utente). Se eravamo sul tab system-prompt, torna a definition.
+	// Human e proxy non sono eseguiti: niente system prompt. Il tab Logs resta.
 	$: isHuman = agent?.type === 'human';
-	$: if (isHuman && tab === 'system-prompt') tab = 'definition';
+	$: isProxy = agent?.type === 'proxy';
+	$: if ((isHuman || isProxy) && tab === 'system-prompt') tab = 'definition';
 	$: events = activity.kind === 'ok' ? activity.events : [];
 	// Newest first
 	$: eventsReversed = [...events].reverse();

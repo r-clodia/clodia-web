@@ -177,7 +177,7 @@
 	// per leggere posta / inviare email / notificare).
 	function canRunJob(a: Agent): boolean {
 		if (a.type === 'super') return true;
-		if (a.type === 'human') return false;
+		if (a.type !== 'bot' && a.type !== 'normal') return false;
 		return (a.tool_permissions?.length ?? 0) > 0 || (a.capabilities?.length ?? 0) > 0;
 	}
 	$: eligibleAgents = agents.filter(canRunJob);

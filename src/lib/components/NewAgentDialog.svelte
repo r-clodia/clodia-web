@@ -23,7 +23,7 @@
 	export let agents: ReadonlyArray<Agent> = [];
 	const dispatch = createEventDispatcher<{ close: void; created: Agent }>();
 
-	type AgentType = 'normal' | 'human';
+	type AgentType = 'normal' | 'human' | 'proxy';
 	const MODEL_DEFAULTS: Record<string, string> = {
 		claude: 'claude-haiku-4-5',
 		codex: 'gpt-5-codex',
@@ -177,10 +177,12 @@
 			spec.model = model.trim();
 			spec.constitution = constitution;
 			if (parents.length) spec.parents = parents;
-		} else {
+		} else if (type === 'human') {
 			// human = principal, non eseguito: nessuna costituzione di piattaforma
 			spec.constitution = 'none';
 			spec.clearance = clearance;
+		} else {
+			spec.constitution = 'none';
 		}
 		// human: due percorsi —
 		//  (a) pubkey INCOLLATA (certifica la chiave di un utente che ha fatto
@@ -229,7 +231,11 @@
 		}
 		toastSuccess(
 			`Agente "${spec.name}" creato`,
-			type === 'human' ? 'human (principal)' : `${agentSdk} · ${model}`
+			type === 'human'
+				? 'human (principal)'
+				: type === 'proxy'
+					? 'proxy esterno'
+					: `${agentSdk} · ${model}`
 		);
 		// human: mostra il recovery (da salvare) invece di chiudere subito.
 		if (type === 'human' && recovery) {
@@ -280,14 +286,19 @@
 		<fieldset class="seg" disabled={submitting}>
 			<legend class="legend">Onboarding utente</legend>
 			<div class="seg-row">
-				<label class="seg-opt active">
+				<label class="seg-opt" class:active={type === 'human'}>
 					<input type="radio" bind:group={type} value="human" checked />
 					<span class="s-label">Human agent</span>
 					<span class="s-desc">principal umano (identità PKI), non eseguito</span>
 				</label>
+				<label class="seg-opt" class:active={type === 'proxy'}>
+					<input type="radio" bind:group={type} value="proxy" />
+					<span class="s-label">Proxy</span>
+					<span class="s-desc">sistema esterno ammesso nel topic, solo messaggi</span>
+				</label>
 			</div>
 			<p class="hint-inline">
-				Da qui si crea solo un <strong>utente umano</strong> (onboarding).
+				Da qui si crea un <strong>utente umano</strong> o un <strong>proxy esterno</strong>.
 				Gli <strong>agenti AI</strong> si installano tramite un <strong>pack</strong>
 				(sezione Packs → Importa): per un nuovo agente, crea un pack che contiene il seed.
 				I super-agent (clodia, ophelia) sono nativi.
@@ -358,7 +369,7 @@
 					</div>
 				</div>
 			{/if}
-		{:else}
+		{:else if type === 'human'}
 			<!-- human: principal umano (member). Clearance + opzionale pubkey utente. -->
 			<label class="field">
 				<span class="lbl">Clearance privacy</span>
@@ -375,6 +386,14 @@
 				<span class="lbl">Pubkey dell'utente <span class="hint-inline">(da "Request certificate"; vuoto = genera qui)</span></span>
 				<textarea bind:value={humanPubkey} rows="3" placeholder="-----BEGIN PUBLIC KEY-----…" autocomplete="off"></textarea>
 			</label>
+		{:else}
+			<div class="field">
+				<span class="lbl">Proxy esterno</span>
+				<p class="hint-inline">
+					Il proxy non ha prompt, provider, memoria o file. L'owner lo invita nei topic
+					e il sistema esterno può pubblicare messaggi e menzionare agenti.
+				</p>
+			</div>
 		{/if}
 
 		<fieldset class="seg" disabled={submitting}>

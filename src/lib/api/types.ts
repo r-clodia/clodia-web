@@ -55,7 +55,7 @@ export interface Agent {
 	readonly display_name?: string;
 	readonly description?: string;
 	/** Categoria KYA: super (clodia/ophelia, poteri pieni) | normal (worker) | human. */
-	readonly type?: 'super' | 'normal' | 'human';
+	readonly type?: 'super' | 'normal' | 'bot' | 'human' | 'proxy';
 	/** Canali di contatto derivati (email/telegram). Solo nel dettaglio agent. */
 	readonly contact_channels?: { email?: string | null; telegram?: string | null };
 	/** Riferimento alla costituzione (constitution-catalog) fusa nel system prompt

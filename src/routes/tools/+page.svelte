@@ -379,7 +379,10 @@
 		try {
 			connettori = await getConnectors('clodia');
 			agentiNoti = (await getAgents())
-				.filter((a) => (a as { type?: string }).type !== 'human')
+				.filter((a) => {
+					const type = (a as { type?: string }).type;
+					return type === 'bot' || type === 'normal' || type === 'super';
+				})
 				.map((a) => a.name)
 				.sort();
 		} catch {

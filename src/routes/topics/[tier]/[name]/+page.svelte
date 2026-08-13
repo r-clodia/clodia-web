@@ -1898,7 +1898,9 @@
 		getAgents()
 			.then((as) => {
 				allAgents = as.map((a) => a.name);
-				aiAgents = as.filter((a) => a.type !== 'human').map((a) => a.name);
+				aiAgents = as
+					.filter((a) => a.type === 'bot' || a.type === 'normal' || a.type === 'super')
+					.map((a) => a.name);
 				multiSpawn = Object.fromEntries(as.map((a) => [a.name, !!a.multi_spawn]));
 			})
 			.catch(() => {
