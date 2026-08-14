@@ -2427,8 +2427,14 @@ export async function issueTopicMcpClient(
 	           tier_consent?: boolean; base_url?: string;
 	           action?: 'revoke'; id?: string },
 	opts: RequestOptions = {}
-): Promise<{ id: string; token?: string; expires?: number; verbs?: string[];
-             config?: unknown; revoked?: boolean }> {
+): Promise<{ id: string; token?: string | null; expires?: number; verbs?: string[];
+             config?: unknown; revoked?: boolean;
+             /** `bearer` (una persona) o `assertion` (un proxy: firma con la
+              *  propria chiave e ottiene token brevi — nessun segreto statico). */
+             auth?: 'bearer' | 'assertion';
+             /** Il contratto per un proxy: dove chiedere il token, cosa firmare,
+              *  dove parlare. Sostituisce `config`, che conterrebbe un segreto. */
+             instructions?: unknown }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mcp-clients`,
 		payload, opts);
 }

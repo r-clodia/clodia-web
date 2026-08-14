@@ -1292,7 +1292,8 @@
 	 *  non chiude il pannello: appena si ricarica la pagina è perduto, ed è
 	 *  giusto così — un segreto che la schermata sa rimostrare è un segreto in
 	 *  più posti. */
-	let mcpFresh: { id: string; config: string; expires: number; verbs: string[] } | null = null;
+	let mcpFresh: { id: string; config: string; expires: number; verbs: string[];
+	                assertion: boolean; ttl: number } | null = null;
 	$: mcpTierAlto = ['SEAL-2', 'SEAL-3', 'SEAL-4'].includes(String(info?.meta?.tier ?? tier));
 
 	async function loadMcpClients() {
@@ -1329,8 +1330,17 @@
 			// pannello suppone, quelli che il gateway ha scritto dentro. Una
 			// persona ne ha dieci, un proxy quattro, e chi collega il client
 			// deve poterlo leggere senza decodificare il token.
-			mcpFresh = { id: r.id, config: JSON.stringify(r.config ?? {}, null, 2),
-			             expires: r.expires ?? 0, verbs: r.verbs ?? [] };
+			// Un proxy non riceve una configurazione da incollare: non esiste un
+			// segreto statico da consegnare. Riceve il CONTRATTO — dove chiedere
+			// il token firmando con la propria chiave, e dove poi parlare.
+			const assertion = r.auth === 'assertion';
+			// La durata la dichiara il gateway: ripeterla qui a mano vorrebbe dire
+			// che il giorno in cui cambia, il pannello mente.
+			const ttl = Number((r.instructions as { token_ttl_seconds?: number } | undefined)
+				?.token_ttl_seconds ?? 0);
+			mcpFresh = { id: r.id,
+			             config: JSON.stringify((assertion ? r.instructions : r.config) ?? {}, null, 2),
+			             expires: r.expires ?? 0, verbs: r.verbs ?? [], assertion, ttl };
 			await loadMcpClients();
 		} catch (e) {
 			mcpErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
