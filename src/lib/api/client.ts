@@ -2399,6 +2399,11 @@ export async function clearTopicLogo(
 export interface McpClientGrant {
 	id: string;
 	principal: string;
+	/** Natura del principal: `human` (una persona) o `proxy` (un sistema terzo).
+	 *  Decide quanti verbi porta il token — dieci contro quattro — quindi si
+	 *  legge nell'elenco senza dover aprire il seed. Assente sui grant coniati
+	 *  prima del 14 ago 2026: allora esisteva solo il caso umano. */
+	principal_kind?: string;
 	provider: string;
 	tier: string;
 	topic: string;
