@@ -784,6 +784,11 @@
 	// all'umano chi deve prendere il turno. Il click NON invia una chat normale:
 	// risolve il routing e salva l'esempio supervisionato.
 	const _ROUTE_RE = /<!--\s*routing-choices\s*=(.*?)-->/i;
+	// Companion marker emitted next to the choices one: it binds the dialog to the
+	// turn it is about (owner + source message id). The UI never reads it — the
+	// backend does, when resolving the choice — but it MUST be stripped before
+	// rendering, exactly like the others.
+	const _ROUTEREQ_RE = /<!--\s*routing-request\s*=.*?-->/i;
 	function msgRoutingChoices(text: string): string[] | null {
 		const m = (text || '').match(_ROUTE_RE);
 		if (!m) return null;
@@ -942,8 +947,21 @@
 			gateDeciding = false;
 		}
 	}
+	// Every widget marker must be listed here. `renderMarkdown` ESCAPES `<`, `>`
+	// and `&` before setting innerHTML, so an HTML comment left in the text is not
+	// invisible the way it would be in a browser-parsed document: it is printed
+	// verbatim. A marker that drives a widget but is missing from this list shows
+	// up twice — once as the widget, once as raw markup underneath it, which is
+	// how the two routing markers were found.
 	function stripChoices(text: string): string {
-		return (text || '').replace(_CH_RE, '').replace(_INV_RE, '').replace(_JOB_RE, '').replace(_GATE_RE, '').trim();
+		return (text || '')
+			.replace(_CH_RE, '')
+			.replace(_INV_RE, '')
+			.replace(_JOB_RE, '')
+			.replace(_GATE_RE, '')
+			.replace(_ROUTE_RE, '')
+			.replace(_ROUTEREQ_RE, '')
+			.trim();
 	}
 	// Agenti deselezionati nel widget di invito (default: tutti selezionati).
 	let inviteSkip = new Set<string>();
