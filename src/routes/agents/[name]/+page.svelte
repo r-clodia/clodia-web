@@ -716,7 +716,7 @@
 			<span class="badge">{memories.files.length}</span>
 		{/if}
 	</button>
-	{#if !isHuman}
+	{#if !isHuman && !isProxy}
 		<button
 			role="tab"
 			aria-selected={tab === 'system-prompt'}
@@ -772,7 +772,13 @@
 					<dd><code>{agent.type}</code></dd>
 				{/if}
 
-				{#if agent.contact_channels && (agent.contact_channels.email || agent.contact_channels.telegram)}
+				<!-- Un proxy non si contatta: è il sistema esterno che entra qui, non
+				     un destinatario che si raggiunge. Il campo si mostra comunque, con
+				     `n/a`, perché un'assenza dichiarata si legge e una riga mancante no. -->
+				{#if isProxy}
+					<dt>Canali di contatto</dt>
+					<dd><span class="muted-note">n/a</span></dd>
+				{:else if agent.contact_channels && (agent.contact_channels.email || agent.contact_channels.telegram)}
 					<dt>Canali di contatto</dt>
 					<dd>
 						{#if agent.contact_channels.email}
@@ -806,22 +812,34 @@
 					</dd>
 				{/if}
 
+				<!-- Niente runtime su un proxy: nessun modello, nessun SDK, nessuno
+				     stack. Non è una configurazione mancante da riempire più tardi — è
+				     la classe (A11), e il validatore del seed rifiuta di scriverli. -->
 				<dt>Model</dt>
 				<dd>
-					<!-- Modello dello stack EFFETTIVO (1 seed → N stack, issue#93): con
-					     più stack può differire dal model dichiarato in testa al seed. -->
-					{agent.effective_model || agent.model || '—'}
-					{#if agent.effective_model && agent.model && agent.effective_model !== agent.model}
-						<span class="hint-inline">(stack in uso — dichiarato: {agent.model})</span>
+					{#if isProxy}
+						<span class="muted-note">nessuno</span>
+					{:else}
+						<!-- Modello dello stack EFFETTIVO (1 seed → N stack, issue#93): con
+						     più stack può differire dal model dichiarato in testa al seed. -->
+						{agent.effective_model || agent.model || '—'}
+						{#if agent.effective_model && agent.model && agent.effective_model !== agent.model}
+							<span class="hint-inline">(stack in uso — dichiarato: {agent.model})</span>
+						{/if}
 					{/if}
 				</dd>
 
-				{#if agent.agent_sdk !== undefined}
+				{#if isProxy}
+					<dt>Agent SDK</dt>
+					<dd><span class="muted-note">nessuno</span></dd>
+					<dt>Stack <span class="hint-inline">(modello · provider)</span></dt>
+					<dd><span class="muted-note">nessuno</span></dd>
+				{:else if agent.agent_sdk !== undefined}
 					<dt>Agent SDK</dt>
 					<dd><code>{agent.agent_sdk ?? '—'}</code></dd>
 				{/if}
 
-				{#if agent.provider_options && agent.provider_options.length}
+				{#if !isProxy && agent.provider_options && agent.provider_options.length}
 					<dt>Stack <span class="hint-inline">(modello · provider)</span></dt>
 					<dd>
 						<div class="prov-picker">
@@ -1108,7 +1126,13 @@
 			{#if isAdmin}
 				<section class="connectors">
 					<h3>Connettori <span class="hint-inline">(delega per-agent)</span></h3>
-					{#if isSuperAgent(agent)}
+					{#if isProxy}
+						<!-- Un connettore concede tool che ESCONO dallo scope: darne uno a
+						     un proxy ne farebbe la seconda gamba della trifecta, seduta
+						     accanto a contenuto che non ha scritto. Non è "nessuno per
+						     ora": è nessuno. -->
+						<p class="conn-note">Nessuno: un proxy parla nel topic e nient'altro — non gli si delegano connettori.</p>
+					{:else if isSuperAgent(agent)}
 						<p class="conn-note">È un super-agent: ha accesso a <strong>tutti</strong> i connettori.</p>
 					{:else if connectors.length === 0}
 						<p class="conn-note">Nessun connettore nel vault. Connetti email o Trello dalla sezione Integrazioni.</p>
