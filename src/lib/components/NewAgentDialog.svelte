@@ -43,6 +43,12 @@
 	// di un utente che ha fatto "Request certificate"; se vuota, si genera qui).
 	let clearance: 'SEAL-0' | 'SEAL-1' | 'SEAL-2' | 'SEAL-3' | 'SEAL-4' = 'SEAL-0';
 	let humanPubkey = '';
+	// proxy: la pubkey del sistema esterno. È la sua IDENTITÀ — con quella il
+	// gateway verifica le asserzioni che il proxy firma per ottenere i token.
+	// Incollata = la privkey è già dove deve stare (dal sistema esterno) e non
+	// passa mai di qui; vuota = la generiamo noi e la consegniamo una volta,
+	// che è comodo ma fa transitare da questo browser una chiave altrui.
+	let proxyPubkey = '';
 	let submitting = false;
 	let submitError: string | null = null;
 
@@ -80,21 +86,37 @@
 
 	function downloadRecovery() {
 		const blob = new Blob(
-			['CLODIA AGENCY — ADMIN RECOVERY KEY\n',
-			 'Conserva OFFLINE e al sicuro: è l’unica copia della chiave privata\n',
-			 'di questo admin. Serve per accedere da un nuovo dispositivo.\n\n',
-			 humanRecovery, '\n'],
+			type === 'proxy'
+				? ['CLODIA AGENCY — PROXY PRIVATE KEY\n',
+				   `proxy: ${name.trim()}\n\n`,
+				   'Consegnala all’operatore del sistema esterno e conservala OFFLINE.\n',
+				   'È l’identità del proxy: con questa firma le asserzioni con cui\n',
+				   'ottiene i token. Non è più rileggibile da nessuna parte.\n\n',
+				   humanRecovery, '\n']
+				: ['CLODIA AGENCY — ADMIN RECOVERY KEY\n',
+				   'Conserva OFFLINE e al sicuro: è l’unica copia della chiave privata\n',
+				   'di questo admin. Serve per accedere da un nuovo dispositivo.\n\n',
+				   humanRecovery, '\n'],
 			{ type: 'text/plain' }
 		);
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
-		a.download = `clodia-${name.trim() || 'admin'}-recovery.txt`;
+		a.download = type === 'proxy'
+			? `clodia-proxy-${name.trim() || 'proxy'}.key.txt`
+			: `clodia-${name.trim() || 'admin'}-recovery.txt`;
 		a.click();
 		URL.revokeObjectURL(url);
 	}
 
 	function recoveryDone() {
+		// Un PROXY non reclama l'istanza: ricaricare butterebbe via il contesto
+		// dell'admin che lo sta creando per nessuna ragione. Si chiude e basta.
+		if (type === 'proxy') {
+			dispatch('close');
+			setTimeout(reset, 200);
+			return;
+		}
 		// L'istanza è ora reclamata (primo admin): ricarica per entrare dal flusso normale.
 		location.reload();
 	}
@@ -141,6 +163,7 @@
 		parents = [];
 		clearance = 'SEAL-0';
 		humanPubkey = '';
+		proxyPubkey = '';
 		submitting = false;
 		submitError = null;
 		pfpPrompt = '';
@@ -156,6 +179,10 @@
 		setTimeout(reset, 200);
 	}
 
+	// Derivato e non `type === 'proxy'` inline: un tag `{type …}` viene letto dal
+	// parser di Svelte come una DICHIARAZIONE TypeScript e il template non
+	// compila. Il nome dice comunque meglio cosa si sta chiedendo.
+	$: isProxy = type === 'proxy';
 	$: nameValid = /^[a-z][a-z0-9_-]{1,30}$/.test(name);
 	$: canSubmit = !submitting && nameValid && description.trim().length > 0;
 
@@ -189,6 +216,35 @@
 		//      "Request certificate"): nessuna generazione, nessun recovery da mostrare;
 		//  (b) pubkey vuota: genera l'identità qui (es. crei tu un nuovo umano).
 		let recovery = '';
+		if (type === 'proxy') {
+			const pasted = proxyPubkey.trim();
+			if (pasted) {
+				if (!pasted.includes('BEGIN PUBLIC KEY')) {
+					submitting = false;
+					phase = 'idle';
+					submitError = 'Pubkey non valida (attesa PEM "BEGIN PUBLIC KEY").';
+					return;
+				}
+				spec.pubkey = pasted;
+			} else {
+				if (typeof crypto?.subtle?.generateKey !== 'function') {
+					submitting = false;
+					phase = 'idle';
+					submitError = 'WebCrypto non disponibile: incolla la pubkey generata dal sistema esterno.';
+					return;
+				}
+				try {
+					const id = await genIdentity();
+					spec.pubkey = id.pubkeyPem;
+					recovery = id.recovery;
+				} catch (err) {
+					submitting = false;
+					phase = 'idle';
+					submitError = err instanceof Error ? err.message : String(err);
+					return;
+				}
+			}
+		}
 		if (type === 'human') {
 			const pasted = humanPubkey.trim();
 			if (pasted) {
@@ -237,8 +293,10 @@
 					? 'proxy esterno'
 					: `${agentSdk} · ${model}`
 		);
-		// human: mostra il recovery (da salvare) invece di chiudere subito.
-		if (type === 'human' && recovery) {
+		// La chiave generata QUI va consegnata una volta sola: a un admin
+		// come recovery, all'operatore del proxy come identità del suo
+		// sistema. In entrambi i casi non è più rileggibile da nessuna parte.
+		if (recovery) {
 			humanRecovery = recovery;
 			phase = 'recovery';
 			submitting = false;
@@ -270,15 +328,26 @@
 </script>
 
 <Modal {open} dismissable={!submitting} maxWidth={560} on:close={onClose}>
-	<h2 slot="title">{phase === 'recovery' ? 'Salva il recovery' : 'Nuovo agente'}</h2>
+	<h2 slot="title">{phase === 'recovery'
+		? (isProxy ? 'Consegna la chiave del proxy' : 'Salva il recovery')
+		: 'Nuovo agente'}</h2>
 
 	{#if phase === 'recovery'}
 		<div class="recovery-panel">
-			<div class="ok-badge">✓ Admin creato</div>
-			<p class="warn">
-				<strong>Salva subito il recovery.</strong> È l’unica copia della chiave privata
-				di questo admin: senza, non potrai accedere da un nuovo dispositivo.
-			</p>
+			<div class="ok-badge">✓ {isProxy ? 'Proxy creato' : 'Admin creato'}</div>
+			{#if isProxy}
+				<p class="warn">
+					<strong>Consegna questa chiave all’operatore del sistema esterno.</strong>
+					È l’identità del proxy: con questa firma le asserzioni con cui ottiene i
+					suoi token a breve durata. Non è più rileggibile da nessuna parte — se si
+					perde, si ricrea il proxy con una chiave nuova.
+				</p>
+			{:else}
+				<p class="warn">
+					<strong>Salva subito il recovery.</strong> È l’unica copia della chiave privata
+					di questo admin: senza, non potrai accedere da un nuovo dispositivo.
+				</p>
+			{/if}
 			<textarea readonly rows="5" class="recovery-text">{humanRecovery}</textarea>
 		</div>
 	{:else}
@@ -390,10 +459,20 @@
 			<div class="field">
 				<span class="lbl">Proxy esterno</span>
 				<p class="hint-inline">
-					Il proxy non ha prompt, provider, memoria o file. L'owner lo invita nei topic
-					e il sistema esterno può pubblicare messaggi e menzionare agenti.
+					Il proxy non ha prompt, provider, memoria o file. L'owner lo invita nei topic;
+					da lì il sistema esterno <strong>parla e legge il canale</strong>, e nient'altro.
 				</p>
 			</div>
+			<label class="field">
+				<span class="lbl">Pubkey del sistema esterno <span class="hint-inline">(PEM ed25519; vuoto = genera qui)</span></span>
+				<textarea bind:value={proxyPubkey} rows="3" placeholder="-----BEGIN PUBLIC KEY-----…" autocomplete="off"></textarea>
+				<span class="hint-inline">
+					È l’<strong>identità</strong> del proxy: con la privkey corrispondente firma le
+					asserzioni con cui ottiene token a breve durata. Generala nel sistema esterno —
+					così la privkey non passa mai da qui — oppure lasciala vuota e te la
+					consegniamo una volta sola.
+				</span>
+			</label>
 		{/if}
 
 		<fieldset class="seg" disabled={submitting}>
@@ -454,7 +533,7 @@
 
 	<svelte:fragment slot="actions">
 		{#if phase === 'recovery'}
-			<button type="button" class="btn-secondary" on:click={downloadRecovery}>⬇ Scarica recovery</button>
+			<button type="button" class="btn-secondary" on:click={downloadRecovery}>⬇ Scarica la chiave</button>
 			<button type="button" class="btn-primary" on:click={recoveryDone}>Ho salvato, continua</button>
 		{:else}
 			<button type="button" class="btn-secondary" on:click={onClose} disabled={submitting}>Annulla</button>

@@ -1292,7 +1292,8 @@
 	 *  non chiude il pannello: appena si ricarica la pagina è perduto, ed è
 	 *  giusto così — un segreto che la schermata sa rimostrare è un segreto in
 	 *  più posti. */
-	let mcpFresh: { id: string; config: string; expires: number } | null = null;
+	let mcpFresh: { id: string; config: string; expires: number; verbs: string[];
+	                assertion: boolean; ttl: number } | null = null;
 	$: mcpTierAlto = ['SEAL-2', 'SEAL-3', 'SEAL-4'].includes(String(info?.meta?.tier ?? tier));
 
 	async function loadMcpClients() {
@@ -1325,8 +1326,21 @@
 				tier_consent: mcpConsent,
 				base_url: window.location.origin
 			});
-			mcpFresh = { id: r.id, config: JSON.stringify(r.config ?? {}, null, 2),
-			             expires: r.expires ?? 0 };
+			// I verbi EFFETTIVI del token appena coniato: non quelli che il
+			// pannello suppone, quelli che il gateway ha scritto dentro. Una
+			// persona ne ha dieci, un proxy quattro, e chi collega il client
+			// deve poterlo leggere senza decodificare il token.
+			// Un proxy non riceve una configurazione da incollare: non esiste un
+			// segreto statico da consegnare. Riceve il CONTRATTO — dove chiedere
+			// il token firmando con la propria chiave, e dove poi parlare.
+			const assertion = r.auth === 'assertion';
+			// La durata la dichiara il gateway: ripeterla qui a mano vorrebbe dire
+			// che il giorno in cui cambia, il pannello mente.
+			const ttl = Number((r.instructions as { token_ttl_seconds?: number } | undefined)
+				?.token_ttl_seconds ?? 0);
+			mcpFresh = { id: r.id,
+			             config: JSON.stringify((assertion ? r.instructions : r.config) ?? {}, null, 2),
+			             expires: r.expires ?? 0, verbs: r.verbs ?? [], assertion, ttl };
 			await loadMcpClients();
 		} catch (e) {
 			mcpErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
@@ -2898,6 +2912,11 @@
 							se si perde, se ne conia un altro e si revoca questo.
 						</p>
 						<pre class="mcp-config">{mcpFresh.config}</pre>
+						{#if mcpFresh.verbs.length}
+							<p class="meta-note">
+								Porta {mcpFresh.verbs.length} verbi: <code>{mcpFresh.verbs.join(', ')}</code>.
+							</p>
+						{/if}
 						<p class="meta-note">Scade fra {giorniAllaScadenza(mcpFresh.expires)}.</p>
 						<div class="remote-actions">
 							<button type="button" on:click={() => navigator.clipboard?.writeText(mcpFresh?.config ?? '')}>copia</button>
@@ -2906,10 +2925,17 @@
 					{:else if mcpOpen}
 						<form class="tg-form" on:submit|preventDefault={issueMcp}>
 							<input class="remote-url-input" type="text" bind:value={mcpPrincipal}
-								placeholder="utente su Clodia (es. giovanni)"
+								placeholder="chi su Clodia (persona o proxy)"
 								autocomplete="off" spellcheck="false" />
+							<p class="meta-note">
+								Vale anche per un <b>proxy</b>: è così che un sistema terzo entra in
+								questa stanza. Il token che riceve porta però solo i quattro verbi
+								con cui <b>parla e legge il canale</b> — niente file, niente ricerca,
+								niente scrittura. La differenza la fa la natura del principal, non
+								questo modulo.
+							</p>
 							<label class="tg-mode">
-								<span>Su cosa gira</span>
+								<span>Su cosa gira <span class="muted">(o quale sistema, se è un proxy)</span></span>
 								<select bind:value={mcpProvider}>
 									<option value="anthropic-api">Claude Code (Anthropic)</option>
 									<option value="claude-pro-max">Claude Pro/Max</option>
@@ -2953,6 +2979,9 @@
 								{#each mcpGrants as g}
 									<li class:expired={g.expired}>
 										<span class="mcp-who">{g.principal}</span>
+										{#if g.principal_kind === 'proxy'}
+											<span class="muted" title="sistema terzo: parla e legge il canale, nient'altro">· proxy</span>
+										{/if}
 										<span class="muted">{g.provider || 'provider non dichiarato'}</span>
 										<span class="muted">· {g.expired ? 'scaduto' : giorniAllaScadenza(g.expires)}</span>
 										<button type="button" class="link-btn danger"

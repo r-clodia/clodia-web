@@ -2399,6 +2399,11 @@ export async function clearTopicLogo(
 export interface McpClientGrant {
 	id: string;
 	principal: string;
+	/** Natura del principal: `human` (una persona) o `proxy` (un sistema terzo).
+	 *  Decide quanti verbi porta il token — dieci contro quattro — quindi si
+	 *  legge nell'elenco senza dover aprire il seed. Assente sui grant coniati
+	 *  prima del 14 ago 2026: allora esisteva solo il caso umano. */
+	principal_kind?: string;
 	provider: string;
 	tier: string;
 	topic: string;
@@ -2422,8 +2427,14 @@ export async function issueTopicMcpClient(
 	           tier_consent?: boolean; base_url?: string;
 	           action?: 'revoke'; id?: string },
 	opts: RequestOptions = {}
-): Promise<{ id: string; token?: string; expires?: number; verbs?: string[];
-             config?: unknown; revoked?: boolean }> {
+): Promise<{ id: string; token?: string | null; expires?: number; verbs?: string[];
+             config?: unknown; revoked?: boolean;
+             /** `bearer` (una persona) o `assertion` (un proxy: firma con la
+              *  propria chiave e ottiene token brevi — nessun segreto statico). */
+             auth?: 'bearer' | 'assertion';
+             /** Il contratto per un proxy: dove chiedere il token, cosa firmare,
+              *  dove parlare. Sostituisce `config`, che conterrebbe un segreto. */
+             instructions?: unknown }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mcp-clients`,
 		payload, opts);
 }
