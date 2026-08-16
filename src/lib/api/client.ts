@@ -1252,7 +1252,14 @@ export function apiSSE(
 		return () => {};
 	}
 
-	const url = joinUrl(path);
+	// `EventSource` non sa mandare header, quindi il token viaggia in query.
+	// Non è una scorciatoia: senza questa via l'endpoint resterebbe aperto —
+	// ed è com'era, mentre gli eventi trasportavano il testo dei messaggi.
+	const tok = authToken();
+	const base = joinUrl(path);
+	const url = tok
+		? `${base}${base.includes('?') ? '&' : '?'}token=${encodeURIComponent(tok)}`
+		: base;
 	const es = new EventSource(url, { withCredentials: false });
 
 	const wrap = (event: string) => (e: MessageEvent) => {
