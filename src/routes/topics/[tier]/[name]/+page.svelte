@@ -1439,6 +1439,14 @@
 	// Partecipanti mostrati: nascondi i non idonei al tier (eligible=false). I super
 	// sotto tier restano (eligible=true) e li marchiamo con ⚠️ via eligibility[p].warn.
 	$: shownParticipants = participants.filter((p) => eligibility[p]?.eligible ?? true);
+	// Istanze vive per partecipante (A13): un seed multi-spawn è un super-nodo e
+	// ogni istanza ha la sua riga. Mostriamo le righe SOLO quando c'è davvero da
+	// distinguere — con una sola istanza senza ordinale il seed basta, e una riga
+	// in più direbbe soltanto quello che il nome già dice.
+	$: instancesOf = (p: string) => {
+		const righe = info?.participant_instances?.[p] ?? [];
+		return righe.length && righe.some((r) => r.ordinal !== null) ? righe : [];
+	};
 
 	// Niente indicatore trifecta accanto ai partecipanti — di proposito.
 	//
@@ -2593,6 +2601,17 @@
 									<span class="part-warn" title="Provider sotto il tier del topic: attiva un provider con SEAL ≥ tier">⚠️</span>
 								{/if}
 							</span>
+							{#if instancesOf(p).length}
+								<ul class="spawn-rows">
+									{#each instancesOf(p) as inst}
+										<li class="spawn-row" title={inst.state === 'working' ? 'turno in corso' : 'in attesa'}>
+											<span class="spawn-dot" class:working={inst.state === 'working'}></span>
+											<span class="spawn-ord">#{inst.ordinal}</span>
+											<span class="spawn-state">{inst.state === 'working' ? 'al lavoro' : 'in attesa'}</span>
+										</li>
+									{/each}
+								</ul>
+							{/if}
 							{#if isOwner && p !== info?.meta?.owner}
 								<!-- Il ruolo lo decide l'owner, qui, accanto a chi riguarda.
 								     Un contributor scrive nella stanza; un reader legge e
@@ -3690,6 +3709,49 @@
 	/* Termometro di contesto: occupazione della finestra del modello dell'agente. */
 	.ctx-bar { display: block; width: 84px; height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
 	.ctx-fill { display: block; height: 100%; border-radius: 2px; transition: width .3s ease, background .3s ease; }
+	/* Super-nodo multi-spawn (A13): il seed, e sotto una riga per istanza con
+	   ordinale e stato. Rientrate sotto l'avatar così si legge la gerarchia
+	   senza bisogno di una linea di collegamento. */
+	.spawn-rows {
+		list-style: none;
+		margin: 2px 0 4px 30px;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.spawn-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 11px;
+		opacity: 0.75;
+	}
+	.spawn-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: currentColor;
+		opacity: 0.35;
+		flex: none;
+	}
+	/* `working` è l'unico stato che si accende: una riga che pulsa quando NON
+	   sta lavorando renderebbe il segnale inutile proprio quando serve. */
+	.spawn-dot.working {
+		opacity: 1;
+		background: #22c55e;
+		animation: spawn-pulse 1.6s ease-in-out infinite;
+	}
+	@keyframes spawn-pulse {
+		0%, 100% { transform: scale(1); }
+		50% { transform: scale(1.35); }
+	}
+	.spawn-ord {
+		font-variant-numeric: tabular-nums;
+		font-weight: 600;
+	}
+	.spawn-state { opacity: 0.8; }
+
 	.part-warn { flex-shrink: 0; font-size: 12px; cursor: help; margin-left: 2px; }
 	/* Capacità dell'agente, non un punteggio: nessun bordo a pillola, che
 	   leggerebbe come un valore. Sono icone accanto al nome. */
