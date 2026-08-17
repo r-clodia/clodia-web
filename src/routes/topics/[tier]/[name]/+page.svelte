@@ -2049,7 +2049,10 @@
 				size={22} rev={logoRev} />
 			<h1>#{info?.meta?.title || name}</h1>
 			<span class="tier">{info?.tier || tier}</span>
-			<TrifectaBadge profile={info?.trifecta} taint={info?.taint} />
+			<TrifectaBadge profile={info?.trifecta} taint={info?.taint}
+				canReset={isOwner}
+				onReset={doResetTrifecta}
+				onUndoReset={doUndoResetTrifecta} />
 			<button type="button" class="reset-context" on:click={resetContext} disabled={resetting || sending}>
 				{resetting ? 'Reset…' : 'Reset contesto'}
 			</button>
