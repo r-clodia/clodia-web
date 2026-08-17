@@ -20,9 +20,9 @@
 	 *  azzerare — gli altri due sono proprietà della composizione. */
 	/** L'owner può azzerare: il bottone appare solo a lui. */
 	export let canReset = false;
-	/** Chiamato al click: la pagina fa la POST e ricarica il canale. */
+	/** Chiamato al click: la pagina fa la POST e ricarica il canale. Ripetibile —
+	 *  ogni pressione ribasa allo stato di quel momento. */
 	export let onReset: (() => void) | null = null;
-	export let onUndoReset: (() => void) | null = null;
 	export let taint: { tainted: boolean; since?: number | null;
 		sources?: { kind?: string; detail?: string; agent?: string }[] } | null = null;
 
@@ -171,7 +171,7 @@
 			{/if}
 			{#if resetBy}
 				<p class="note reset-note">
-					Azzerato da <strong>{resetBy}</strong>{#if resetAt} il {new Date(resetAt).toLocaleString()}{/if}{#if scoreBefore != null} — prima era {scoreBefore}/3{/if}.
+					Ultima approvazione di <strong>{resetBy}</strong>{#if resetAt} il {new Date(resetAt).toLocaleString()}{/if}{#if scoreBefore != null} — prima era {scoreBefore}/3{/if}.
 					<br />Decade da sé se cambia la composizione del canale. I gate NON sono
 					toccati: se il canale è contaminato, l'uscita chiede comunque.
 				</p>
@@ -181,18 +181,19 @@
 	<!-- Il bottone sta FUORI dal badge: un <button> dentro un <button> è HTML non
 	     valido e il browser lo spost. Accanto, e non dentro il tooltip, ha anche
 	     un vantaggio: si raggiunge senza dover tenere aperto un tooltip. -->
+	<!-- SEMPRE «reset», mai «annulla»: ribasare è un'azione RIPETIBILE, non uno
+	     stato acceso/spento. L'owner deve poter approvare lo stato corrente ogni
+	     volta che lo ritiene — dopo aver guardato cosa è entrato, dopo aver
+	     caricato un file che si aspettava, dopo aver collegato un remote. Un
+	     bottone che si trasforma in «annulla» dopo il primo uso toglie proprio
+	     l'operazione che serve di più: la seconda. -->
 	{#if canReset}
-		{#if resetBy}
-			<button type="button" class="reset-btn" on:click={() => onUndoReset?.()}
-				title="Rimuove l'azzeramento: il punteggio torna a parlare da sé.">
-				annulla reset
-			</button>
-		{:else}
-			<button type="button" class="reset-btn" on:click={() => onReset?.()}
-				title="Porta il punteggio a 0/3 assumendotene la responsabilità. Resta registrato con il tuo nome, decade se cambia la composizione del canale, e NON spegne i gate.">
-				reset trifecta
-			</button>
-		{/if}
+		<button type="button" class="reset-btn" on:click={() => onReset?.()}
+			title={resetBy
+				? `Riporta la misura a zero da adesso, approvando lo stato corrente. L'ultima approvazione è di ${resetBy}. Da qui si riparte a misurare: un nuovo ingresso o un nuovo dato riaccendono le scimmiette.`
+				: "Approva lo stato corrente come sicuro: la misura riparte da zero e da qui in avanti conta le contaminazioni nuove. Resta registrato con il tuo nome e NON spegne i gate."}>
+			reset trifecta
+		</button>
 	{/if}
 {/if}
 

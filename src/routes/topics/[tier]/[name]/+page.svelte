@@ -19,7 +19,6 @@
 		getAgents,
 		getChannel,
 		resetChannelTrifecta,
-		undoChannelTrifectaReset,
 		getChannelMessages,
 		getChannelMessagesAndPresence,
 		type PresenceState,
@@ -1454,16 +1453,6 @@
 			loadErr = `Reset trifecta non riuscito: ${(e as Error).message}`;
 		}
 	}
-	async function doUndoResetTrifecta() {
-		if (!tier || !name) return;
-		try {
-			await undoChannelTrifectaReset(tier, name);
-			await loadAll(tier, name);
-		} catch (e) {
-			loadErr = `Annullamento non riuscito: ${(e as Error).message}`;
-		}
-	}
-
 	// Istanze vive per partecipante (A13): un seed multi-spawn è un super-nodo e
 	// ogni istanza ha la sua riga. Mostriamo le righe SOLO quando c'è davvero da
 	// distinguere — con una sola istanza senza ordinale il seed basta, e una riga
@@ -2051,8 +2040,7 @@
 			<span class="tier">{info?.tier || tier}</span>
 			<TrifectaBadge profile={info?.trifecta} taint={info?.taint}
 				canReset={isOwner}
-				onReset={doResetTrifecta}
-				onUndoReset={doUndoResetTrifecta} />
+				onReset={doResetTrifecta} />
 			<button type="button" class="reset-context" on:click={resetContext} disabled={resetting || sending}>
 				{resetting ? 'Reset…' : 'Reset contesto'}
 			</button>
