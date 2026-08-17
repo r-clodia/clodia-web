@@ -720,6 +720,25 @@ export async function getEgressWhitelist(opts: RequestOptions = {}): Promise<{ m
 	return apiGet('/api/observe/whitelist', opts);
 }
 
+/**
+ * Aggiunge o rimuove a mano una voce dalle liste (solo admin).
+ *
+ * `direction`: `egress` = dove si può scrivere · `ingress` = da dove si può
+ * leggere senza contaminare. `action`: `allow` | `revoke`.
+ *
+ * La validazione sta nel gateway e il MOTIVO del rifiuto torna nel messaggio
+ * d'errore: va mostrato così com'è, perché è l'unico modo che l'owner ha di
+ * sapere come correggere la voce.
+ */
+export async function editEgressWhitelist(
+	direction: 'egress' | 'ingress',
+	action: 'allow' | 'revoke',
+	uri: string,
+	opts: RequestOptions = {}
+): Promise<{ ok?: boolean; n?: number }> {
+	return apiPost(`/api/observe/whitelist/${direction}/${action}`, { uri }, opts);
+}
+
 export interface TrifectaProfile {
 	/** 0–3 sulla CHIUSURA (partecipanti + agenti invitabili da chi è dentro). */
 	score: number;
