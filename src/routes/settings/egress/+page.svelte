@@ -20,15 +20,23 @@
 	 *   ricordare a che pagina si era) ma «mostra altri N», che con un filtro
 	 *   attivo non serve quasi mai.
 	 *
-	 * SOLA LETTURA, come il pannello che sostituisce, e per la stessa ragione:
-	 * aggiungere una destinazione è più privilegiato del singolo invio, perché la
-	 * rende silenziosa per sempre. Il posto giusto per concederla è il dialog che
-	 * compare quando serve, dove l'informazione è completa («@clodia vuole
-	 * scrivere a X»). Un campo di testo in una pagina di impostazioni è il posto
-	 * in cui si incolla una lista senza guardarla.
+	 * Da sola lettura a scrivibile — «devo poter inserire un egress o ingress anche
+	 * a mano», stesso giorno. La prima versione di questa pagina non lo permetteva,
+	 * col ragionamento che il dialog del gate è il posto giusto per concedere una
+	 * destinazione perché lì l'informazione è completa («@clodia vuole scrivere a
+	 * X»). Resta vero per le destinazioni che chiede un agente, e resta il percorso
+	 * normale. Non copre il caso opposto: quando l'owner sa GIÀ cosa censire, le 48
+	 * fonti di un digest non passano da 48 dialog, e senza un campo qui l'unica
+	 * alternativa era scrivere il file di configurazione a mano — cioè fuori da ogni
+	 * controllo e da ogni traccia.
+	 *
+	 * Le modifiche sono riservate agli admin (il controllo vero è nell'endpoint, qui
+	 * si nascondono solo i comandi) e la validazione la fa il gateway: il motivo del
+	 * rifiuto arriva da lì e si mostra così com'è.
 	 */
 	import { onMount } from 'svelte';
-	import { getEgressWhitelist } from '$lib/api/client';
+	import { getEgressWhitelist, editEgressWhitelist } from '$lib/api/client';
+	import { isAdmin } from '$lib/stores/capabilities';
 
 	let mode = 'unknown';
 	let egressAllow: string[] = [];
@@ -78,6 +86,65 @@
 	// Cambiare scheda o filtro riparte dall'inizio: tenere lo scorrimento di una
 	// lista diversa fa sembrare che manchino delle voci.
 	$: void [tab, q, schema], (mostrati = PASSO);
+	// Una conferma pendente non sopravvive al cambio di scheda: la riga sotto il
+	// puntatore non sarebbe più quella per cui si era chiesto.
+	$: void tab, (daConfermare = '');
+
+	/* --- inserimento e rimozione a mano (solo admin) --- */
+	let nuova = '';
+	let inCorso = false;
+	let errEdit = '';
+	let esito = '';
+	/** La riga in attesa di conferma. Rimuovere una fonte fidata la fa tornare a
+	 *  contaminare: un secondo click è poco, ma è più di zero, e un `confirm()`
+	 *  nativo in una lista di trecento righe si clicca via senza leggerlo. */
+	let daConfermare = '';
+
+	async function ricarica() {
+		const r = await getEgressWhitelist();
+		mode = r.mode ?? 'unknown';
+		egressAllow = r.egress_allow ?? [];
+		sourceAllow = r.source_allow ?? [];
+	}
+
+	async function aggiungi() {
+		const uri = nuova.trim();
+		if (!uri || inCorso) return;
+		inCorso = true;
+		errEdit = '';
+		esito = '';
+		try {
+			await editEgressWhitelist(tab, 'allow', uri);
+			await ricarica();
+			// Cercare la voce appena inserita: con una lista lunga è l'unico modo di
+			// vedere che c'è, e di vedere in che FORMA il gateway l'ha scritta (un
+			// indirizzo viene messo in minuscolo, un URL canonicalizzato).
+			q = uri;
+			nuova = '';
+			esito = 'aggiunta';
+		} catch (e) {
+			errEdit = e instanceof Error ? e.message : String(e);
+		} finally {
+			inCorso = false;
+		}
+	}
+
+	async function rimuovi(uri: string) {
+		if (inCorso) return;
+		inCorso = true;
+		errEdit = '';
+		esito = '';
+		try {
+			await editEgressWhitelist(tab, 'revoke', uri);
+			await ricarica();
+			esito = 'rimossa';
+		} catch (e) {
+			errEdit = e instanceof Error ? e.message : String(e);
+		} finally {
+			inCorso = false;
+			daConfermare = '';
+		}
+	}
 
 	onMount(async () => {
 		try {
@@ -129,6 +196,27 @@
 			{/if}
 		</p>
 
+		{#if $isAdmin}
+			<form class="aggiungi" on:submit|preventDefault={aggiungi}>
+				<input
+					bind:value={nuova}
+					disabled={inCorso}
+					placeholder={tab === 'egress'
+						? 'mailto:qualcuno@esempio.it · https://host/percorso'
+						: 'https://fonte.esempio.eu/'}
+					aria-label={tab === 'egress' ? 'nuova destinazione' : 'nuova fonte'}
+				/>
+				<button type="submit" disabled={inCorso || !nuova.trim()}>
+					{inCorso ? '…' : tab === 'egress' ? 'censisci destinazione' : 'censisci fonte'}
+				</button>
+			</form>
+			{#if errEdit}
+				<p class="err">{errEdit}</p>
+			{:else if esito}
+				<p class="esito">Voce {esito}.</p>
+			{/if}
+		{/if}
+
 		<div class="filtri">
 			<input type="search" bind:value={q} placeholder="cerca…" aria-label="cerca" />
 			<div class="schemi">
@@ -152,7 +240,21 @@
 		{:else}
 			<ul class="uri">
 				{#each visibili as u}
-					<li><span class="sc">{schemaDi(u)}</span><code>{u}</code></li>
+					<li>
+						<span class="sc">{schemaDi(u)}</span><code>{u}</code>
+						{#if $isAdmin}
+							{#if daConfermare === u}
+								<button class="link tolgo" disabled={inCorso} on:click={() => rimuovi(u)}>
+									confermi? {tab === 'egress'
+										? 'tornerà a chiedere'
+										: 'tornerà a contaminare'}
+								</button>
+								<button class="link" on:click={() => (daConfermare = '')}>no</button>
+							{:else}
+								<button class="link tolgo" on:click={() => (daConfermare = u)}>rimuovi</button>
+							{/if}
+						{/if}
+					</li>
 				{/each}
 			</ul>
 			<p class="conta">
@@ -194,7 +296,7 @@
 	.n { opacity: 0.6; font-variant-numeric: tabular-nums; }
 	.uri { list-style: none; margin: 0; padding: 0; }
 	.uri li {
-		display: flex; align-items: baseline; gap: 8px;
+		display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
 		padding: 4px 0; border-bottom: 1px solid var(--border);
 	}
 	/* Lo schema in colonna fissa: scorrendo trecento righe l'occhio distingue
@@ -204,6 +306,23 @@
 		opacity: 0.55; letter-spacing: 0.04em;
 	}
 	.uri code { font-size: 12px; word-break: break-all; }
+	.aggiungi { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+	.aggiungi input {
+		font: inherit; font-size: 13px; padding: 6px 10px; flex: 1; min-width: 260px;
+		border: 1px solid var(--border); border-radius: 6px;
+		background: transparent; color: inherit;
+	}
+	.aggiungi button {
+		font: inherit; font-size: 12px; cursor: pointer; padding: 6px 12px;
+		border: 1px solid var(--border); border-radius: 6px;
+		background: transparent; color: inherit;
+	}
+	.aggiungi button:disabled { opacity: 0.5; cursor: default; }
+	.esito { font-size: 12px; opacity: 0.8; margin: 0 0 10px; }
+	/* Il comando di rimozione all'estremità della riga e in secondo piano: la
+	   lista si legge, non si smonta. */
+	.tolgo { margin-left: auto; flex: none; font-size: 11px; opacity: 0.6; }
+	.tolgo:hover { opacity: 1; }
 	.conta { font-size: 12px; opacity: 0.8; margin-top: 10px; }
 	.link {
 		font: inherit; font-size: inherit; cursor: pointer; padding: 0;
