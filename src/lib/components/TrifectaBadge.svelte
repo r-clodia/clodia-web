@@ -90,6 +90,9 @@
 	$: scoreBefore = (profile as { score_before_reset?: number } | null)?.score_before_reset;
 	// Il secondo bit spento perché il canale non ha dati portati dentro: è una
 	// spiegazione, non un dettaglio — senza, uno zero somiglia a un difetto.
+	// Il secondo bit è un FATTO sul canale (decision record 36): spento significa
+	// «qui non è stato portato dentro nulla», non «nessuno può leggere». La
+	// capacità resta in `capability_legs`, e il tooltip la distingue.
 	$: dataSuppressed = !!(profile as { private_data_suppressed?: boolean } | null)
 		?.private_data_suppressed;
 	$: remoteEgress = !!profile?.remote_egress;
@@ -141,8 +144,8 @@
 					{#if (bits?.private_data ?? 0) === 1}
 						{#if causeFor('private_data').length}<br /><span class="why">{causeFor('private_data').join(' · ')}</span>{/if}
 					{:else if dataSuppressed}
-						— inerte<br /><span class="why">qui ci sono solo file prodotti dagli agenti:
-						i verbi di lettura del canale non trovano niente di portato dentro</span>
+						— inerte<br /><span class="why">nessun dato portato dentro: solo file
+						prodotti dagli agenti, e nessun remote collegato</span>
 					{:else}
 						— inerte
 					{/if}
