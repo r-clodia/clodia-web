@@ -23,6 +23,7 @@
 		archiveTopic,
 		setTopicStatus,
 		TOPIC_STATUSES,
+		getAgents,
 		type TopicCatalogItem
 	} from '$lib/api/client';
 	import TopicMark from '$lib/components/TopicMark.svelte';
@@ -41,6 +42,7 @@
 		void goto(singleTopicHref($instanceProfile), { replaceState: true });
 	}
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
+	import MultiSpawnBadge from '$lib/components/MultiSpawnBadge.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import { renderInline, renderMarkdown } from '$lib/markdown';
 
@@ -180,11 +182,30 @@
 		}
 	}
 
+	// Seed multi-spawn (issue#210): la chiave presente = il seed materializza N
+	// istanze concorrenti; `max` è il cap dichiarato (`max_spawns`). Serve qui
+	// perché la card del topic elenca i partecipanti, e un participant che
+	// risponde come quattro istanze era disegnato come uno che risponde una volta.
+	let multiSpawn: Record<string, { max: number | null }> = {};
+	async function loadMultiSpawn() {
+		try {
+			const as = await getAgents();
+			multiSpawn = Object.fromEntries(
+				as.filter((a) => a.multi_spawn).map((a) => [a.name, { max: a.max_spawns ?? null }])
+			);
+		} catch {
+			// Il badge è informativo: se la registry non risponde la lista topic
+			// resta utilizzabile senza di esso.
+			multiSpawn = {};
+		}
+	}
+
 	onMount(() => {
 		void ensureProfileLoaded();
 		pinnedTopics = loadPinnedTopics();
 		void loadList();
 		void refreshAdmin();
+		void loadMultiSpawn();
 	});
 
 	// --- Nuovo topic ---
@@ -728,6 +749,9 @@
 											<span class="member" title={p}>
 												<AgentAvatar name={p} size={22} />
 												<span class="member-name">{p}</span>
+												{#if multiSpawn[p]}
+													<MultiSpawnBadge name={p} maxSpawns={multiSpawn[p].max} />
+												{/if}
 											</span>
 										{/each}
 									</span>

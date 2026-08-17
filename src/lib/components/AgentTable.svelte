@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import AgentAvatar from './AgentAvatar.svelte';
 	import AgentName from './AgentName.svelte';
+	import MultiSpawnBadge from './MultiSpawnBadge.svelte';
 	import { pauseAgent, resumeAgent, createOrOpenDm } from '$lib/api/client';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import type { Agent, AgentRunState } from '$lib/api/types';
@@ -176,7 +177,7 @@
 						<span class="agent-cell">
 							<AgentAvatar name={a.name} displayName={a.display_name} color={a.avatar_color} size={32} />
 							<span class="agent-names">
-								<span class="agent-title"><AgentName name={titleOf(a)} /></span>
+								<span class="agent-title"><AgentName name={titleOf(a)} />{#if a.multi_spawn} <MultiSpawnBadge name={a.name} maxSpawns={a.max_spawns ?? null} />{/if}</span>
 								<code class="agent-name">{a.name}</code>
 							</span>
 						</span>

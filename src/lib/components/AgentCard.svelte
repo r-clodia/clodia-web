@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import AgentAvatar from './AgentAvatar.svelte';
 	import AgentName from './AgentName.svelte';
+	import MultiSpawnBadge from './MultiSpawnBadge.svelte';
 	import StatusDot from './StatusDot.svelte';
 	import { pauseAgent, resumeAgent, createOrOpenDm } from '$lib/api/client';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
@@ -73,6 +74,9 @@
 		<div class="text">
 			<div class="title-row">
 				<h3 class="title"><AgentName name={title} /></h3>
+				{#if agent.multi_spawn}
+					<MultiSpawnBadge name={agent.name} maxSpawns={agent.max_spawns ?? null} />
+				{/if}
 				<StatusDot state={cardState} withLabel={false} />
 			</div>
 			{#if agent.effective_model || agent.model}
