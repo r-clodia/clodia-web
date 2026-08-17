@@ -666,6 +666,16 @@ export interface ChannelInfo {
 	/** Responder con un turno ATTUALMENTE in corso (dal backend): la UI mostra
 	 *  l'indicatore di attività anche riaprendo il topic a metà turno. */
 	active_responders?: string[];
+	/** Istanze vive di ogni partecipante, per seed (agents-notebook A13).
+	 *
+	 *  Un seed multi-spawn è un SUPER-NODO: si disegna il seed e sotto una riga
+	 *  per istanza, con ordinale e stato. `ordinal: null` = seed a istanza
+	 *  singola, e allora non si mostra nessun `#N` — un `#1` suggerirebbe
+	 *  l'esistenza di un `#2`.
+	 *
+	 *  Un partecipante senza istanze vive non compare nella mappa: è
+	 *  partecipante, e in questo momento non gira niente. */
+	participant_instances?: Record<string, { ordinal: number | null; state: 'working' | 'idle' }[]>;
 	/** Danger score «lethal trifecta» del canale (issue clodia-platform#77),
 	 *  calcolato server-side dai grant dei partecipanti. `null` se non
 	 *  calcolabile: la UI in quel caso non mostra il badge. */
