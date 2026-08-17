@@ -1,24 +1,27 @@
 <script lang="ts">
 	/**
-	 * Whitelist delle destinazioni in uscita, per agente e per tipo
-	 * (clodia-platform#104 §7).
+	 * Riepilogo delle destinazioni e fonti censite, con il link alla pagina.
 	 *
-	 * SOLA LETTURA, e non per pigrizia: aggiungere una destinazione è più
-	 * privilegiato del singolo invio, perché la rende silenziosa per sempre — e il
-	 * posto giusto per concederla è il dialog che compare quando serve, dove
-	 * l'informazione è completa («@clodia vuole scrivere a X»). Un campo di testo
-	 * in una pagina di impostazioni è il posto in cui si incolla una lista senza
-	 * guardarla.
+	 * Prima questo pannello stampava le due liste INTERE dentro `/settings`. Con
+	 * 48 fonti era già una parete di testo; l'owner l'ha detto il 17 ago 2026:
+	 * «la pagina egress/ingress in settings deve essere separata e navigabile,
+	 * potrebbe contenere centinaia di elementi».
 	 *
-	 * Qui si vede cosa è stato concesso e come — che è la domanda che un'ora di
-	 * lavoro con la modalità di osservazione fa venire in mente.
+	 * Quindi qui resta ciò che una pagina di impostazioni deve dire — il MODO del
+	 * confinamento, che è una decisione, e quante voci ci sono, che dice se
+	 * qualcuno le sta usando — e gli elenchi vivono in `/settings/egress`, dove si
+	 * cercano e si filtrano.
+	 *
+	 * Il modo resta qui e non solo là perché è l'unica di queste informazioni che
+	 * cambia il comportamento del sistema: `off` significa che nessuna delle due
+	 * liste ha effetto, e chi apre le impostazioni deve vederlo senza navigare.
 	 */
 	import { onMount } from 'svelte';
 	import { getEgressWhitelist } from '$lib/api/client';
 
 	let mode = 'unknown';
-	let egressAllow: string[] = [];
-	let sourceAllow: string[] = [];
+	let nEgress = 0;
+	let nSource = 0;
 	let loading = true;
 	let err = '';
 
@@ -34,79 +37,46 @@
 		try {
 			const r = await getEgressWhitelist();
 			mode = r.mode ?? 'unknown';
-			egressAllow = r.egress_allow ?? [];
-			sourceAllow = r.source_allow ?? [];
+			nEgress = (r.egress_allow ?? []).length;
+			nSource = (r.source_allow ?? []).length;
 		} catch (e) {
 			err = e instanceof Error ? e.message : String(e);
 		} finally {
 			loading = false;
 		}
 	});
-
 </script>
 
 <div class="card-h">
 	<h2>Destinazioni e fonti</h2>
-	<span class="mode mode-{mode}">{mode}</span>
+	{#if err}
+		<p class="err">Non leggibile: {err}</p>
+	{:else if loading}
+		<p class="muted">Carico…</p>
+	{:else}
+		<p class="mode">
+			Confinamento delle uscite: <strong>{mode}</strong> — {MODE_LABEL[mode] ?? MODE_LABEL.unknown}
+		</p>
+		<p class="conte">
+			<a href="/settings/egress">
+				<strong>{nEgress}</strong> destinazioni in uscita · <strong>{nSource}</strong> fonti in ingresso →
+			</a>
+		</p>
+		{#if mode === 'off'}
+			<p class="avviso">
+				Con il modo <strong>off</strong> nessuna delle due liste ha effetto: le
+				voci restano scritte e non vengono consultate.
+			</p>
+		{/if}
+	{/if}
 </div>
-<p class="hint">{MODE_LABEL[mode] ?? mode}</p>
-
-{#if loading}
-	<p class="hint">caricamento…</p>
-{:else if err}
-	<p class="hint err">⚠ {err}</p>
-{:else}
-	<h3>In uscita — dove gli agenti possono scrivere</h3>
-	{#if !egressAllow.length}
-		<p class="hint">
-			Nessuna destinazione dichiarata. È il punto di partenza previsto: la lista è
-			<em>opt-in</em> e si popola con l’uso — la prima volta che un agent scrive a
-			un indirizzo nuovo ti viene chiesto, e approvando la destinazione resta
-			<strong>per tutti</strong>: è la destinazione che giudichi, non chi spedisce.
-		</p>
-	{:else}
-		<ul class="uris">
-			{#each egressAllow as u}
-				<li><code class:wide={u === '*'}>{u}</code></li>
-			{/each}
-		</ul>
-	{/if}
-
-	<h3>In ingresso — fonti che non contaminano</h3>
-	{#if !sourceAllow.length}
-		<p class="hint">
-			Nessuna fonte fidata. Ogni lettura contamina il canale, e la prima uscita
-			successiva chiede conferma. Questa lista va tenuta <em>piccola e statica</em>:
-			sbagliare qui è silenzioso — un taint che non si accende non lo vedi.
-		</p>
-	{:else}
-		<ul class="uris">
-			{#each sourceAllow as u}
-				<li><code>{u}</code></li>
-			{/each}
-		</ul>
-	{/if}
-{/if}
-
-<p class="hint dim">
-	Notazione URI: lo schema <em>è</em> il tipo — <code>mailto:</code>
-	<code>tg:</code> <code>https://</code> <code>gdrive:</code>
-	<code>gsheets:</code> in uscita, <code>mailfrom:</code> e <code>https://</code>
-	come fonte. Liste separate di proposito: un errore su una destinazione è
-	rumoroso, uno su una fonte è silenzioso.
-</p>
 
 <style>
-	.card-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-	h2 { margin: 0; font-size: 15px; }
-	.mode { font-family: ui-monospace, monospace; font-size: 11px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--fg-muted); }
-	.mode-gate { color: #d97706; border-color: #d97706; }
-	.mode-off, .mode-report { color: var(--fg-muted); }
-	.hint { font-size: 12px; color: var(--fg-muted); line-height: 1.5; margin: 6px 0 0; }
-	.hint.err { color: var(--danger); }
-	.hint.dim { opacity: .8; margin-top: 12px; }
-	h3 { margin: 14px 0 4px; font-size: 12px; font-weight: 600; color: var(--fg-muted); }
-	.uris { list-style: none; padding: 0; margin: 4px 0 0; display: flex; flex-direction: column; gap: 2px; }
-	code { font-size: 11px; padding: 1px 5px; margin-right: 4px; background: var(--code-bg, rgba(127,127,127,.12)); border-radius: 4px; }
-	code.wide { color: #d97706; }
+	.mode { font-size: 12px; opacity: 0.85; margin: 0 0 6px; line-height: 1.5; }
+	.conte { font-size: 13px; margin: 0; }
+	.conte a { text-decoration: none; }
+	.conte a:hover { text-decoration: underline; }
+	.avviso { font-size: 12px; opacity: 0.9; margin: 8px 0 0; line-height: 1.5; }
+	.muted { font-size: 13px; opacity: 0.8; }
+	.err { font-size: 13px; color: #f87171; }
 </style>
