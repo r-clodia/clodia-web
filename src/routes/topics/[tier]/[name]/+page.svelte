@@ -18,6 +18,8 @@
 		ApiError,
 		getAgents,
 		getChannel,
+		resetChannelTrifecta,
+		undoChannelTrifectaReset,
 		getChannelMessages,
 		getChannelMessagesAndPresence,
 		type PresenceState,
@@ -1439,6 +1441,29 @@
 	// Partecipanti mostrati: nascondi i non idonei al tier (eligible=false). I super
 	// sotto tier restano (eligible=true) e li marchiamo con ⚠️ via eligibility[p].warn.
 	$: shownParticipants = participants.filter((p) => eligibility[p]?.eligible ?? true);
+	// «Reset trifecta»: l'owner dichiara di rispondere lui del punteggio di questo
+	// canale. Si ricarica dal server invece di aggiustare `info` a mano — il
+	// punteggio lo calcola lui, e una copia locale divergerebbe al primo dettaglio
+	// (la firma, il decadimento per cambio composizione).
+	async function doResetTrifecta() {
+		if (!tier || !name) return;
+		try {
+			await resetChannelTrifecta(tier, name);
+			await loadAll(tier, name);
+		} catch (e) {
+			loadErr = `Reset trifecta non riuscito: ${(e as Error).message}`;
+		}
+	}
+	async function doUndoResetTrifecta() {
+		if (!tier || !name) return;
+		try {
+			await undoChannelTrifectaReset(tier, name);
+			await loadAll(tier, name);
+		} catch (e) {
+			loadErr = `Annullamento non riuscito: ${(e as Error).message}`;
+		}
+	}
+
 	// Istanze vive per partecipante (A13): un seed multi-spawn è un super-nodo e
 	// ogni istanza ha la sua riga. Mostriamo le righe SOLO quando c'è davvero da
 	// distinguere — con una sola istanza senza ordinale il seed basta, e una riga
