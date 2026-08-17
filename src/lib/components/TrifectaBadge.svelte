@@ -18,6 +18,11 @@
 	/** Primo bit del vettore: contenuto non fidato ENTRATO in questo canale.
 	 *  È l'unico dei tre che cambia in tempo reale e l'unico che l'owner può
 	 *  azzerare — gli altri due sono proprietà della composizione. */
+	/** L'owner può azzerare: il bottone appare solo a lui. */
+	export let canReset = false;
+	/** Chiamato al click: la pagina fa la POST e ricarica il canale. */
+	export let onReset: (() => void) | null = null;
+	export let onUndoReset: (() => void) | null = null;
 	export let taint: { tainted: boolean; since?: number | null;
 		sources?: { kind?: string; detail?: string; agent?: string }[] } | null = null;
 
@@ -78,6 +83,15 @@
 		return `${who}${what}`.trim();
 	});
 
+	// Reset dell'owner: il punteggio è a zero perché QUALCUNO se ne è assunto la
+	// responsabilità, e il badge lo dice invece di mostrare uno zero anonimo.
+	$: resetBy = (profile as { reset_by?: string } | null)?.reset_by ?? null;
+	$: resetAt = (profile as { reset_at?: string } | null)?.reset_at ?? null;
+	$: scoreBefore = (profile as { score_before_reset?: number } | null)?.score_before_reset;
+	// Il secondo bit spento perché il canale non ha dati portati dentro: è una
+	// spiegazione, non un dettaglio — senza, uno zero somiglia a un difetto.
+	$: dataSuppressed = !!(profile as { private_data_suppressed?: boolean } | null)
+		?.private_data_suppressed;
 	$: remoteEgress = !!profile?.remote_egress;
 	$: direct = profile?.direct;
 	// Il canale arriva a 3 solo perché qualcuno può invitare altri agenti:
@@ -126,6 +140,9 @@
 					<span class="g">🙈</span> <strong>dati privati</strong>
 					{#if (bits?.private_data ?? 0) === 1}
 						{#if causeFor('private_data').length}<br /><span class="why">{causeFor('private_data').join(' · ')}</span>{/if}
+					{:else if dataSuppressed}
+						— inerte<br /><span class="why">qui ci sono solo file prodotti dagli agenti:
+						i verbi di lettura del canale non trovano niente di portato dentro</span>
 					{:else}
 						— inerte
 					{/if}
@@ -149,11 +166,44 @@
 			{#if profile.unknown_participants?.length}
 				<p class="note">Non registrati, non valutati: {profile.unknown_participants.join(', ')}.</p>
 			{/if}
+			{#if resetBy}
+				<p class="note reset-note">
+					Azzerato da <strong>{resetBy}</strong>{#if resetAt} il {new Date(resetAt).toLocaleString()}{/if}{#if scoreBefore != null} — prima era {scoreBefore}/3{/if}.
+					<br />Decade da sé se cambia la composizione del canale. I gate NON sono
+					toccati: se il canale è contaminato, l'uscita chiede comunque.
+				</p>
+			{/if}
 		</span>
 	</button>
+	<!-- Il bottone sta FUORI dal badge: un <button> dentro un <button> è HTML non
+	     valido e il browser lo spost. Accanto, e non dentro il tooltip, ha anche
+	     un vantaggio: si raggiunge senza dover tenere aperto un tooltip. -->
+	{#if canReset}
+		{#if resetBy}
+			<button type="button" class="reset-btn" on:click={() => onUndoReset?.()}
+				title="Rimuove l'azzeramento: il punteggio torna a parlare da sé.">
+				annulla reset
+			</button>
+		{:else}
+			<button type="button" class="reset-btn" on:click={() => onReset?.()}
+				title="Porta il punteggio a 0/3 assumendotene la responsabilità. Resta registrato con il tuo nome, decade se cambia la composizione del canale, e NON spegne i gate.">
+				reset trifecta
+			</button>
+		{/if}
+	{/if}
 {/if}
 
 <style>
+	/* Volutamente discreto: è un'assunzione di responsabilità, non un'azione
+	   frequente — un bottone vistoso invita a cliccarlo per far sparire un
+	   allarme, che è il contrario del suo scopo. */
+	.reset-btn {
+		font: inherit; font-size: 10px; cursor: pointer; margin-left: 4px;
+		background: transparent; color: inherit; opacity: 0.75;
+		border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px;
+	}
+	.reset-btn:hover { opacity: 1; }
+	.reset-note { opacity: 0.85; }
 	.trifecta {
 		position: relative; display: inline-flex; align-items: center; gap: 4px;
 		font: inherit; font-size: 11px; line-height: 1.6; background: transparent;

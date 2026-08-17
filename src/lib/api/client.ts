@@ -676,6 +676,10 @@ export interface ChannelInfo {
 	 *  Un partecipante senza istanze vive non compare nella mappa: è
 	 *  partecipante, e in questo momento non gira niente. */
 	participant_instances?: Record<string, { ordinal: number | null; state: 'working' | 'idle' }[]>;
+	/** Chi ha azzerato il trifecta di questo canale, e quando (agents-notebook:
+	 *  richiesta dell'owner del 17 ago 2026). Viaggia DENTRO `trifecta`, ma è
+	 *  ridichiarato qui perché il tipo del profilo vive in `types.ts` e questo
+	 *  campo è del canale. */
 	/** Danger score «lethal trifecta» del canale (issue clodia-platform#77),
 	 *  calcolato server-side dai grant dei partecipanti. `null` se non
 	 *  calcolabile: la UI in quel caso non mostra il badge. */
@@ -1072,6 +1076,21 @@ export type ScopeRole = 'contributor' | 'reader';
 /** Invita, rimuove, o cambia il ruolo di chi è già dentro. Il cambio passa da
  *  qui e non da togli-e-rimetti: quello farebbe uscire la persona dal canale e
  *  le manderebbe un messaggio di uscita e uno di rientro per un cambio di grado. */
+export async function resetChannelTrifecta(tier: string, name: string): Promise<void> {
+	// L'owner si assume la responsabilità del punteggio di questo canale. Il
+	// server registra chi e quando: non è un silenziamento anonimo.
+	await apiPost(
+		joinUrl(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/trifecta/reset`),
+		{}
+	);
+}
+
+export async function undoChannelTrifectaReset(tier: string, name: string): Promise<void> {
+	await apiDelete(
+		joinUrl(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/trifecta/reset`)
+	);
+}
+
 export async function setChannelParticipant(
 	tier: string,
 	name: string,
