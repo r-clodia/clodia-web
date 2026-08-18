@@ -14,6 +14,8 @@
 	import { topicLogoUrl as logoObjectUrl, dimenticaLogo } from '$lib/topicLogo';
 	import SpawnTree from '$lib/components/SpawnTree.svelte';
 	import AgentLiveBox from '$lib/components/AgentLiveBox.svelte';
+	import MultiSpawnBadge from '$lib/components/MultiSpawnBadge.svelte';
+	import { seedName } from '$lib/agents';
 	import {
 		ApiError,
 		getAgents,
@@ -1408,8 +1410,11 @@
 		feedbackLessonsKey = `${tier}/${name}`;
 		void loadFeedbackLessons();
 	}
-	// Seed multi-spawn (issue#94): participant → true se materializza N istanze.
-	let multiSpawn: Record<string, boolean> = {};
+	// Seed multi-spawn (issue#94): la CHIAVE presente = il seed materializza N
+	// istanze; `max` è il cap dichiarato (`max_spawns`) per il tooltip "fino a
+	// quante" (issue#210). Voce-oggetto e non booleano perché il valore va letto
+	// anche quando è 0/assente, e un `null` in un `{#if}` sparirebbe.
+	let multiSpawn: Record<string, { max: number | null }> = {};
 	// I partecipanti sono una MAPPA nome→ruolo dal 7 ago 2026, ma un topic che
 	// nessuno ha ancora toccato conserva la lista: si converte alla prima
 	// modifica, quindi la UI deve saper leggere entrambe le forme.
@@ -1955,7 +1960,10 @@
 				aiAgents = as
 					.filter((a) => a.type === 'bot' || a.type === 'normal' || a.type === 'super')
 					.map((a) => a.name);
-				multiSpawn = Object.fromEntries(as.map((a) => [a.name, !!a.multi_spawn]));
+				multiSpawn = Object.fromEntries(
+					as.filter((a) => a.multi_spawn)
+						.map((a) => [a.name, { max: a.max_spawns ?? null }])
+				);
 			})
 			.catch(() => {
 				allAgents = [];
@@ -2154,6 +2162,12 @@
 							{:else}
 								<AgentAvatar name={m.author} size={22} />
 								<span class="author">{m.author}</span>
+								<!-- Perché lo stesso participant parla con due label diverse
+								     (`nome#1`, `nome#2`): il badge sull'autore risponde dove la
+								     domanda nasce, cioè nel messaggio (issue#210). -->
+								{#if multiSpawn[seedName(m.author)]}
+									<MultiSpawnBadge name={m.author} maxSpawns={multiSpawn[seedName(m.author)].max} />
+								{/if}
 							{/if}
 							<time class="ts">{fmtTs(m.ts)}</time>
 							{#if m.kind === 'ai'}
@@ -2606,7 +2620,7 @@
 								<span class="part-col">
 									<span class="part-name">{#if presenza[p]}<span
 											class="presenza presenza-{presenza[p]}"
-											title={PRESENZA_TITOLO[presenza[p]]}></span>{/if}{p}{#if multiSpawn[p]} <span class="multi-spawn" title="lavora con istanze multiple (@{p}#1, @{p}#2, …)">👯</span>{/if}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
+											title={PRESENZA_TITOLO[presenza[p]]}></span>{/if}{p}{#if multiSpawn[p]} <MultiSpawnBadge name={p} maxSpawns={multiSpawn[p].max} />{/if}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
 									{#if c}
 										<span class="ctx-bar" title={`Contesto ${Math.round(c.pct * 100)}% — ${c.used.toLocaleString()}/${c.window.toLocaleString()} token`}>
 											<span class="ctx-fill" style="width:{Math.min(100, c.pct * 100)}%; background:{ctxColor(c.pct)}"></span>

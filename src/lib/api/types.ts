@@ -68,6 +68,10 @@ export interface Agent {
 	/** Il seed materializza N istanze concorrenti in un topic (issue#94):
 	 *  la UI lo segnala col simbolo 👯 sul participant. */
 	readonly multi_spawn?: boolean;
+	/** Cap di istanze concorrenti per contesto (AgentSpec.max_spawns, default 4
+	 *  lato backend). Rilevante solo con `multi_spawn: true`: risponde al
+	 *  "fino a quante" che il badge 👯 solleva. */
+	readonly max_spawns?: number;
 	readonly avatar_color?: string;
 	readonly sandbox?: AgentSandbox | null;
 	readonly skills?: ReadonlyArray<string>;

@@ -6,6 +6,7 @@
 	 * background, with a muted neutral as last resort.
 	 */
 	import { API_BASE_URL } from '$lib/api/client';
+	import { seedName } from '$lib/agents';
 
 	export let name: string;
 	export let displayName: string | undefined = undefined;
@@ -17,7 +18,7 @@
 	$: bg = color && color.trim() ? color : '#3a3f4d';
 	$: fontSize = Math.round(size * 0.42);
 	// Le istanze multi-spawn (nome#N, issue#94) usano la pfp del SEED.
-	$: seed = (name || '').replace(/#\d+$/, '');
+	$: seed = seedName(name);
 	$: pfpUrl = seed ? `${API_BASE_URL}/api/agents/${encodeURIComponent(seed)}/pfp` : '';
 
 	// Tracciamo il fallimento del fetch per agent → reset quando cambia name.
