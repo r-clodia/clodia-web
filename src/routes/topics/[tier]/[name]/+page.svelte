@@ -11,6 +11,7 @@
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
 	import TopicMark from '$lib/components/TopicMark.svelte';
+	import Modal from '$lib/components/Modal.svelte';
 	import { topicLogoUrl as logoObjectUrl, dimenticaLogo } from '$lib/topicLogo';
 	import SpawnTree from '$lib/components/SpawnTree.svelte';
 	import AgentLiveBox from '$lib/components/AgentLiveBox.svelte';
@@ -1254,6 +1255,10 @@
 	// cambiarla è un modo di far sembrare una stanza un'altra.
 	let logoBusy = false;
 	let logoErr = '';
+	/** Il dialogo si apre dal monogramma in testata. Non esiste una sezione in
+	 *  sidebar: l'immagine si cambia dove la si vede, e una sezione sempre
+	 *  aperta per un campo che si tocca una volta è spazio tolto al resto. */
+	let logoDialogOpen = false;
 	/** Cambia a ogni salvataggio per bucare la cache del browser: senza, dopo un
 	 *  caricamento resterebbe visibile la vecchia immagine e sembrerebbe che il
 	 *  salvataggio non abbia funzionato. */
@@ -1307,6 +1312,11 @@
 		} finally {
 			logoBusy = false;
 		}
+	}
+	function apriDialogoLogo() {
+		if (!isOwner) return;
+		logoErr = '';
+		logoDialogOpen = true;
 	}
 
 	// ── Proxy ammessi in questa stanza ──────────────────────────────────────
@@ -2115,8 +2125,19 @@
 			     stanza si è — non a fare da copertina. `rev` lo fa rileggere dopo
 			     un caricamento, altrimenti resterebbe visibile la vecchia
 			     immagine e sembrerebbe che il salvataggio non abbia funzionato. -->
-			<TopicMark {tier} {name} logo={info?.meta?.logo} title={info?.meta?.title}
-				size={22} rev={logoRev} />
+			{#if isOwner}
+				<!-- Cliccabile solo per l'owner: è l'unico che può cambiarla, e un
+				     affordance che apre un dialogo dove non si può fare niente è
+				     peggio della sua assenza. -->
+				<button type="button" class="mark-btn" on:click={apriDialogoLogo}
+					title="Cambia l'immagine del topic" aria-label="Cambia l'immagine del topic">
+					<TopicMark {tier} {name} logo={info?.meta?.logo} title={info?.meta?.title}
+						size={22} rev={logoRev} />
+				</button>
+			{:else}
+				<TopicMark {tier} {name} logo={info?.meta?.logo} title={info?.meta?.title}
+					size={22} rev={logoRev} />
+			{/if}
 			<h1>#{info?.meta?.title || name}</h1>
 			<span class="tier">{info?.tier || tier}</span>
 			<TrifectaBadge profile={info?.trifecta} taint={info?.taint}
@@ -2963,40 +2984,6 @@
 					{/if}
 				</details>
 
-				<details class="side-section logo-panel">
-					<summary>
-						<span>Immagine</span>
-						{#if topicLogoUrl}<span class="section-status">impostata</span>{/if}
-					</summary>
-					{#if topicLogoUrl}
-						<img class="topic-logo-big" src={topicLogoUrl} alt="" />
-					{/if}
-					{#if !isOwner}
-						<p class="muted">
-							{topicLogoUrl
-								? "L'immagine con cui questo topic si presenta. La cambia l'owner."
-								: 'Nessuna immagine. La imposta l\'owner.'}
-						</p>
-					{:else}
-						<p class="meta-note">
-							PNG, JPEG, GIF o WebP, fino a 512 KB. Niente SVG: può contenere
-							script, e verrebbe eseguito nella pagina di chi apre il topic.
-						</p>
-						{#if logoErr}<p class="cred-hint" role="alert">{logoErr}</p>{/if}
-						<div class="remote-actions">
-							<label class="link-btn" class:disabled={logoBusy}>
-								{topicLogoUrl ? 'sostituisci' : 'scegli un file'}
-								<input type="file" accept="image/png,image/jpeg,image/gif,image/webp"
-									on:change={caricaLogo} disabled={logoBusy} hidden />
-							</label>
-							{#if topicLogoUrl}
-								<button type="button" class="danger" on:click={togliLogo}
-									disabled={logoBusy}>togli</button>
-							{/if}
-						</div>
-					{/if}
-				</details>
-
 				<details class="side-section mcp-panel" on:toggle={loadMcpClients}>
 					<summary>
 						<span>Proxy</span>
@@ -3298,6 +3285,41 @@
 	</div>
 	{/if}
 </div>
+
+<!-- L'immagine del topic si cambia da qui, aperto dal monogramma in testata.
+     `dismissable` cade durante il caricamento: chiudere a metà lascerebbe un
+     salvataggio in volo senza nessuno che ne mostri l'esito. -->
+<Modal open={logoDialogOpen} dismissable={!logoBusy} maxWidth={420}
+	on:close={() => (logoDialogOpen = false)}>
+	<h2 slot="title">Immagine del topic</h2>
+	{#if topicLogoUrl}
+		<img class="topic-logo-big" src={topicLogoUrl} alt="" />
+	{:else}
+		<p class="muted">Nessuna immagine: al suo posto resta il monogramma.</p>
+	{/if}
+	<p class="meta-note">
+		Forma consigliata <b>1:1</b>: il segno viene ritagliato quadrato ovunque
+		compaia, e un'immagine larga ci arriva tagliata ai lati.
+	</p>
+	<p class="meta-note">
+		PNG, JPEG, GIF o WebP, fino a 512 KB. Niente SVG: può contenere
+		script, e verrebbe eseguito nella pagina di chi apre il topic.
+	</p>
+	{#if logoErr}<p class="cred-hint" role="alert">{logoErr}</p>{/if}
+	<!-- `remote-actions` è la barra di bottoni già usata nei pannelli di questa
+	     pagina: stessi bordi, stesso `danger` al passaggio del mouse. -->
+	<div class="remote-actions" slot="actions">
+		{#if topicLogoUrl}
+			<button type="button" class="danger" on:click={togliLogo}
+				disabled={logoBusy}>togli</button>
+		{/if}
+		<label class="link-btn" class:disabled={logoBusy}>
+			{logoBusy ? 'carico…' : topicLogoUrl ? 'sostituisci' : 'scegli un file'}
+			<input type="file" accept="image/png,image/jpeg,image/gif,image/webp"
+				on:change={caricaLogo} disabled={logoBusy} hidden />
+		</label>
+	</div>
+</Modal>
 
 {#if confirmRemote}
 	<div class="prov-backdrop" role="button" tabindex="0"
@@ -3906,7 +3928,13 @@
 	/* Il gruppo Telegram dello scope: mappa uid → utente, una riga per volta. */
 	.tg-form { display: flex; flex-direction: column; gap: 6px; }
 
-	/* Immagine del topic. */
+	/* Immagine del topic: si cambia dal dialogo aperto dal monogramma. */
+	.mark-btn {
+		display: inline-flex; align-items: center; padding: 0; border: none;
+		background: none; cursor: pointer; border-radius: 6px; line-height: 0;
+	}
+	.mark-btn:hover { opacity: .75; }
+	.mark-btn:focus-visible { outline: 2px solid var(--accent, #ff6b3d); outline-offset: 2px; }
 	.topic-logo-big {
 		display: block; max-width: 100%; max-height: 120px; margin: 4px 0 8px;
 		border-radius: 8px; object-fit: contain;
