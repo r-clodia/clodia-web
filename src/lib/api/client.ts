@@ -2473,8 +2473,11 @@ export async function clearTopicLogo(
 	return apiDelete(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/logo`, opts);
 }
 
-/** Un client MCP di una persona collegato a questo topic. Mai il token: il
- *  valore si consegna una volta sola, poi si revoca soltanto. */
+/** Un grant di questo topic verso l'esterno. Mai il token: il valore si
+ *  consegna una volta sola, poi si revoca soltanto.
+ *
+ *  Da #242 si conia solo per un **proxy**; i grant con `principal_kind` umano
+ *  sono residui del pannello «Client MCP», elencati per poterli revocare. */
 export interface McpClientGrant {
 	id: string;
 	principal: string;
@@ -2492,14 +2495,15 @@ export interface McpClientGrant {
 	created_by?: string;
 }
 
-/** GET `/api/topics/{tier}/{name}/mcp-clients` — i client collegati. */
+/** GET `/api/topics/{tier}/{name}/mcp-clients` — i grant esterni del topic. */
 export async function listTopicMcpClients(
 	tier: string, name: string, opts: RequestOptions = {}
 ): Promise<{ grants: McpClientGrant[] }> {
 	return apiGet(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mcp-clients`, opts);
 }
 
-/** POST `/api/topics/{tier}/{name}/mcp-clients` — conia o revoca. */
+/** POST `/api/topics/{tier}/{name}/mcp-clients` — conia (solo per un proxy:
+ *  #242 ha spento l'emissione per le persone) o revoca (qualunque grant). */
 export async function issueTopicMcpClient(
 	tier: string, name: string,
 	payload: { principal?: string; provider?: string; ttl_days?: number;
