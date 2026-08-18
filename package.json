@@ -7,7 +7,7 @@
     "dev": "vite dev --port 7843 --host",
     "build": "vite build",
     "preview": "vite preview --port 7843",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && node scripts/check-img-auth.mjs && node scripts/check-multi-spawn-badge.mjs && node scripts/check-live-reply-reset.mjs && node scripts/check-spawn-label.mjs && node scripts/check-trigger-no-silent-migration.mjs && node scripts/check-no-mcp-client-panel.mjs && node scripts/check-declared-capability-visible.mjs",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && node scripts/check-img-auth.mjs && node scripts/check-multi-spawn-badge.mjs && node scripts/check-live-reply-reset.mjs && node scripts/check-spawn-label.mjs && node scripts/check-trigger-no-silent-migration.mjs && node scripts/check-no-mcp-client-panel.mjs && node scripts/check-declared-capability-visible.mjs && node scripts/check-no-lessons-panel.mjs",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "devDependencies": {
