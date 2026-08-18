@@ -3935,9 +3935,15 @@
 	}
 	.mark-btn:hover { opacity: .75; }
 	.mark-btn:focus-visible { outline: 2px solid var(--accent, #ff6b3d); outline-offset: 2px; }
+	/* L'anteprima è QUADRATA e ritaglia come `TopicMark` (`object-fit: cover`):
+	   con `contain` mostrerebbe l'immagine intera, cioè un inquadramento che in
+	   testata non si vedrà mai — e contraddirebbe la riga qui sopra nel dialogo,
+	   che avverte che i lati vengono tagliati. L'avvertimento e l'anteprima
+	   devono dire la stessa cosa, o si crede all'anteprima. */
 	.topic-logo-big {
-		display: block; max-width: 100%; max-height: 120px; margin: 4px 0 8px;
-		border-radius: 8px; object-fit: contain;
+		display: block; width: 120px; aspect-ratio: 1; margin: 4px 0 8px;
+		border-radius: 8px; object-fit: cover;
+		background: var(--surface-2, rgba(127, 127, 127, 0.12));
 	}
 	.link-btn.disabled { opacity: 0.5; pointer-events: none; }
 
