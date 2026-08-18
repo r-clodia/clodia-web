@@ -979,10 +979,29 @@ export async function deleteHook(id: string): Promise<{ deleted: boolean }> {
 	return apiDelete(`/clodia/hooks/${encodeURIComponent(id)}`);
 }
 
-/** Singolo trigger cron associato a un topic. */
+/**
+ * Singolo trigger periodico associato a un topic.
+ *
+ * La periodicità è «ogni `interval_minutes`, per `repeat_count` volte»
+ * (clodia-platform#239). Ha sostituito l'espressione cron a testo libero, che
+ * resta solo sui trigger creati prima: quelli arrivano con `interval_minutes`
+ * a `null` e `cron_expr` valorizzato, continuano a girare così, e il pannello
+ * propone la conversione senza applicarla.
+ */
 export interface TopicCronTrigger {
 	id: number;
+	/** Ogni quanti minuti. `null` = trigger legacy, ancora a cron. */
+	interval_minutes: number | null;
+	/** Quante ripetizioni in tutto. `0` = ricorrente senza fine. */
+	repeat_count: number;
+	/** Quante ne ha già eseguite (avanza solo sui fire davvero postati). */
+	fired_count: number;
+	/** Popolato solo sui trigger legacy; vuoto su quelli a intervallo. */
 	cron_expr: string;
+	/** Solo in lettura e solo sui legacy: la cadenza equivalente da PROPORRE
+	 *  nel form. `null` quando il cron non ha un equivalente onesto (cadenza
+	 *  irregolare o oltre la settimana) — allora l'owner sceglie da zero. */
+	suggested_interval_minutes?: number | null;
 	prompt: string;
 	agent: string;
 	enabled: boolean;
@@ -1001,7 +1020,12 @@ export async function getTopicCronTrigger(
 export async function putTopicCronTrigger(
 	tier: string,
 	name: string,
-	body: { cron_expr: string; prompt: string; agent?: string | null }
+	body: {
+		interval_minutes: number;
+		repeat_count: number;
+		prompt: string;
+		agent?: string | null;
+	}
 ): Promise<{ trigger: TopicCronTrigger }> {
 	return apiPut(topicCronPath(tier, name), body);
 }
