@@ -393,6 +393,12 @@
 	let rulesBusy = false;
 	let rulesErr = '';
 	let rulesLoadedFor = '';
+	/** Le regole di QUESTO topic sono state lette davvero.
+	 *
+	 *  Da tenere distinto da «la bozza è vuota»: una bozza vuota può voler dire
+	 *  «non ci sono regole» oppure «non sono riuscito a leggerle», e nel secondo
+	 *  caso salvare le rimuove. La differenza sta solo qui. */
+	$: rulesLoaded = rulesLoadedFor === `${tier}/${name}`;
 
 	async function loadRules() {
 		const key = `${tier}/${name}`;
@@ -2161,12 +2167,23 @@
 				></textarea>
 				{#if rulesErr}<div class="err">{rulesErr}</div>{/if}
 				<div class="rules-actions">
-					<button type="button" class="btn primary" on:click={saveRules} disabled={rulesBusy}>
+					<!-- Salva è INATTIVO finché le regole non sono state lette.
+					     Se `loadRules()` fallisce, `rulesDraft` resta '' e salvare
+					     vuoto RIMUOVE le istruzioni: si apriva il pannello, si
+					     vedeva l'errore, si salvava, e il testo era perso. Il
+					     gateway ora lo rifiuta col lock, ma la UI non deve
+					     nemmeno offrire il gesto. -->
+					<button type="button" class="btn primary" on:click={saveRules}
+						disabled={rulesBusy || !rulesLoaded}>
 						{rulesBusy ? 'Salvo…' : 'Salva regole'}
 					</button>
 					<button type="button" class="btn" on:click={loadRules} disabled={rulesBusy}>Ricarica</button>
 					<span class="rules-hint">
-						{#if rulesDraft.trim() === ''}Salvando vuoto le regole vengono rimosse.{:else}Riservato agli admin.{/if}
+						{#if !rulesLoaded}Regole non lette: ricarica prima di salvare, altrimenti si
+							rischia di rimuovere un testo che non hai visto.
+						{:else if rulesDraft.trim() === ''}Salvando vuoto le regole vengono rimosse (il
+							testo resta recuperabile nel cestino del topic).
+						{:else}Riservato agli admin.{/if}
 					</span>
 				</div>
 			</div>
