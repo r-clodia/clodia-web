@@ -1036,19 +1036,61 @@
 					</dd>
 				{/if}
 
+				<!-- Le incoerenze rilevate al load, ACCANTO ai verbi: è il posto dove
+				     si guarda per sapere cosa un agent può fare, quindi è il posto
+				     dove deve comparire ciò che dichiara e non ha. Finché stavano
+				     solo in `LOG.warning`, il rilevatore parlava a nessuno — e un
+				     rilevatore che nessuno legge è il difetto che doveva rilevare
+				     (clodia-platform#227). L'agent resta vivo: questo è un avviso,
+				     non uno stato di guasto. -->
+				{#if agent.warnings?.length}
+					<dt>Incoerenze del seed</dt>
+					<dd>
+						<ul class="warnlist">
+							{#each agent.warnings as w}
+								<li class="vnote warn">⚠ {w}</li>
+							{/each}
+						</ul>
+						<p class="vnote">L'agent è caricato e funzionante: si corregge nel suo
+							<code>agent.yaml</code>, poi <em>Reload</em>.</p>
+					</dd>
+				{/if}
+
 				<!-- Gli strumenti NATIVI del runtime: non passano dal gateway, quindi
 				     nessun lucchetto della sezione qui sopra li riguarda. Si mostra
 				     accanto alla dichiarazione QUANTO NE VALE, perché la stessa lista
 				     su codex e su claude non vale uguale — ed è così che Ophelia ha
 				     cercato sul web mentre Clodia, con lo stesso seed, non poteva. -->
-				{#if agent.native_tools_info?.declared || agent.native_tools?.length}
+				<!-- La riga si rende ANCHE quando il seed non dichiara niente. Prima
+				     la condizione era la dichiarazione stessa, quindi la sezione
+				     spariva esattamente nello stato in cui doveva parlare: un seed
+				     senza `native_tools` cade sul pavimento dell'arciseed — che non
+				     contiene `Bash` — e la pagina non lo diceva. È così che
+				     `fullstack-dev` ha perso la shell senza che niente lo mostrasse
+				     (clodia-platform#227). Restano fuori solo human e proxy, che non
+				     hanno runtime: per loro non c'è pavimento su cui cadere. -->
+				{#if !isHuman && !isProxy}
 					<dt>Strumenti nativi</dt>
 					<dd>
-						<ul class="chips">
-							{#each agent.native_tools_info?.declared ?? agent.native_tools ?? [] as t}
-								<li><code>{t}</code></li>
-							{/each}
-						</ul>
+						{#if agent.native_tools_info?.declared?.length || agent.native_tools?.length}
+							<ul class="chips">
+								{#each agent.native_tools_info?.declared ?? agent.native_tools ?? [] as t}
+									<li><code>{t}</code></li>
+								{/each}
+							</ul>
+						{:else if agent.native_tools_info?.declared || agent.native_tools}
+							<!-- `[]` è una DECISIONE («solo il pavimento»), e va letta come
+							     tale: diversa da una dimenticanza, che è il caso sotto. -->
+							<p class="vnote">Nessuno dichiarato: <code>[]</code> è una scelta —
+								questo agent lavora col solo pavimento dell'arciseed.</p>
+						{:else}
+							<p class="vnote warn">⚠ <strong>Non dichiarati.</strong> L'allowlist
+								per-seed è in enforcement, quindi questo agent riceve SOLO il
+								pavimento dell'arciseed: niente <code>Bash</code>, niente
+								<code>Grep</code>. Se gli serve uno strumento nativo va scritto nel
+								suo <code>agent.yaml</code>; <code>[]</code> rende esplicito che il
+								pavimento basta.</p>
+						{/if}
 						{#if agent.native_tools_info?.unenforced?.length}
 							<p class="vnote warn">⚠ Il runtime <code>{agent.agent_sdk}</code> NON
 								applica {agent.native_tools_info.unenforced.length} di questi
@@ -1493,6 +1535,8 @@
 	.vmore-btn:hover { color: var(--fg); }
 	.vnote.warn { color: var(--fg); background: rgba(217, 119, 6, .1);
 		border-left: 2px solid #d97706; padding: 6px 8px; border-radius: 3px; }
+	.warnlist { list-style: none; margin: 0; padding: 0; display: flex;
+		flex-direction: column; gap: 6px; }
 
 	.connectors { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
 	.connectors h3 { font-size: 13px; margin: 0 0 8px; }

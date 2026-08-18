@@ -130,6 +130,12 @@ export interface Agent {
 	/** Quanto di quella dichiarazione il runtime dell'agent applica davvero.
 	 *  `unenforced` non vuoto = il seed nega strumenti che l'agent CONSERVA. */
 	readonly native_tools_info?: NativeToolsInfo;
+	/** Incoerenze del seed rilevate al load: dichiara comandi che non ha modo di
+	 *  eseguire, o non dichiara `native_tools` e cade sul pavimento dell'arciseed.
+	 *  L'agent è caricato e funzionante — si segnala, non si punisce. Vuoto = il
+	 *  server ha guardato e non ha niente da dire; assente = server più vecchio
+	 *  del campo, che è un'informazione diversa e non va resa uguale. */
+	readonly warnings?: ReadonlyArray<string>;
 	/** Volume montabili dichiarati (id da volumes.yaml). */
 	readonly volumes?: ReadonlyArray<string>;
 	/** Nomi delle credenziali dedicate attese in secrets/agents/<name>/.
@@ -184,6 +190,10 @@ export interface AgentSuccessStats {
 export interface AgentsListResponse {
 	readonly agents: ReadonlyArray<Agent>;
 	readonly errors?: Record<string, string>;
+	/** Seed che CARICANO ma si contraddicono: nome → avvisi. Canale distinto da
+	 *  `errors` (dove lo spec non carica affatto): un agente qui dentro è vivo,
+	 *  elencabile e usabile. */
+	readonly warnings?: Record<string, ReadonlyArray<string>>;
 	readonly base_dir?: string;
 }
 
