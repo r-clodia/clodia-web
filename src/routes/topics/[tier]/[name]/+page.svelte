@@ -1252,6 +1252,26 @@
 		background: 'ha la webui aperta ma sta guardando altro',
 		away: 'non è collegato'
 	};
+	// Un PROXY ha lo stesso pallino di una persona — è la richiesta, e la domanda
+	// è la stessa: c'è qualcuno dall'altra parte che sta leggendo? Ma i testi qui
+	// sopra parlano di BROWSER («è nella webui», «ha la webui aperta»), e un
+	// sistema terzo non ne ha uno: riusarli direbbe una cosa falsa a chi passa il
+	// mouse. Stesso simbolo, stessi colori, frase vera.
+	const PRESENZA_TITOLO_PROXY: Record<PresenceState, string> = {
+		here: 'sta leggendo questa conversazione',
+		elsewhere: 'è collegato, su un altro canale',
+		background: 'è collegato, non sta leggendo',
+		away: 'non è collegato'
+	};
+	/** Tipo dichiarato di ogni participant, dal payload che la pagina già carica.
+	 *  `undefined` è un esito legittimo: il campo è opzionale, e un participant
+	 *  senza tipo dichiarato non è un proxy — quindi ricade sui testi umani. */
+	let tipoDi: Record<string, string | undefined> = {};
+	function titoloPresenza(nome: string, stato: PresenceState): string {
+		return tipoDi[nome] === 'proxy'
+			? PRESENZA_TITOLO_PROXY[stato]
+			: PRESENZA_TITOLO[stato];
+	}
 
 	// ── Immagine del topic ──────────────────────────────────────────────────
 	// La vede chi partecipa, la cambia solo l'owner. Non è una decorazione: in
@@ -2013,6 +2033,10 @@
 				// lista `security-engineer-1` non è distinguibile da un agente che si
 				// chiama davvero così (stessa regola di `_split_ord` lato backend).
 				setKnownSeeds(allAgents);
+				// Tipo per nome: serve al testo del pallino di presenza, che per un
+				// proxy non può parlare di browser. Dallo stesso payload, nessuna
+				// chiamata in più.
+				tipoDi = Object.fromEntries(as.map((a) => [a.name, a.type]));
 				aiAgents = as
 					.filter((a) => a.type === 'bot' || a.type === 'normal' || a.type === 'super')
 					.map((a) => a.name);
@@ -2710,7 +2734,7 @@
 								<span class="part-col">
 									<span class="part-name">{#if presenza[p]}<span
 											class="presenza presenza-{presenza[p]}"
-											title={PRESENZA_TITOLO[presenza[p]]}></span>{/if}{p}{#if multiSpawn[p]} <MultiSpawnBadge name={p} maxSpawns={multiSpawn[p].max} />{/if}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
+											title={titoloPresenza(p, presenza[p])}></span>{/if}{p}{#if multiSpawn[p]} <MultiSpawnBadge name={p} maxSpawns={multiSpawn[p].max} />{/if}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
 									{#if c}
 										<span class="ctx-bar" title={`Contesto ${Math.round(c.pct * 100)}% — ${c.used.toLocaleString()}/${c.window.toLocaleString()} token`}>
 											<span class="ctx-fill" style="width:{Math.min(100, c.pct * 100)}%; background:{ctxColor(c.pct)}"></span>
