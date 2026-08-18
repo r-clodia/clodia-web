@@ -15,7 +15,7 @@
 	import SpawnTree from '$lib/components/SpawnTree.svelte';
 	import AgentLiveBox from '$lib/components/AgentLiveBox.svelte';
 	import MultiSpawnBadge from '$lib/components/MultiSpawnBadge.svelte';
-	import { seedName } from '$lib/agents';
+	import { seedName, setKnownSeeds } from '$lib/agents';
 	import {
 		ApiError,
 		getAgents,
@@ -613,8 +613,20 @@
 	// era una variabile sola condivisa: espandere un agente li apriva tutti.
 	const chatBelongs = (cid: unknown) =>
 		typeof cid === 'string' && cid.startsWith(`chan:${tier}:${name}:`);
+	// chat_id → nome dello SPAWN (`clodia-124`), dall'evento `spawn_label` che il
+	// backend pubblica una volta per turno. Serve perché il `chat_id` porta
+	// l'ordinale di CANALE (`chan:…:seed#2`) o il seed nudo, cioè un numero
+	// relativo e riusabile o nessun numero: durante il turno si leggeva un nome e
+	// a turno finito un altro, per la stessa istanza. Il progressivo di spawn è
+	// l'identità vera (per seed, mai riusata) e va mostrato sempre.
+	let spawnByChat: Record<string, string> = {};
 	function agentFromChatId(cid: unknown): string | null {
-		return chatBelongs(cid) ? String(cid).split(':').at(-1) ?? null : null;
+		if (!chatBelongs(cid)) return null;
+		const noto = spawnByChat[String(cid)];
+		// Fallback sulla coda del chat_id finché lo `spawn_label` non è arrivato
+		// (sessione nata prima che la pagina fosse aperta): un'etichetta meno
+		// precisa è meglio di nessun box live.
+		return noto || String(cid).split(':').at(-1) || null;
 	}
 	function liveFor(agent: string): LiveAgentState {
 		return liveAgents[agent] ?? { think: '', reply: '', tools: [] };
@@ -1982,6 +1994,11 @@
 		getAgents()
 			.then((as) => {
 				allAgents = as.map((a) => a.name);
+				// I seed noti servono a `seedName` per tagliare `clodia-124` nel punto
+				// giusto: i nomi dei seed contengono trattini, quindi senza questa
+				// lista `security-engineer-1` non è distinguibile da un agente che si
+				// chiama davvero così (stessa regola di `_split_ord` lato backend).
+				setKnownSeeds(allAgents);
 				aiAgents = as
 					.filter((a) => a.type === 'bot' || a.type === 'normal' || a.type === 'super')
 					.map((a) => a.name);
@@ -2013,6 +2030,27 @@
 				lastRouting = p as unknown as RoutingTrace;
 				routingCorrected = null; // nuova decisione → riapri la correzione
 				routingConfirmed = false;
+				return;
+			}
+			// Etichetta dello spawn per questo chat_id: arriva all'inizio del turno,
+			// prima di qualunque chunk, così i box live nascono già col numero
+			// giusto invece di essere rinominati a metà.
+			if (ev.type === 'spawn_label') {
+				if (!chatBelongs(p.chat_id)) return;
+				const cid = String(p.chat_id);
+				const spawn = String(p.spawn ?? '');
+				const vecchio = spawnByChat[cid];
+				if (!spawn || spawn === vecchio) return;
+				spawnByChat = { ...spawnByChat, [cid]: spawn };
+				// Se un box live era già nato col nome ricavato dal chat_id, va
+				// spostato sotto il nome vero: lasciarlo dov'è produrrebbe DUE box
+				// per la stessa istanza, uno che cresce e uno fermo.
+				const provvisorio = vecchio || cid.split(':').at(-1) || '';
+				if (provvisorio && provvisorio !== spawn && liveAgents[provvisorio]) {
+					const next = { ...liveAgents, [spawn]: liveAgents[provvisorio] };
+					delete next[provvisorio];
+					liveAgents = next;
+				}
 				return;
 			}
 			// eventi del turno del risponditore di QUESTO canale
