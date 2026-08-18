@@ -3308,7 +3308,7 @@
 	{#if logoErr}<p class="cred-hint" role="alert">{logoErr}</p>{/if}
 	<!-- `remote-actions` è la barra di bottoni già usata nei pannelli di questa
 	     pagina: stessi bordi, stesso `danger` al passaggio del mouse. -->
-	<div class="remote-actions" slot="actions">
+	<div class="remote-actions logo-actions" slot="actions">
 		{#if topicLogoUrl}
 			<button type="button" class="danger" on:click={togliLogo}
 				disabled={logoBusy}>togli</button>
@@ -3929,12 +3929,37 @@
 	.tg-form { display: flex; flex-direction: column; gap: 6px; }
 
 	/* Immagine del topic: si cambia dal dialogo aperto dal monogramma. */
+	/* `align-items: baseline` non è cosmesi: `.title-row` allinea i suoi figli
+	   alla BASELINE, e la baseline di un flex container è quella del primo
+	   figlio allineato a baseline — con `center` non ce n'è nessuno, il
+	   browser la sintetizza dal bordo inferiore del bottone e il segno scende
+	   di qualche pixel rispetto al titolo. Il bottone deve sparire dal
+	   layout: stessa posizione che aveva il segno da solo. */
 	.mark-btn {
-		display: inline-flex; align-items: center; padding: 0; border: none;
-		background: none; cursor: pointer; border-radius: 6px; line-height: 0;
+		display: inline-flex; align-items: baseline; padding: 0; border: none;
+		background: none; cursor: pointer; border-radius: 6px;
 	}
+	/* Il `margin-right: 6px` del segno resta DENTRO il bottone: la spaziatura
+	   verso il titolo è identica a prima, al prezzo di un'area cliccabile larga
+	   6px in più a destra. Spostarlo sul bottone servirebbe a poco e costerebbe
+	   caro: `.mark` è scoped in TopicMark e l'override qui avrebbe la stessa
+	   specificità in un altro file CSS — chi vince dipende dall'ordine con cui
+	   i chunk vengono caricati, e una spaziatura decisa a testa o croce è
+	   peggio di sei pixel di bersaglio in più. */
 	.mark-btn:hover { opacity: .75; }
 	.mark-btn:focus-visible { outline: 2px solid var(--accent, #ff6b3d); outline-offset: 2px; }
+	/* Azioni del dialogo. `stretch` (il default) tirerebbe il selettore di file
+	   per tutta l'altezza di «togli» lasciandone il testo in cima: due azioni
+	   affiancate che non stanno sulla stessa riga ottica. */
+	.logo-actions { align-items: center; }
+	/* Qui scegliere il file è l'azione principale, non una nota a piè di
+	   pannello: prende la forma dei bottoni accanto invece di quella del link. */
+	.logo-actions .link-btn {
+		display: inline-flex; align-items: center; font-size: 12px;
+		padding: 4px 9px; border: 1px solid var(--border); border-radius: 7px;
+		color: var(--fg); text-decoration: none; opacity: 1; cursor: pointer;
+	}
+	.logo-actions .link-btn:hover { border-color: var(--accent); color: var(--accent); }
 	/* L'anteprima è QUADRATA e ritaglia come `TopicMark` (`object-fit: cover`):
 	   con `contain` mostrerebbe l'immagine intera, cioè un inquadramento che in
 	   testata non si vedrà mai — e contraddirebbe la riga qui sopra nel dialogo,
