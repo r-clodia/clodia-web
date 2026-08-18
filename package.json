@@ -1,13 +1,13 @@
 {
   "name": "webui-v2",
-  "version": "0.157.0",
+  "version": "0.158.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 7843 --host",
     "build": "vite build",
     "preview": "vite preview --port 7843",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && node scripts/check-img-auth.mjs && node scripts/check-multi-spawn-badge.mjs && node scripts/check-live-reply-reset.mjs && node scripts/check-spawn-label.mjs && node scripts/check-trigger-no-silent-migration.mjs",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && node scripts/check-img-auth.mjs && node scripts/check-multi-spawn-badge.mjs && node scripts/check-live-reply-reset.mjs && node scripts/check-spawn-label.mjs && node scripts/check-trigger-no-silent-migration.mjs && node scripts/check-no-mcp-client-panel.mjs",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
   },
   "devDependencies": {

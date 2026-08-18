@@ -1314,24 +1314,28 @@
 		}
 	}
 
-	// ── Client MCP di una persona ───────────────────────────────────────────
-	// Giovanni collega il suo Claude Code a QUESTA stanza e ci parla come sé
-	// stesso. Non è una nuova autenticazione: è un token firmato come tutti gli
-	// altri, coniato per una persona invece che per un agente e legato a un solo
-	// topic.
+	// ── Proxy ammessi in questa stanza ──────────────────────────────────────
+	// Un proxy è un sistema terzo con un posto qui: parla e legge il canale,
+	// nient'altro. Ammetterlo manda la conversazione a qualcuno fuori — è un atto
+	// sulle mura, come montare una cartella Drive — quindi lo fa l'owner e il tier
+	// governa.
+	//
+	// Qui non si consegna un segreto: il proxy ha la propria chiave e ottiene
+	// token brevi firmando. Fino a #242 lo stesso modulo emetteva anche il
+	// frammento di configurazione per il client MCP di una PERSONA: quella metà è
+	// sparita, e con lei la credenziale da incollare a mano.
 	let mcpGrants: McpClientGrant[] = [];
 	let mcpOpen = false;
 	let mcpPrincipal = '';
-	let mcpProvider = 'anthropic-api';
+	let mcpProvider = '';
 	let mcpTtl = 30;
 	let mcpConsent = false;
 	let mcpErr = '';
-	/** Il frammento da incollare. Vive SOLO qui, in memoria, finché la persona
-	 *  non chiude il pannello: appena si ricarica la pagina è perduto, ed è
-	 *  giusto così — un segreto che la schermata sa rimostrare è un segreto in
-	 *  più posti. */
-	let mcpFresh: { id: string; config: string; expires: number; verbs: string[];
-	                assertion: boolean; ttl: number } | null = null;
+	/** Il contratto appena coniato: dove chiedere il token, cosa firmare, dove
+	 *  parlare. Non è un segreto — non contiene nulla che valga da solo — ma vive
+	 *  comunque solo qui in memoria: serve una volta, a chi configura il proxy. */
+	let mcpFresh: { id: string; contract: string; expires: number;
+	                verbs: string[] } | null = null;
 	$: mcpTierAlto = ['SEAL-2', 'SEAL-3', 'SEAL-4'].includes(String(info?.meta?.tier ?? tier));
 
 	async function loadMcpClients() {
@@ -1343,8 +1347,10 @@
 		}
 	}
 	function openMcpForm() {
-		mcpPrincipal = me ?? '';
-		mcpProvider = 'anthropic-api';
+		// Nessun default sul principal: il proxy lo scegli tra i partecipanti, e
+		// non è mai «io» — chi apre il pannello è una persona.
+		mcpPrincipal = proxyCandidates.length === 1 ? proxyCandidates[0] : '';
+		mcpProvider = '';
 		mcpTtl = 30;
 		mcpConsent = false;
 		mcpErr = '';
@@ -1354,7 +1360,7 @@
 	}
 	async function issueMcp() {
 		mcpErr = '';
-		if (!mcpPrincipal.trim()) { mcpErr = 'Per chi è questo client?'; return; }
+		if (!mcpPrincipal.trim()) { mcpErr = 'Quale proxy?'; return; }
 		metaBusy = true;
 		try {
 			const r = await issueTopicMcpClient(tier, name, {
@@ -1364,21 +1370,17 @@
 				tier_consent: mcpConsent,
 				base_url: window.location.origin
 			});
-			// I verbi EFFETTIVI del token appena coniato: non quelli che il
-			// pannello suppone, quelli che il gateway ha scritto dentro. Una
-			// persona ne ha dieci, un proxy quattro, e chi collega il client
-			// deve poterlo leggere senza decodificare il token.
-			// Un proxy non riceve una configurazione da incollare: non esiste un
-			// segreto statico da consegnare. Riceve il CONTRATTO — dove chiedere
-			// il token firmando con la propria chiave, e dove poi parlare.
-			const assertion = r.auth === 'assertion';
-			// La durata la dichiara il gateway: ripeterla qui a mano vorrebbe dire
-			// che il giorno in cui cambia, il pannello mente.
-			const ttl = Number((r.instructions as { token_ttl_seconds?: number } | undefined)
-				?.token_ttl_seconds ?? 0);
+			// I verbi EFFETTIVI del grant appena coniato: non quelli che il pannello
+			// suppone, quelli che il gateway ha scritto dentro. Un proxy ne porta
+			// quattro — parla e legge il canale — e chi lo configura deve poterlo
+			// leggere senza decodificare niente.
+			//
+			// `instructions` è il contratto; `config` resta come ripiego per un
+			// gateway che non lo mandasse, e mostrare un pannello vuoto sarebbe
+			// peggio che mostrare quello che ha risposto.
 			mcpFresh = { id: r.id,
-			             config: JSON.stringify((assertion ? r.instructions : r.config) ?? {}, null, 2),
-			             expires: r.expires ?? 0, verbs: r.verbs ?? [], assertion, ttl };
+			             contract: JSON.stringify(r.instructions ?? r.config ?? {}, null, 2),
+			             expires: r.expires ?? 0, verbs: r.verbs ?? [] };
 			await loadMcpClients();
 		} catch (e) {
 			mcpErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
@@ -1387,7 +1389,7 @@
 		}
 	}
 	async function revokeMcp(g: McpClientGrant) {
-		if (!confirm(`Revocare il client MCP di ${g.principal}? Smette di funzionare subito.`)) return;
+		if (!confirm(`Revocare il grant di ${g.principal}? Smette di funzionare subito.`)) return;
 		metaBusy = true;
 		try {
 			await issueTopicMcpClient(tier, name, { action: 'revoke', id: g.id });
@@ -1822,7 +1824,13 @@
 	// Autocomplete invito: solo agent/utenti registrati (no partecipanti inesistenti).
 	let allAgents: string[] = [];
 	let aiAgents: string[] = [];
+	let proxyAgents: string[] = [];
 	$: triggerAgents = shownParticipants.filter((participant) => aiAgents.includes(participant));
+	// I proxy che siedono QUI: gli unici principal per cui si conia un grant
+	// (#242). Non un campo di testo libero — un nome scritto a mano che non è un
+	// proxy lo rifiuta il server, e il rifiuto arriva dopo aver compilato tutto.
+	$: proxyCandidates = shownParticipants.filter((participant) =>
+		proxyAgents.includes(participant));
 	// Non proporre agent il cui tier è insufficiente per il topic (eligible=false).
 	// Gli agent senza record di idoneità (es. umani) restano proponibili.
 	$: inviteMatches = newParticipant.trim()
@@ -2008,6 +2016,7 @@
 				aiAgents = as
 					.filter((a) => a.type === 'bot' || a.type === 'normal' || a.type === 'super')
 					.map((a) => a.name);
+				proxyAgents = as.filter((a) => a.type === 'proxy').map((a) => a.name);
 				multiSpawn = Object.fromEntries(
 					as.filter((a) => a.multi_spawn)
 						.map((a) => [a.name, { max: a.max_spawns ?? null }])
@@ -2016,6 +2025,7 @@
 			.catch(() => {
 				allAgents = [];
 				aiAgents = [];
+				proxyAgents = [];
 				multiSpawn = {};
 			});
 		stopStream = startEventStream();
@@ -3026,21 +3036,23 @@
 
 				<details class="side-section mcp-panel" on:toggle={loadMcpClients}>
 					<summary>
-						<span>Client MCP</span>
+						<span>Proxy</span>
 						{#if mcpGrants.length}<span class="section-status">{mcpGrants.length}</span>{/if}
 					</summary>
 					{#if !isOwner}
 						<p class="muted">
-							Chi partecipa può collegare il proprio Claude Code a questa stanza e
-							parlarci da lì. L'elenco dei collegamenti lo vede l'owner.
+							Un <b>proxy</b> è un sistema terzo con un posto in questa stanza: parla e
+							legge il canale, nient'altro. Ammetterlo manda la conversazione fuori, e
+							quella è una decisione dell'owner — è lui che li ammette e li vede.
 						</p>
 					{:else if mcpFresh}
 						<p class="meta-note">
-							Incolla questo nella configurazione MCP del client. <b>Compare una volta
-							sola</b>: chiuso questo pannello non è più rileggibile da nessuna parte —
-							se si perde, se ne conia un altro e si revoca questo.
+							Il <b>contratto</b> per chi gestisce il proxy: dove chiedere il token
+							firmando con la propria chiave, e dove parlare. Non è un segreto — non
+							c'è nulla qui che funzioni senza quella chiave — ma si legge una volta,
+							quando si configura.
 						</p>
-						<pre class="mcp-config">{mcpFresh.config}</pre>
+						<pre class="mcp-config">{mcpFresh.contract}</pre>
 						{#if mcpFresh.verbs.length}
 							<p class="meta-note">
 								Porta {mcpFresh.verbs.length} verbi: <code>{mcpFresh.verbs.join(', ')}</code>.
@@ -3048,36 +3060,40 @@
 						{/if}
 						<p class="meta-note">Scade fra {giorniAllaScadenza(mcpFresh.expires)}.</p>
 						<div class="remote-actions">
-							<button type="button" on:click={() => navigator.clipboard?.writeText(mcpFresh?.config ?? '')}>copia</button>
+							<button type="button" on:click={() => navigator.clipboard?.writeText(mcpFresh?.contract ?? '')}>copia</button>
 							<button type="button" on:click={() => { mcpFresh = null; mcpOpen = false; }}>ho finito</button>
 						</div>
 					{:else if mcpOpen}
 						<form class="tg-form" on:submit|preventDefault={issueMcp}>
-							<input class="remote-url-input" type="text" bind:value={mcpPrincipal}
-								placeholder="chi su Clodia (persona o proxy)"
-								autocomplete="off" spellcheck="false" />
+							{#if proxyCandidates.length}
+								<label class="tg-mode">
+									<span>Quale proxy</span>
+									<select bind:value={mcpPrincipal}>
+										<option value="">scegli…</option>
+										{#each proxyCandidates as p}<option value={p}>{p}</option>{/each}
+									</select>
+								</label>
+							{:else}
+								<p class="muted">
+									Nessun proxy tra i partecipanti di questa stanza. Un proxy si crea
+									dalla pagina <a href="/agents">Agenti</a> — serve la sua chiave
+									pubblica — e poi si invita qui come chiunque altro.
+								</p>
+							{/if}
 							<p class="meta-note">
-								Vale anche per un <b>proxy</b>: è così che un sistema terzo entra in
-								questa stanza. Il token che riceve porta però solo i quattro verbi
-								con cui <b>parla e legge il canale</b> — niente file, niente ricerca,
-								niente scrittura. La differenza la fa la natura del principal, non
-								questo modulo.
+								Il grant porta i quattro verbi con cui <b>parla e legge il canale</b>:
+								niente file, niente ricerca, niente scrittura. Un proxy che ha bisogno
+								di contesto lo riceve in un messaggio.
 							</p>
 							<label class="tg-mode">
-								<span>Su cosa gira <span class="muted">(o quale sistema, se è un proxy)</span></span>
-								<select bind:value={mcpProvider}>
-									<option value="anthropic-api">Claude Code (Anthropic)</option>
-									<option value="claude-pro-max">Claude Pro/Max</option>
-									<option value="openai-api">OpenAI</option>
-									<option value="codex">Codex</option>
-									<option value="altro">altro</option>
-								</select>
+								<span>Quale sistema</span>
+								<input class="remote-url-input" type="text" bind:value={mcpProvider}
+									placeholder="es. sistema-crm" autocomplete="off" spellcheck="false" />
 							</label>
 							<p class="meta-note">
-								Quello che la persona legge da lì <b>entra nel suo motore di
-								inferenza</b>: il tier di questa stanza è un tetto anche su quello.
-								La dichiarazione resta scritta nel token — serve a sapere, dopo, dove
-								è finito ciò che è stato letto.
+								Quello che il proxy legge <b>esce da qui</b>: il tier di questa stanza è
+								un tetto anche su dove finisce. La dichiarazione resta scritta nel
+								grant — serve a sapere, dopo, dove è andato ciò che è stato letto.
 							</p>
 							<label class="tg-mode">
 								<span>Per quanto</span>
@@ -3091,14 +3107,14 @@
 								<label class="mcp-consent">
 									<input type="checkbox" bind:checked={mcpConsent} />
 									<span>
-										Questa stanza è {info?.meta?.tier ?? tier}: il provider dichiarato
+										Questa stanza è {info?.meta?.tier ?? tier}: il sistema dichiarato
 										non è verificabile e me ne assumo la dichiarazione.
 									</span>
 								</label>
 							{/if}
 							{#if mcpErr}<p class="cred-hint" role="alert">{mcpErr}</p>{/if}
 							<div class="remote-actions">
-								<button type="submit" disabled={metaBusy}>conia</button>
+								<button type="submit" disabled={metaBusy || !proxyCandidates.length}>ammetti</button>
 								<button type="button" on:click={() => (mcpOpen = false)} disabled={metaBusy}>annulla</button>
 							</div>
 						</form>
@@ -3108,10 +3124,12 @@
 								{#each mcpGrants as g}
 									<li class:expired={g.expired}>
 										<span class="mcp-who">{g.principal}</span>
-										{#if g.principal_kind === 'proxy'}
-											<span class="muted" title="sistema terzo: parla e legge il canale, nient'altro">· proxy</span>
+										{#if g.principal_kind !== 'proxy'}
+											<!-- Residuo del pannello «Client MCP» (#242): non si conia più,
+											     e resta in elenco solo perché per revocarlo va visto. -->
+											<span class="muted" title="client MCP di una persona: non si conia più, si può solo revocare">· client MCP dismesso</span>
 										{/if}
-										<span class="muted">{g.provider || 'provider non dichiarato'}</span>
+										<span class="muted">{g.provider || 'sistema non dichiarato'}</span>
 										<span class="muted">· {g.expired ? 'scaduto' : giorniAllaScadenza(g.expires)}</span>
 										<button type="button" class="link-btn danger"
 											on:click={() => revokeMcp(g)} disabled={metaBusy}>revoca</button>
@@ -3120,14 +3138,13 @@
 							</ul>
 						{:else}
 							<p class="muted">
-								Nessun client collegato. Chi partecipa può collegare il proprio Claude
-								Code a questa stanza: legge la conversazione e i file, parla come sé
-								stesso e chiede se qualcuno l'ha menzionato.
+								Nessun proxy ammesso. Un sistema terzo che entra qui prende posto tra i
+								partecipanti: parla, viene menzionato, e si vede quando non c'è.
 							</p>
 						{/if}
 						{#if mcpErr}<p class="cred-hint" role="alert">{mcpErr}</p>{/if}
 						<div class="remote-actions">
-							<button type="button" on:click={openMcpForm} disabled={metaBusy}>collega un client</button>
+							<button type="button" on:click={openMcpForm} disabled={metaBusy}>ammetti un proxy</button>
 						</div>
 					{/if}
 				</details>
@@ -3940,7 +3957,8 @@
 	}
 	.link-btn.disabled { opacity: 0.5; pointer-events: none; }
 
-	/* Client MCP: il frammento da incollare, e l'elenco di chi è collegato. */
+	/* Proxy: il contratto da consegnare a chi lo gestisce, e l'elenco di chi è
+	   ammesso in questa stanza. */
 	.mcp-config {
 		margin: 6px 0; padding: 8px; border-radius: 6px;
 		background: var(--surface-2, rgba(127, 127, 127, 0.12));
