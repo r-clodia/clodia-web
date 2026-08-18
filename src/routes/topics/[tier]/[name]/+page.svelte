@@ -27,8 +27,6 @@
 		getChannelAliases,
 		postChannelMessage,
 		sendMessageFeedback,
-		getFeedbackLessons,
-		deleteFeedbackLesson,
 		resetChannelContext,
 		interruptChannel,
 		topicRemote,
@@ -58,7 +56,6 @@
 		TOPIC_STATUSES,
 		type ChannelInfo,
 		type ChannelMessage,
-		type FeedbackLesson,
 		type ChannelFile,
 	} from '$lib/api/client';
 	import { getTopicAgentsMd, saveTopicAgentsMd, type TopicAgentsMd } from '$lib/api/client';
@@ -95,8 +92,6 @@
 	let files: ChannelFile[] = [];
 	let feedbackByMessage: Record<string, 'thumbs_up' | 'thumbs_down'> = {};
 	let feedbackBusy = '';
-	let feedbackLessons: FeedbackLesson[] = [];
-	let feedbackLessonsKey = '';
 	const BOTTOM_THRESHOLD_PX = 64;
 	let isNearBottom = true;
 	let showNewMessages = false;
@@ -781,30 +776,10 @@
 		try {
 			await sendMessageFeedback(tier, name, m.id, rating, comment);
 			feedbackByMessage = { ...feedbackByMessage, [m.id]: rating };
-			if (isOwner) {
-				feedbackLessons = await getFeedbackLessons(tier, name);
-			}
 		} catch (e) {
 			loadErr = e instanceof Error ? e.message : String(e);
 		} finally {
 			feedbackBusy = '';
-		}
-	}
-
-	async function loadFeedbackLessons() {
-		try {
-			feedbackLessons = await getFeedbackLessons(tier, name);
-		} catch {
-			feedbackLessons = [];
-		}
-	}
-
-	async function removeFeedbackLesson(id: string) {
-		try {
-			await deleteFeedbackLesson(tier, name, id);
-			feedbackLessons = feedbackLessons.filter((l) => l.id !== id);
-		} catch (e) {
-			loadErr = e instanceof Error ? e.message : String(e);
 		}
 	}
 
@@ -1463,10 +1438,6 @@
 		}
 	}
 
-	$: if (isOwner && tier && name && feedbackLessonsKey !== `${tier}/${name}`) {
-		feedbackLessonsKey = `${tier}/${name}`;
-		void loadFeedbackLessons();
-	}
 	// Seed multi-spawn (issue#94): la CHIAVE presente = il seed materializza N
 	// istanze; `max` è il cap dichiarato (`max_spawns`) per il tooltip "fino a
 	// quante" (issue#210). Voce-oggetto e non booleano perché il valore va letto
@@ -1692,8 +1663,7 @@
 			refreshMessages(),
 			loadFiles(true),
 			refreshInfo(),
-			refreshGateInfo(),
-			isOwner ? loadFeedbackLessons() : Promise.resolve()
+			refreshGateInfo()
 		]);
 	}
 
@@ -2689,37 +2659,6 @@
 						<pre class="meta-doc-body">{JSON.stringify(info?.meta ?? {}, null, 2)}</pre>
 					</details>
 				</details>
-				{#if isOwner}
-					<details class="side-section">
-						<summary>
-							<span>Lessons</span>
-							<span class="section-count">{feedbackLessons.length}</span>
-						</summary>
-						{#if feedbackLessons.length}
-							<ul class="feedback-lessons">
-							{#each feedbackLessons as lesson (lesson.id)}
-								<li>
-									<div class="lesson-head">
-										<span>{lesson.rating === 'thumbs_up' ? '👍' : '👎'} {lesson.agent}</span>
-										<button type="button" title="Cancella lesson"
-											on:click={() => removeFeedbackLesson(lesson.id)}>×</button>
-									</div>
-									{#if lesson.status === 'pending'}
-										<span class="muted">Elaborazione…</span>
-									{:else if lesson.status === 'error'}
-										<span class="lesson-error">Errore: {lesson.error ?? 'lesson non generata'}</span>
-									{:else}
-										<p>{lesson.lesson}</p>
-									{/if}
-									{#if lesson.comment}<small>“{lesson.comment}”</small>{/if}
-								</li>
-							{/each}
-						</ul>
-						{:else}
-							<p class="muted">Nessuna lesson registrata.</p>
-						{/if}
-					</details>
-				{/if}
 				<details class="side-section" open>
 					<summary>
 						<span>Partecipanti</span>
@@ -3833,13 +3772,6 @@
 	.side-resizer:hover::before,
 	.side-resizer.active::before { background: var(--accent); width: 3px; }
 	.parts, .files { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
-	.feedback-lessons { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 7px; }
-	.feedback-lessons li { padding: 7px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--card-bg); font-size: 11px; }
-	.lesson-head { display: flex; justify-content: space-between; gap: 6px; font-weight: 700; }
-	.lesson-head button { border: 0; background: transparent; color: var(--fg-muted); cursor: pointer; font-size: 15px; line-height: 1; }
-	.feedback-lessons p { margin: 5px 0 0; line-height: 1.4; white-space: pre-wrap; }
-	.feedback-lessons small { display: block; margin-top: 5px; color: var(--fg-muted); font-style: italic; }
-	.lesson-error { color: var(--danger); }
 	.parts li { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12.5px; }
 	.part-id { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 	.part-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
