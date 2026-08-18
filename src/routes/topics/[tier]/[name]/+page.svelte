@@ -668,6 +668,23 @@
 		delete next[agent];
 		liveAgents = next;
 	}
+	/** Azzera SOLO il testo in streaming, lasciando ragionamento e tool.
+	 *
+	 *  È ciò che serve quando una bolla si è appena PERSISTITA (clodia-platform#243):
+	 *  il blocco di testo è diventato un messaggio vero, quindi la copia
+	 *  provvisoria va via — ma il turno continua, e cancellare anche `think`/
+	 *  `tools` spegnerebbe il box del ragionamento di un agente ancora al lavoro.
+	 *
+	 *  La fine del turno la dichiara `active_responders` (la cintura in
+	 *  `refreshInfo`), che è la sola cosa che la sappia davvero: l'arrivo di un
+	 *  messaggio NON è fine del turno, ed è esattamente l'equivoco che faceva
+	 *  sparire le risposte parziali sotto gli occhi di chi leggeva.
+	 */
+	function resetLiveReply(agent: string) {
+		const cur = liveAgents[agent];
+		if (!cur || !cur.reply) return;
+		liveAgents = { ...liveAgents, [agent]: { ...cur, reply: '' } };
+	}
 	$: liveEntries = Object.entries(liveAgents).filter(([, l]) => l.think || l.reply || l.tools.length);
 	$: liveReplies = liveEntries.filter(([, l]) => l.reply);
 	$: hasLive = liveEntries.length > 0;
@@ -1657,20 +1674,28 @@
 				_lastMsgId = last.id;
 				multiSel = new Set();
 			}
-			// Turno concluso: il messaggio finale di un agente è arrivato → solo ORA
-			// si ripulisce il suo live (testo in streaming + thinking + barra tool).
-			// Durante l'attesa dei subagent il live resta visibile, che è il motivo
-			// per cui non lo si azzera prima.
+			// Una bolla si è persistita: la copia provvisoria va via, il turno NO.
 			//
-			// Si guardano TUTTI i nuovi messaggi, non solo l'ultimo. Prima la
-			// condizione era `if (last.kind === 'ai') resetLive(last.author)`: in un
-			// canale con più agenti e catene di delega, che dopo A posti B è il caso
-			// normale — e allora `resetLive(A)` non veniva mai chiamato. Il testo
-			// parzialmente streamato di A restava sullo schermo accanto al suo
-			// messaggio vero, per sempre: una risposta che sembra incompleta, con
-			// l'agente che sembra ancora al lavoro. Il bug si vedeva tanto più quanto
-			// più il canale era vivo, cioè esattamente quando dà più fastidio.
-			for (const a of newAiAuthors(messages, previousLastId)) resetLive(a);
+			// Qui c'era `resetLive(a)`, che cancellava tutto il live — testo,
+			// ragionamento, barra dei tool — leggendo «è arrivato un messaggio di
+			// quell'autore» come «il turno è finito». Con un turno che pubblica più
+			// volte (bolle per blocco, o post via tool) quella lettura è FALSA, e
+			// produceva il difetto segnalato da Davide il 18 ago: la risposta
+			// parziale compariva, l'agente continuava a lavorare, e il testo
+			// spariva da sotto gli occhi di chi stava leggendo.
+			//
+			// Ora si azzera solo `reply`, cioè la sola parte che il messaggio
+			// appena arrivato ha reso permanente: la bolla provvisoria è sostituita
+			// in posto da quella vera, con lo stesso testo, e il box del
+			// ragionamento resta acceso finché l'agente lavora.
+			//
+			// Si guardano TUTTI i nuovi messaggi, non solo l'ultimo: in un canale
+			// con catene di delega, che dopo A posti B è il caso normale, e con la
+			// sola condizione sull'ultimo il live di A non veniva mai ripulito.
+			//
+			// La fine del turno resta a `active_responders` (cintura in
+			// `refreshInfo`), unica fonte che la conosca.
+			for (const a of newAiAuthors(messages, previousLastId)) resetLiveReply(a);
 			if (last && previousLastId && last.id !== previousLastId) {
 				await tick();
 				if (wasNearBottom) {
