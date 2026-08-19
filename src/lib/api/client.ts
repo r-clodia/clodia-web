@@ -1095,6 +1095,31 @@ export async function recordRoutingFeedback(
 	return apiPost('/clodia/routing/feedback', { tier, name, ...body });
 }
 
+/** Scavalca una scelta del router GIÀ ESEGUITA (clodia-platform#187).
+ *
+ *  Distinta da `recordRoutingFeedback`, che insegna per la volta dopo e lascia
+ *  parlare l'agente sbagliato: qui il turno in corso si ferma e riparte su
+ *  quello nominato dall'umano. Il server ammette solo l'autore del messaggio
+ *  instradato male, o l'owner del topic come ripiego.
+ */
+export async function overruleRouting(
+	tier: string,
+	name: string,
+	agent: string,
+	chosen?: string
+): Promise<{
+	ok: boolean;
+	interrupted: string[];
+	queued: boolean;
+	responder: string | null;
+	learned: boolean;
+}> {
+	return apiPost(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/routing-overrule`,
+		{ agent, ...(chosen ? { chosen } : {}) }
+	);
+}
+
 export async function resolveRoutingChoice(
 	tier: string,
 	name: string,

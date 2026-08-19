@@ -39,6 +39,7 @@
 		getChannelEligibility,
 		recordRoutingFeedback,
 		resolveRoutingChoice,
+		overruleRouting,
 		getChannelFiles,
 		uploadChannelFile,
 		downloadTopicZip,
@@ -582,6 +583,35 @@
 			});
 		} catch {
 			routingCorrected = null; // ripristina su errore
+		}
+	}
+	// clodia-platform#187 · La correzione qui sopra insegna per la volta dopo.
+	// Questa AGISCE ADESSO: ferma il turno dell'agente scelto dal router e lo
+	// consegna a quello nominato. Sono due chip distinti perché costano cose
+	// diverse — imparare è gratis, ri-instradare consuma un turno — e nascondere
+	// il secondo dentro il primo farebbe partire un agente a chi voleva solo
+	// correggere una statistica.
+	let routingOverruled: string | null = null;
+	let routingOverruleBusy = false;
+	let routingOverruleErr = '';
+	async function overruleRoute(agent: string) {
+		if (!lastRouting || multiRouting || !agent || routingOverruleBusy || routingOverruled) return;
+		routingOverruleBusy = true;
+		routingOverruleErr = '';
+		try {
+			const res = await overruleRouting(tier, name, agent, lastRouting.chosen);
+			routingOverruled = res.responder ?? agent;
+			routingCorrected = routingOverruled; // lo scavalcamento registra anche la correzione
+			// Il turno interrotto non finirà mai: i suoi box live resterebbero
+			// accesi a schermo come quelli di un turno vivo (stessa cintura di
+			// `stopTurn`).
+			typing = [];
+			resetLive();
+			await refreshMessages();
+		} catch (e) {
+			routingOverruleErr = e instanceof ApiError ? e.message : 'scavalcamento non riuscito';
+		} finally {
+			routingOverruleBusy = false;
 		}
 	}
 	async function confirmRoute() {
@@ -2017,6 +2047,8 @@
 				if (p.tier !== tier || p.name !== name) return;
 				lastRouting = p as unknown as RoutingTrace;
 				routingCorrected = null; // nuova decisione → riapri la correzione
+				routingOverruled = null; // e riapri lo scavalcamento: è un altro turno
+				routingOverruleErr = '';
 				routingConfirmed = false;
 				return;
 			}
@@ -2535,6 +2567,22 @@
 									{/each}
 								{/if}
 								</div>
+								{#if routingOverruled}
+									<div class="routing-correct">
+										<span class="rc-done">✓ turno passato a <b>{routingOverruled}</b>: la scelta del router è stata fermata</span>
+									</div>
+								{:else if (hasLive || typing.length) && correctOptions.length}
+									<div class="routing-correct">
+										<span class="rc-label">Sta rispondendo l'agente sbagliato? Passa il turno adesso a:</span>
+										{#each correctOptions as a}
+											<button type="button" class="rc-chip rc-overrule" disabled={routingOverruleBusy}
+												on:click={() => overruleRoute(a)}>{a}</button>
+										{/each}
+									</div>
+								{/if}
+								{#if routingOverruleErr}
+									<div class="routing-meta">{routingOverruleErr}</div>
+								{/if}
 							{/if}
 						</div>
 					{/if}
@@ -3401,6 +3449,10 @@
 	.rc-chip { font: inherit; font-size: 11px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--fg); cursor: pointer; }
 	.rc-chip:hover { border-color: var(--accent); color: var(--accent); }
 	.rc-confirm { border-color: color-mix(in srgb, #22c55e 60%, var(--border)); color: #22c55e; }
+	/* Lo scavalcamento interrompe un turno: si distingue dal chip che insegna,
+	   perché il costo delle due azioni è diverso. */
+	.rc-overrule { border-color: color-mix(in srgb, #f59e0b 60%, var(--border)); color: #f59e0b; }
+	.rc-overrule:disabled { opacity: .5; cursor: default; }
 	.rc-done { font-size: 11px; color: #4ade80; }
 	.routing-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; background: none; border: 0; cursor: pointer; color: var(--fg); text-align: left; }
 	.routing-head .caret { transition: transform .15s; color: var(--fg-muted); }
