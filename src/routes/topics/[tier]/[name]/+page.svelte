@@ -63,6 +63,7 @@
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import { consumePersistedAll } from '$lib/liveReply';
+	import { gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
 	import type { TierWarning } from '$lib/api/types';
 
 	$: params = $page.params as Record<string, string>;
@@ -915,7 +916,12 @@
 	 *  decidere una cosa già decisa è peggio che non offrirlo: si preme, il
 	 *  backend rifiuta, e sembra rotto ciò che ha funzionato. */
 	let gateAperti = new Set<string>();
-	let gateInfoCaricato = false;
+	/** Istante (ms) in cui la coda dei pendenti è stata letta con successo; **0 =
+	 *  mai**, e vale anche come «caricata?» — un flag separato direbbe la stessa
+	 *  cosa due volte, e due copie divergono. `gateCardState` lo confronta col
+	 *  messaggio: una lista più vecchia della richiesta non è la prova che la
+	 *  richiesta sia chiusa. */
+	let gateInfoTs = 0;
 	async function refreshGateInfo() {
 		try {
 			const r = await apiGet<{ requests: Array<GateInfo & { agent: string; instance: string; verb: string }> }>(
@@ -931,7 +937,11 @@
 			}
 			gateInfo = m;
 			gateAperti = aperti;
-			gateInfoCaricato = true;
+			// QUANDO la coda è stata letta. Serve a non dire «già deciso» a una
+			// richiesta nata DOPO questa lettura: fra il messaggio e il poll
+			// successivo passano alcuni secondi, e in quella finestra la coda non
+			// poteva conoscerla. Vedi `$lib/gateCard`.
+			gateInfoTs = Date.now();
 		} catch {
 			// La card resta senza spiegazione, non sparisce — e soprattutto NON
 			// si conclude che i gate siano chiusi: una lista che non è arrivata
@@ -957,8 +967,14 @@
 		return /^(egress|ingress):/.test(verb || '');
 	}
 	let gateDeciding = false;
+	/** Esiti presi in questa pagina, per id di **MESSAGGIO** e non per tripla
+	 *  `agent|instance|verb`: la tripla ne copre N, e indicizzarci l'esito
+	 *  faceva nascere «già decisa» ogni card successiva della stessa coppia
+	 *  agente/verbo — sette round di gate a vuoto il 17 ago 2026
+	 *  (clodia-platform#232). Una card, una richiesta. */
 	let gateDecided: Record<string, string> = {};
 	async function decideGate(
+		msgId: string,
 		g: { id: string; agent: string; instance: string; verb: string },
 		approve: boolean,
 		remember: 'once' | 'topic' | 'global' = 'once'
@@ -973,14 +989,15 @@
 			// solo per stavolta: dirlo, altrimenti la stessa domanda torna domani
 			// e sembra che il gate sia rotto.
 			const mem = r?.memory;
-			gateDecided = {
-				...gateDecided,
-				[g.id]: !approve ? 'negato'
+			gateDecided = recordDecision(
+				gateDecided,
+				{ id: msgId },
+				!approve ? 'negato'
 					: remember === 'once' ? 'approvato'
 					: mem && mem.remembered === false ? 'approvato (solo per stavolta)'
 					: remember === 'topic' ? 'approvato e ricordato qui'
 					: 'approvato ovunque'
-			};
+			);
 			if (mem && mem.remembered === false && mem.error) loadErr = mem.error;
 		} catch (e) {
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
@@ -2413,8 +2430,14 @@
 							{/if}
 							{@const g = msgGate(m.text)}
 							{#if g !== null}
+								{@const gStato = gateCardState(
+									{ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs },
+									m,
+									g
+								)}
+								{@const gDest = gateDestination(g.verb)}
 								<div class="jobprop">
-									{#if gateDecided[g.id]}
+									{#if gStato === 'decisa'}
 										<!-- L'esito NON cancella la domanda: la richiesta resta
 										     leggibile accanto alla risposta. Un «approvato» da solo
 										     racconta che qualcuno ha premuto un bottone, non cosa ha
@@ -2423,20 +2446,35 @@
 										     chi e cosa, che vengono dal marcatore e non dalla coda. -->
 										<span class="jobprop-done">
 											🛡️ <b>{g.agent}</b> · <code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code>
-											— {gateDecided[g.id]}
+											— {gateDecided[m.id]}
 										</span>
-									{:else if gateInfoCaricato && !gateAperti.has(g.id)}
+									{:else if gStato === 'chiusa'}
 										<!-- Già deciso, ma non da questa pagina (o prima di un
-										     ricarico): la richiesta non è più in coda. Si dice, invece
-										     di riproporre bottoni che il backend rifiuterebbe. -->
+										     ricarico): la richiesta non è più in coda, e la coda è
+										     stata letta DOPO che questo messaggio è arrivato. Si dice,
+										     invece di riproporre bottoni che il backend rifiuterebbe.
+										     Senza quel confronto di tempi, una richiesta appena nata
+										     finiva qui per la durata di un poll: un «già deciso» su
+										     ciò che nessuno aveva deciso. -->
 										<span class="jobprop-done">
 											🛡️ <b>{g.agent}</b> · <code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code>
 											— già deciso
 										</span>
 									{:else if canDecideGate(g.id)}
-										<span class="jobprop-q">🛡️ <b>{g.agent}</b> {g.verb.startsWith('topic-access:') ? 'vuole accedere al topic ' : 'vuole usare '}<code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code> — approvi?</span>
+										{#if gDest}
+											<!-- La DESTINAZIONE, non solo il verbo: `egress:email:mailto:hr@x.io`
+											     stampato tutto attaccato in un `<code>` dice a chi decide che
+											     si tratta di «egress», non verso cosa sta aprendo — ed è
+											     l'unica cosa che serve sapere per decidere. -->
+											<span class="jobprop-q">
+												🛡️ <b>{g.agent}</b> vuole {gDest.direzione === 'egress' ? 'raggiungere' : 'ricevere da'}
+												<code>{gDest.dest}</code> ({gDest.canale}) — approvi?
+											</span>
+										{:else}
+											<span class="jobprop-q">🛡️ <b>{g.agent}</b> {g.verb.startsWith('topic-access:') ? 'vuole accedere al topic ' : 'vuole usare '}<code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code> — approvi?</span>
+										{/if}
 										<button type="button" class="jobprop-ok" disabled={gateDeciding}
-											on:click={() => decideGate(g, true)}>{gateDeciding ? '…' : '✓ Approva'}</button>
+											on:click={() => decideGate(m.id, g, true)}>{gateDeciding ? '…' : '✓ Approva'}</button>
 										{#if isDestinationGate(g.verb)}
 											<!-- Solo per i gate su una DESTINAZIONE: «sempre» ha senso
 											     su un indirizzo, non su un'azione. E le due portate hanno
@@ -2446,15 +2484,15 @@
 											     ignorare i bottoni. -->
 											<button type="button" class="jobprop-ok" disabled={gateDeciding}
 												title="Aggiunge questa destinazione alla whitelist di questa stanza: non verrà più chiesto qui"
-												on:click={() => decideGate(g, true, 'topic')}>✓ Sempre qui</button>
+												on:click={() => decideGate(m.id, g, true, 'topic')}>✓ Sempre qui</button>
 											{#if $isAdmin}
 												<button type="button" class="jobprop-ok" disabled={gateDeciding}
 													title="Aggiunge questa destinazione alla whitelist dell'INTERA istanza, tutte le stanze comprese"
-													on:click={() => decideGate(g, true, 'global')}>✓ Ovunque</button>
+													on:click={() => decideGate(m.id, g, true, 'global')}>✓ Ovunque</button>
 											{/if}
 										{/if}
 										<button type="button" class="jobprop-no" disabled={gateDeciding}
-											on:click={() => decideGate(g, false)}>Nega</button>
+											on:click={() => decideGate(m.id, g, false)}>Nega</button>
 									{:else}
 										<span class="invite-note">
 											{#if gateInfo[g.id]?.decided_by === 'admin'}
