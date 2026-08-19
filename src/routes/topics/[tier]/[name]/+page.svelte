@@ -626,12 +626,20 @@
 			routingConfirmed = false;
 		}
 	}
+	// Le chiavi sono le stringhe che il backend mette in `payload.reason`: quelle
+	// senza voce qui NON degradano in modo visibile, si stampano tal quali. È il
+	// difetto delle due decisioni prese da una PERSONA (clodia-platform#253), che
+	// finivano a schermo in inglese e nel gergo del router — e sono proprio quelle
+	// che chi legge ha appena causato con un click, quindi le uniche di cui si
+	// aspetta di riconoscersi nella spiegazione.
 	const routingReason: Record<string, string> = {
 		tagged: 'richiesto esplicitamente con @menzione',
 		relevance: 'dominio più pertinente al messaggio (embedding)',
 		'multi-match fallback': 'più specialisti pertinenti coinvolti in parallelo',
 		'fallback-rank': 'nessuno abbastanza pertinente → fallback per rango',
-		rank: 'per rango (routing per rilevanza disattivato)'
+		rank: 'per rango (routing per rilevanza disattivato)',
+		'router overruled by human': 'scelta del router scavalcata da una persona',
+		'routing ambiguity resolved by human': 'ambiguità sciolta da una persona'
 	};
 
 	// --- Ragionamento / attività live del turno del risponditore -----------
