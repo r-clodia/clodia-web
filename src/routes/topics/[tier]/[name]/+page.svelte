@@ -594,12 +594,27 @@
 	let routingOverruled: string | null = null;
 	let routingOverruleBusy = false;
 	let routingOverruleErr = '';
+	// Ripiego locale se il server non manda `detail`: i tre esiti in cui l'atto
+	// declina restano leggibili senza dipendere dal testo del backend.
+	const overruleOutcome: Record<string, string> = {
+		'not-authorized': 'solo chi ha scritto il messaggio — o l’owner del topic — può passare il turno',
+		'same-agent': 'il router aveva già scelto questo agente',
+		'not-routable': 'questo agente non può rispondere in questo canale'
+	};
 	async function overruleRoute(agent: string) {
 		if (!lastRouting || multiRouting || !agent || routingOverruleBusy || routingOverruled) return;
 		routingOverruleBusy = true;
 		routingOverruleErr = '';
 		try {
 			const res = await overruleRouting(tier, name, agent, lastRouting.chosen);
+			// clodia-platform#253 · L'atto può declinare dentro una risposta
+			// riuscita: il server distingue «non ho imparato» da «non ho agito»,
+			// e trattare un `acted: false` come successo mostrerebbe «turno
+			// passato» a fronte di un turno che nessuno ha passato.
+			if (res.acted === false) {
+				routingOverruleErr = res.detail || overruleOutcome[res.outcome ?? ''] || 'turno non passato';
+				return;
+			}
 			routingOverruled = res.responder ?? agent;
 			routingCorrected = routingOverruled; // lo scavalcamento registra anche la correzione
 			// Il turno interrotto non finirà mai: i suoi box live resterebbero
@@ -631,7 +646,13 @@
 		relevance: 'dominio più pertinente al messaggio (embedding)',
 		'multi-match fallback': 'più specialisti pertinenti coinvolti in parallelo',
 		'fallback-rank': 'nessuno abbastanza pertinente → fallback per rango',
-		rank: 'per rango (routing per rilevanza disattivato)'
+		rank: 'per rango (routing per rilevanza disattivato)',
+		// clodia-platform#253 · Le due decisioni prese da una PERSONA mancavano
+		// dalla mappa, quindi a schermo finiva la stringa interna del backend —
+		// e proprio nei due casi in cui chi legge vuole sapere che la scelta non
+		// è stata del router.
+		'router overruled by human': 'scelta del router scavalcata da una persona',
+		'routing ambiguity resolved by human': 'ambiguità risolta da una persona'
 	};
 
 	// --- Ragionamento / attività live del turno del risponditore -----------

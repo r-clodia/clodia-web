@@ -1109,6 +1109,14 @@ export async function overruleRouting(
 	chosen?: string
 ): Promise<{
 	ok: boolean;
+	/** clodia-platform#253 · L'ATTO, distinto dall'apprendimento: `false` con un
+	 *  `outcome` quando la correzione è stata registrata ma il turno non è
+	 *  passato (non autorizzato, stesso agente, agente non instradabile). */
+	acted?: boolean;
+	outcome?: 'overruled' | 'not-authorized' | 'same-agent' | 'not-routable';
+	detail?: string | null;
+	/** Vuoto quando il turno sbagliato era già finito: da #253 l'interruzione
+	 *  colpisce solo l'agente scelto dal router, non tutta la stanza. */
 	interrupted: string[];
 	queued: boolean;
 	responder: string | null;
