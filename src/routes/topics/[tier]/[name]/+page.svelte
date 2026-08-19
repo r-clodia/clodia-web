@@ -575,6 +575,10 @@
 		if (!lastRouting || multiRouting || !agent || routingCorrected || routingConfirmed) return;
 		routingCorrected = agent; // ottimistico
 		try {
+			// R9: se il turno scelto dal router è ancora in corso, questa chiamata
+			// lo interrompe e passa la richiesta all'agente indicato. L'esito non
+			// si legge qui: arriva come `routing_decision` sul bus — la box si
+			// ridisegna sulla decisione nuova — e come nota del router nel canale.
 			await recordRoutingFeedback(tier, name, {
 				kind: 'correction',
 				correct_agent: agent,
@@ -601,7 +605,12 @@
 		relevance: 'dominio più pertinente al messaggio (embedding)',
 		'multi-match fallback': 'più specialisti pertinenti coinvolti in parallelo',
 		'fallback-rank': 'nessuno abbastanza pertinente → fallback per rango',
-		rank: 'per rango (routing per rilevanza disattivato)'
+		rank: 'per rango (routing per rilevanza disattivato)',
+		// Le due decisioni prese da una PERSONA. Senza queste due voci la box
+		// mostrava la stringa interna del backend, che è la ragione per cui la
+		// mappa esiste.
+		'routing ambiguity resolved by human': 'scelto da te (il router era in dubbio)',
+		'confident router overruled by human': 'corretto da te: il turno precedente è stato interrotto'
 	};
 
 	// --- Ragionamento / attività live del turno del risponditore -----------

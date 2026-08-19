@@ -1086,12 +1086,23 @@ export interface AgentEligibility {
 	warn: boolean;
 	context: AgentContext | null;
 }
-/** Feedback sulla scelta del router, distinto dal feedback sulla risposta. */
+/** Feedback sulla scelta del router, distinto dal feedback sulla risposta.
+ *
+ * Una correzione non insegna soltanto (R9): se il turno dell'agente scelto dal
+ * router è ancora in corso viene interrotto e la richiesta passa all'agente
+ * indicato. `overruled` dice se è successo — e `reason` perché no, quando no. */
 export async function recordRoutingFeedback(
 	tier: string,
 	name: string,
 	body: { kind: 'confirm' | 'correction'; chosen: string; correct_agent?: string }
-): Promise<{ ok: boolean; kind: 'confirm' | 'correction'; learned: string }> {
+): Promise<{
+	ok: boolean;
+	kind: 'confirm' | 'correction';
+	learned: string;
+	overruled?: boolean;
+	responder?: string | null;
+	reason?: string | null;
+}> {
 	return apiPost('/clodia/routing/feedback', { tier, name, ...body });
 }
 
