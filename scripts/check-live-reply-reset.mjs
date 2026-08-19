@@ -9,7 +9,8 @@
  * lavorare, e il testo spariva da sotto gli occhi di chi stava leggendo.
  *
  * La separazione da tenere è questa:
- *   - messaggio nuovo   → `resetLiveReply` (via il solo testo, ormai permanente)
+ *   - messaggio nuovo   → `resetLiveReply` (via il solo testo ormai permanente,
+ *                         non tutto il buffer: clodia-platform#250)
  *   - fine del turno    → `resetLive` (tutto), e la dichiara `active_responders`
  *
  * Perché un controllo e non un commento: la regressione è MUTA. Rimettere
@@ -36,15 +37,28 @@ if (src) {
 	}
 
 	// Il giro sui messaggi nuovi deve azzerare SOLO il testo.
-	const giro = src.match(/for \(const a of newAiAuthors\([^)]*\)\)\s*(\w+)\(a\)/);
+	const giro = src.match(/for \(const \[a, \w+\] of newAiTexts\([^)]*\)\)\s*(\w+)\(a,/);
 	if (!giro) {
 		guasti.push(
-			`${FILE}: non trovo il giro su newAiAuthors — se è stato riscritto, riscrivi anche questo controllo`
+			`${FILE}: non trovo il giro su newAiTexts — se è stato riscritto, riscrivi anche questo controllo`
 		);
 	} else if (giro[1] !== 'resetLiveReply') {
 		guasti.push(
 			`${FILE}: i messaggi nuovi chiamano ${giro[1]}() invece di resetLiveReply(): ` +
 				`un turno che pubblica più volte perde il live a metà strada`
+		);
+	}
+
+	// E `resetLiveReply` deve SOTTRARRE il testo persistito, non svuotare il
+	// buffer: svuotarlo cancella anche il blocco successivo già in streaming e
+	// manda la bolla nello stato vuoto — lo unmount/remount che si vede come
+	// lampeggio (clodia-platform#250). Il giro qui sopra passa i testi proprio
+	// perché servono a questa sottrazione: se tornano inutilizzati, la riga
+	// compila e il difetto è di nuovo lì.
+	if (!/consumePersistedAll/.test(src)) {
+		guasti.push(
+			`${FILE}: resetLiveReply non usa consumePersistedAll ($lib/liveReply): ` +
+				`azzerare tutto il testo rimette il lampeggio per blocco`
 		);
 	}
 

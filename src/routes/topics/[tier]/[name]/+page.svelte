@@ -62,6 +62,7 @@
 	import { getTopicAgentsMd, saveTopicAgentsMd, type TopicAgentsMd } from '$lib/api/client';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
+	import { consumePersistedAll } from '$lib/liveReply';
 	import type { TierWarning } from '$lib/api/types';
 
 	$: params = $page.params as Record<string, string>;
@@ -667,10 +668,25 @@
 	 *  cui `active_responders` esiste.
 	 */
 	function newAiAuthors(items: ChannelMessage[], sinceId?: string | null): string[] {
+		return newAiTexts(items, sinceId).map(([autore]) => autore);
+	}
+	/** Come `newAiAuthors`, ma con i TESTI, per autore e in ordine di pubblicazione.
+	 *
+	 *  Servono a `resetLiveReply`: per togliere dalla bolla live ciò che è appena
+	 *  diventato permanente bisogna sapere COSA è stato persistito, non solo da
+	 *  chi. E servono in ordine, perché fra due poll un turno può chiudere più
+	 *  blocchi e ognuno consuma il pezzo di buffer che gli corrisponde.
+	 */
+	function newAiTexts(items: ChannelMessage[], sinceId?: string | null): Array<[string, string[]]> {
 		if (!sinceId) return [];
 		const at = items.findIndex((m) => m.id === sinceId);
 		const fresh = at >= 0 ? items.slice(at + 1) : items;
-		return Array.from(new Set(fresh.filter((m) => m.kind === 'ai').map((m) => m.author)));
+		const per = new Map<string, string[]>();
+		for (const m of fresh) {
+			if (m.kind !== 'ai') continue;
+			per.set(m.author, [...(per.get(m.author) ?? []), m.text || '']);
+		}
+		return Array.from(per);
 	}
 
 	function resetLive(agent?: string) {
@@ -682,22 +698,33 @@
 		delete next[agent];
 		liveAgents = next;
 	}
-	/** Azzera SOLO il testo in streaming, lasciando ragionamento e tool.
+	/** Toglie dal testo in streaming SOLO ciò che è appena diventato permanente,
+	 *  lasciando ragionamento, tool e la coda non ancora persistita.
 	 *
 	 *  È ciò che serve quando una bolla si è appena PERSISTITA (clodia-platform#243):
 	 *  il blocco di testo è diventato un messaggio vero, quindi la copia
 	 *  provvisoria va via — ma il turno continua, e cancellare anche `think`/
 	 *  `tools` spegnerebbe il box del ragionamento di un agente ancora al lavoro.
 	 *
+	 *  E non va cancellato nemmeno tutto il testo (clodia-platform#250): il poll
+	 *  che porta il messaggio persistito è asincrono, e quando la sua risposta
+	 *  arriva il buffer contiene già l'inizio del blocco SUCCESSIVO, che nessuno
+	 *  ristreamerà. Svuotarlo mandava la bolla nello stato vuoto — cioè fuori dal
+	 *  filtro di `liveReplies`, cioè smontata e poi rimontata al delta dopo: un
+	 *  lampeggio per blocco, e con più agenti in parallelo il lampeggio continuo.
+	 *  La sottrazione sta in `$lib/liveReply` e ha il suo controllo eseguibile.
+	 *
 	 *  La fine del turno la dichiara `active_responders` (la cintura in
 	 *  `refreshInfo`), che è la sola cosa che la sappia davvero: l'arrivo di un
 	 *  messaggio NON è fine del turno, ed è esattamente l'equivoco che faceva
 	 *  sparire le risposte parziali sotto gli occhi di chi leggeva.
 	 */
-	function resetLiveReply(agent: string) {
+	function resetLiveReply(agent: string, persistiti: string[]) {
 		const cur = liveAgents[agent];
 		if (!cur || !cur.reply) return;
-		liveAgents = { ...liveAgents, [agent]: { ...cur, reply: '' } };
+		const resto = consumePersistedAll(cur.reply, persistiti);
+		if (resto === cur.reply) return;
+		liveAgents = { ...liveAgents, [agent]: { ...cur, reply: resto } };
 	}
 	$: liveEntries = Object.entries(liveAgents).filter(([, l]) => l.think || l.reply || l.tools.length);
 	$: liveReplies = liveEntries.filter(([, l]) => l.reply);
@@ -1704,10 +1731,15 @@
 			// parziale compariva, l'agente continuava a lavorare, e il testo
 			// spariva da sotto gli occhi di chi stava leggendo.
 			//
-			// Ora si azzera solo `reply`, cioè la sola parte che il messaggio
-			// appena arrivato ha reso permanente: la bolla provvisoria è sostituita
-			// in posto da quella vera, con lo stesso testo, e il box del
-			// ragionamento resta acceso finché l'agente lavora.
+			// Ora si toglie da `reply` solo il testo che quel messaggio ha reso
+			// permanente: la bolla provvisoria è sostituita in posto da quella
+			// vera, con lo stesso testo, e il box del ragionamento resta acceso
+			// finché l'agente lavora.
+			//
+			// Si passa il TESTO e non solo l'autore (clodia-platform#250): con le
+			// bolle per blocco, quando questa risposta arriva il buffer contiene
+			// già l'inizio del blocco dopo, e azzerarlo tutto lo cancellava — la
+			// bolla si smontava e rinasceva, cioè il lampeggio.
 			//
 			// Si guardano TUTTI i nuovi messaggi, non solo l'ultimo: in un canale
 			// con catene di delega, che dopo A posti B è il caso normale, e con la
@@ -1715,7 +1747,7 @@
 			//
 			// La fine del turno resta a `active_responders` (cintura in
 			// `refreshInfo`), unica fonte che la conosca.
-			for (const a of newAiAuthors(messages, previousLastId)) resetLiveReply(a);
+			for (const [a, testi] of newAiTexts(messages, previousLastId)) resetLiveReply(a, testi);
 			if (last && previousLastId && last.id !== previousLastId) {
 				await tick();
 				if (wasNearBottom) {
