@@ -22,6 +22,17 @@
  */
 import { readFileSync } from 'node:fs';
 
+/**
+ * Un guard che si accontenta di trovare una PAROLA la trova anche nel commento
+ * che spiega la regola: misurato qui: sostituendo `if (res.acted === false)` con
+ * `if (false)` — cioè cancellando l'intero comportamento — questo script restava
+ * verde, perché `acted` compariva nel commento sopra. È la stessa famiglia del
+ * difetto per cui è stata chiusa la web#178: un commento che asserisce ciò che il
+ * codice non fa. Quindi si spogliano i commenti PRIMA di cercare, e si cerca la
+ * forma della condizione, non il vocabolo.
+ */
+const senzaCommenti = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
 const PAGE = 'src/routes/topics/[tier]/[name]/+page.svelte';
 const CLIENT = 'src/lib/api/client.ts';
 const guasti = [];
@@ -54,7 +65,7 @@ if (page) {
 	const fn = page.match(/async function overruleRoute\([^)]*\)\s*\{[\s\S]*?\n\t\}/);
 	if (!fn) {
 		guasti.push(`${PAGE}: manca overruleRoute()`);
-	} else if (!/\bacted\b/.test(fn[0])) {
+	} else if (!/res\.acted\s*===\s*false/.test(senzaCommenti(fn[0]))) {
 		guasti.push(
 			`${PAGE}: overruleRoute() non guarda \`acted\`: un rifiuto dell'atto ` +
 				`(risposta 200 con acted:false) verrebbe mostrato come «turno passato»`
@@ -67,7 +78,10 @@ if (client) {
 	const fn = client.match(/export async function overruleRouting\([\s\S]*?\n\}/);
 	if (!fn) {
 		guasti.push(`${CLIENT}: manca overruleRouting()`);
-	} else if (!/\bacted\?*:/.test(fn[0]) || !/\boutcome\?*:/.test(fn[0])) {
+	} else if (
+		!/\bacted\?*:/.test(senzaCommenti(fn[0])) ||
+		!/\boutcome\?*:/.test(senzaCommenti(fn[0]))
+	) {
 		guasti.push(
 			`${CLIENT}: il tipo di overruleRouting() non dichiara acted/outcome: ` +
 				`la UI non può distinguere «ho agito» da «ho solo imparato»`
