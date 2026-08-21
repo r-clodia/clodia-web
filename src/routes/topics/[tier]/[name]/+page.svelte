@@ -539,7 +539,24 @@
 	// riaprendo il topic a metà turno l'indicatore c'è comunque, anche se gli eventi
 	// SSE che costruiscono il box "ragionamento" sono già passati.
 	let workingResponders: string[] = [];
-	$: activeWorking = Array.from(new Set([...typing, ...workingResponders]));
+	// Le due sorgenti parlano DUE VOCABOLARI: gli eventi `channel_typing` portano
+	// il nome dello SPAWN (`fullstack-dev-71`, il turno parte con `_spawn_label`),
+	// `active_responders` è per contratto dichiarato una lista di SEED
+	// (`fullstack-dev`). Un `Set` deduplica per stringa, non per identità: le due
+	// voci non collidevano e un unico scrittore veniva contato due volte, fino al
+	// plurale — «fullstack-dev-71 e fullstack-dev stanno scrivendo…».
+	//
+	// Si vedeva solo sugli agenti multi_spawn con uno spawn materializzato: senza,
+	// `_spawn_label` ripiega sul seed, le stringhe coincidono e il Set bastava.
+	//
+	// Il seed si chiede a `seedName`, che taglia `-N` SOLO se il prefisso è un seed
+	// noto: tagliarlo alla cieca fonderebbe un seed `worker-2` dentro `worker`.
+	$: activeWorking = (() => {
+		const giàInTyping = new Set(typing.map(seedName));
+		return Array.from(
+			new Set([...typing, ...workingResponders.filter((s) => !giàInTyping.has(seedName(s)))])
+		);
+	})();
 	$: typingLabel =
 		activeWorking.length === 0
 			? ''
