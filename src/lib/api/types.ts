@@ -270,7 +270,7 @@ export type AgentRunState = 'idle' | 'running';
  * source of truth; any unrecognised string is preserved as-is via the
  * fallback `string` branch and rendered neutrally.
  */
-export type JobStatus = 'idle' | 'running' | 'success' | 'failed';
+export type JobStatus = 'idle' | 'running' | 'success' | 'error' | 'fatal' | 'failed';
 
 /** One row from `GET /clodia/jobs`. */
 export interface Job {
