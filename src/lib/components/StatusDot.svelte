@@ -14,7 +14,10 @@
 	 * neutrally. The vocabulary spans three subsystems:
 	 *  - agents: `idle`, `running`
 	 *  - spawns: `blocked`, `error` (albero spawn del topic, issue#99)
-	 *  - jobs:   `success`, `failed`
+	 *  - jobs:   `success`, `error`, `fatal`, `failed`. I tre non-success non
+	 *            sono sinonimi: `error` = consegnato ma la qualità può essere
+	 *            compromessa, `fatal` = il turno è finito e il lavoro no,
+	 *            `failed` = il turno è morto (clodia-platform#206)
 	 *  - daemons:`up`, `down`, `degraded` (`unknown` shared as fallback)
 	 */
 	type DotState =
@@ -35,13 +38,14 @@
 		'idle',
 		'running',
 		'success',
+		'error',
+		'fatal',
 		'failed',
 		'up',
 		'down',
 		'degraded',
 		'disconnected',
 		'blocked',
-		'error',
 		'unknown'
 	];
 
@@ -54,6 +58,8 @@
 			? 'Idle'
 			: normalised === 'success'
 			? 'Last run succeeded'
+			: normalised === 'fatal'
+			? 'Il turno è finito e il lavoro non è stato fatto'
 			: normalised === 'failed'
 			? 'Last run failed'
 			: normalised === 'up'
@@ -190,6 +196,21 @@
 		background: rgba(232, 93, 117, 0.08);
 	}
 	.pill.error .dot {
+		background: var(--danger);
+		box-shadow: 0 0 0 2px rgba(232, 93, 117, 0.18);
+	}
+	/* `fatal` prende il rosso pieno di `failed`: sono i due casi in cui non c'è
+	   nulla da consegnare, e chi guarda la lista deve vederli allo stesso modo.
+	   `error` NON viene ritoccato di proposito: la stessa parola marca anche gli
+	   spawn («errore sull'ultimo turno»), e cambiarle colore qui avrebbe
+	   ridipinto un sottosistema che questa modifica non riguarda. La differenza
+	   fra error e fatal la porta l'etichetta, che è già il nome dello stato. */
+	.pill.fatal {
+		color: var(--danger);
+		border-color: rgba(232, 93, 117, 0.55);
+		background: rgba(232, 93, 117, 0.08);
+	}
+	.pill.fatal .dot {
 		background: var(--danger);
 		box-shadow: 0 0 0 2px rgba(232, 93, 117, 0.18);
 	}
