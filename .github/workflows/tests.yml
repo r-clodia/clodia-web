@@ -1,0 +1,26 @@
+name: tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      # `npm ci` e non `npm install`: installa esattamente il lock committato,
+      # così la CI verifica le versioni con cui il repo dice di funzionare.
+      - name: dipendenze dal lock
+        run: npm ci
+      # `npm run check` è il comando che il repo già usa: svelte-check più le
+      # guard di `scripts/`. Non si duplica qui l'elenco — l'ultima guard della
+      # catena (`check-guards-wired.mjs`) fallisce se una guard esiste e non è
+      # agganciata, che è l'equivalente per questo repo della soglia sul numero
+      # di test: un controllo verde perché non ha eseguito nulla è il guasto
+      # che clodia-platform#263 chiede di chiudere.
+      - name: svelte-check e guard
+        run: npm run check
