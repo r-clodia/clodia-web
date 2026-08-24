@@ -108,10 +108,19 @@ for (const [verbo, atteso] of dest) {
 // Nessuna scorciatoia rimasta nella pagina: l'esito NON si indicizza sulla
 // tripla. È il difetto originale, e ricomparirebbe con una riga.
 import { readFileSync } from 'node:fs';
-const pagina = readFileSync(
-	new URL('../src/routes/topics/[tier]/[name]/+page.svelte', import.meta.url).pathname,
-	'utf8'
-);
+const PAGINA = new URL(
+	'../src/routes/topics/[tier]/[name]/+page.svelte',
+	import.meta.url
+).pathname;
+const pagina = readFileSync(PAGINA, 'utf8');
+// Un file VUOTO passa il regex qui sotto senza che nulla sia stato verificato
+// (clodia-platform#290): la scorciatoia «non c'è» perché non c'è nemmeno la
+// pagina. Va detto, non taciuto — e qui si dice a mano perché questo controllo
+// legge per URL e non per percorso di repo, quindi non passa da leggiSorgente.
+if (pagina.trim() === '') {
+	console.log('ROTTO la pagina del topic è VUOTA: nessuna scorciatoia verificata');
+	rotti++;
+}
 if (/gateDecided\[g\.id\]|gateDecided,\s*\n?\s*\[g\.id\]/.test(pagina)) {
 	console.log('ROTTO la pagina indicizza ancora un esito sulla tripla (gateDecided[g.id])');
 	rotti++;
