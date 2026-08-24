@@ -212,6 +212,22 @@
 		return j.enabled === false;
 	}
 
+	/**
+	 * Perché questo job è considerato fermo — `null` se gira come previsto.
+	 *
+	 * Si affianca allo stato, non lo sostituisce: «ultimo esito ok» e «ultimo
+	 * esito di tre giorni fa» sono entrambe vere, e mostrare solo la prima è il
+	 * guasto della #287, dove due job di backup ISO 27001 fermi da 68 e 355 ore
+	 * si presentavano come `ok`.
+	 *
+	 * Il confronto è con `=== true` e non con la verità javascript: il campo
+	 * arriva dalla rete, e una stringa `"false"` sarebbe truthy.
+	 */
+	function staleOf(j: Job): string | null {
+		if (j.stale !== true) return null;
+		return j.stale_reason ?? 'non gira da più della sua cadenza';
+	}
+
 	function hrefFor(j: Job): string {
 		return `/jobs/${encodeURIComponent(j.id)}`;
 	}
@@ -308,7 +324,12 @@
 						<td><code class="mono">{job.schedule ?? '—'}</code></td>
 						<td><time class="mono ts" title={job.last_run ?? ''}>{fmtTs(job.last_run)}</time></td>
 						<td class="mono dur">{fmtDuration(job.durata)}</td>
-						<td><StatusDot state={statoOf(job)} /></td>
+						<td>
+							<StatusDot state={statoOf(job)} />
+							{#if staleOf(job)}
+								<span class="stale-badge" title={staleOf(job)}>fermo</span>
+							{/if}
+						</td>
 						<td class="actions-col">
 							<div class="row-actions">
 								{#if canManageJob(job.owner)}
@@ -485,6 +506,26 @@
 		color: var(--accent);
 		text-decoration: underline;
 	}
+	/* «fermo»: il job non gira da molto più della sua cadenza (#287).
+	   Colore `--warn` e non `--danger`, per la stessa ragione dello stato
+	   `missed`: non è un run andato male, è un run che non c'è. Ma è distinto
+	   da `.paused-badge`, che dice «fermo perché qualcuno l'ha voluto» — qui
+	   nessuno l'ha voluto, ed è il punto. */
+	.stale-badge {
+		display: inline-flex;
+		margin-left: 8px;
+		padding: 1px 7px;
+		border-radius: 999px;
+		border: 1px solid rgba(224, 168, 0, 0.5);
+		color: var(--warn, #e0a800);
+		background: rgba(224, 168, 0, 0.08);
+		font-size: 10px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		cursor: help;
+	}
+
 	.paused-badge {
 		display: inline-flex;
 		margin-left: 8px;

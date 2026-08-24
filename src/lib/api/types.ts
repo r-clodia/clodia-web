@@ -297,6 +297,23 @@ export interface Job {
 	/** Duration of the last run, in seconds. */
 	readonly durata?: number | null;
 	readonly stato?: JobStatus | string | null;
+	/** Il job non gira da molto più della sua cadenza.
+	 *
+	 * Giudizio di freschezza calcolato dal server IN LETTURA e non persistito:
+	 * è una proprietà del tempo, non del job, e un job fresco stamattina è
+	 * fermo stasera senza che nessuno abbia scritto niente.
+	 *
+	 * È ORTOGONALE a `stato`, e va mostrato accanto e non al suo posto: le due
+	 * affermazioni sono entrambe vere e dicono cose diverse — «l'ultimo run è
+	 * andato bene» e «l'ultimo run è di tre giorni fa». Tenere solo la prima è
+	 * ciò che ha lasciato invisibili tre notti di backup ISO 27001 con
+	 * `last_status: ok` (clodia-platform#287, seguito della #273).
+	 */
+	readonly stale?: boolean;
+	/** Perché è considerato fermo, in prosa dal server: da quanto non gira e
+	 *  quale cadenza si aspettava. Va nel `title`, perché «fermo» da solo non
+	 *  dice se sono dieci minuti o due settimane. */
+	readonly stale_reason?: string | null;
 }
 
 /** Envelope returned by `GET /clodia/jobs`.
