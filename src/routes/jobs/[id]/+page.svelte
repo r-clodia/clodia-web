@@ -283,6 +283,12 @@
 					{/if}
 					<span class="dot-sep">·</span>
 					<StatusDot state={statoOf(job?.stato)} />
+					{#if job?.stale === true}
+						<span
+							class="stale-badge"
+							title={job.stale_reason ?? 'non gira da più della sua cadenza'}>fermo</span
+						>
+					{/if}
 					{#if paused}
 						<span class="paused-badge">Pausato</span>
 					{/if}
@@ -438,7 +444,23 @@
 				<dd class="mono">{fmtDuration(job.durata)}</dd>
 
 				<dt>Stato</dt>
-				<dd><StatusDot state={statoOf(job.stato)} /></dd>
+				<dd>
+					<StatusDot state={statoOf(job.stato)} />
+					{#if job.stale === true}
+						<span class="stale-badge">fermo</span>
+					{/if}
+				</dd>
+
+				{#if job.stale === true}
+					<!-- Nel dettaglio il motivo va per esteso, non nel `title`: qui si
+					     arriva quando si vuole capire, e «da quanto» è l'informazione
+					     che distingue un ritardo di dieci minuti da due settimane di
+					     backup mancanti (#287). -->
+					<dt>Freschezza</dt>
+					<dd class="stale-why">
+						{job.stale_reason ?? 'non gira da più della sua cadenza'}
+					</dd>
+				{/if}
 
 				{#if configEntries(job).length > 0}
 					<dt>Config</dt>
@@ -700,6 +722,26 @@
 		color: var(--fg);
 		border-bottom-color: var(--accent);
 		font-weight: 700;
+	}
+	/* «fermo» (#287): `--warn` come lo stato `missed`, non `--danger` — non è un
+	   run andato male, è un run che non c'è. Distinto da `.paused-badge`, che
+	   dice «fermo perché qualcuno l'ha voluto». */
+	.stale-badge {
+		display: inline-flex;
+		margin-left: 8px;
+		padding: 1px 7px;
+		border-radius: 999px;
+		border: 1px solid rgba(224, 168, 0, 0.5);
+		color: var(--warn, #e0a800);
+		background: rgba(224, 168, 0, 0.08);
+		font-size: 10px;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		cursor: help;
+	}
+	.stale-why {
+		color: var(--warn, #e0a800);
 	}
 	.badge {
 		display: inline-block;
