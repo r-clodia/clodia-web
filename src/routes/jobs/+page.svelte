@@ -25,6 +25,7 @@
 		$isAdmin || (!!owner && owner === $session?.principal);
 	import type { Job, JobStatus } from '$lib/api/types';
 	import StatusDot from '$lib/components/StatusDot.svelte';
+	import StaleBadge from '$lib/components/StaleBadge.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import JobFormDialog from '$lib/components/JobFormDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -295,7 +296,7 @@
 			</thead>
 			<tbody>
 				{#each sortJobs(jobs) as job (job.id)}
-					<tr class="row" class:paused={isPaused(job)}>
+					<tr class="row" class:paused={isPaused(job)} class:stale={job.stale === true}>
 						<td>
 							<a class="name-link" href={hrefFor(job)}>
 								{job.nome || job.id}
@@ -308,7 +309,14 @@
 						<td><code class="mono">{job.schedule ?? '—'}</code></td>
 						<td><time class="mono ts" title={job.last_run ?? ''}>{fmtTs(job.last_run)}</time></td>
 						<td class="mono dur">{fmtDuration(job.durata)}</td>
-						<td><StatusDot state={statoOf(job)} /></td>
+						<td>
+							<div class="stato-cell">
+								<StatusDot state={statoOf(job)} />
+								{#if job.stale}
+									<StaleBadge reason={job.stale_reason} />
+								{/if}
+							</div>
+						</td>
 						<td class="actions-col">
 							<div class="row-actions">
 								{#if canManageJob(job.owner)}
@@ -470,6 +478,21 @@
 	}
 	.row.paused {
 		background: rgba(255, 255, 255, 0.015);
+	}
+
+	/* Un job fermo si deve vedere SCORRENDO la lista, non aprendone la riga: il
+	   difetto di #287 era che nulla, in questa tabella, distingueva un backup
+	   fatto stanotte da uno fermo da 355 ore. Il bordo non è l'unico canale — il
+	   badge STALE con il motivo sta nella colonna Stato. */
+	.row.stale {
+		box-shadow: inset 3px 0 0 var(--warn, #e0a800);
+	}
+
+	.stato-cell {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
 	}
 
 	.skel-row td {

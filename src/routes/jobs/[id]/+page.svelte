@@ -12,6 +12,7 @@
 	} from '$lib/api/client';
 	import type { Job, JobDetail, JobRun, JobStatus } from '$lib/api/types';
 	import StatusDot from '$lib/components/StatusDot.svelte';
+	import StaleBadge from '$lib/components/StaleBadge.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import JobFormDialog from '$lib/components/JobFormDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -227,6 +228,11 @@
 		'last_run',
 		'durata',
 		'stato',
+		// Resi come loro riga (badge STALE + motivo): senza queste due voci
+		// ricomparirebbero anche in «altri campi», raccontando due volte la
+		// stessa cosa e una volta in forma grezza.
+		'stale',
+		'stale_reason',
 		'description',
 		'command',
 		'prompt',
@@ -283,6 +289,9 @@
 					{/if}
 					<span class="dot-sep">·</span>
 					<StatusDot state={statoOf(job?.stato)} />
+					{#if job?.stale}
+						<StaleBadge reason={job?.stale_reason} />
+					{/if}
 					{#if paused}
 						<span class="paused-badge">Pausato</span>
 					{/if}
@@ -438,7 +447,23 @@
 				<dd class="mono">{fmtDuration(job.durata)}</dd>
 
 				<dt>Stato</dt>
-				<dd><StatusDot state={statoOf(job.stato)} /></dd>
+				<dd>
+					<div class="stato-cell">
+						<StatusDot state={statoOf(job.stato)} />
+						{#if job.stale}
+							<StaleBadge reason={job.stale_reason} />
+						{/if}
+					</div>
+				</dd>
+
+				<!-- Il motivo per esteso sta accanto allo stato, dove si viene a
+				     capire cos'è successo: il badge dice CHE è fermo, questa riga
+				     dice DA QUANTO e rispetto a quale cadenza — cioè quello che
+				     serve per decidere se rieseguire il job a mano. -->
+				{#if job.stale && job.stale_reason}
+					<dt>Freschezza</dt>
+					<dd class="stale-reason">{job.stale_reason}</dd>
+				{/if}
 
 				{#if configEntries(job).length > 0}
 					<dt>Config</dt>
@@ -800,6 +825,17 @@
 		font-size: 11.5px;
 		white-space: pre-wrap;
 		word-break: break-word;
+	}
+
+	.stato-cell {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+
+	.stale-reason {
+		color: var(--warn, #e0a800);
 	}
 
 	.raw {

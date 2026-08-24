@@ -297,6 +297,20 @@ export interface Job {
 	/** Duration of the last run, in seconds. */
 	readonly durata?: number | null;
 	readonly stato?: JobStatus | string | null;
+	/** Il job non gira da più di quanto la sua cadenza consenta
+	 *  (clodia-platform#287). Il giudizio arriva dal server, calcolato in lettura
+	 *  su `last_run_at` + cadenza: è una proprietà del TEMPO, quindi un job fresco
+	 *  stamattina è `stale` stasera senza che nessuno abbia scritto niente.
+	 *
+	 *  Ortogonale a {@link stato}: sono due fatti veri insieme — «l'ultimo run è
+	 *  andato bene» e «l'ultimo run è di tre giorni fa». La UI li mostra
+	 *  affiancati (`StaleBadge` accanto a `StatusDot`); mostrarne uno al posto
+	 *  dell'altro è come il `last_status: ok` su un backup fermo da 68 ore. */
+	readonly stale?: boolean;
+	/** Perché il job è fermo, in chiaro dal server, es. «ultimo run
+	 *  2026-08-21T22:00:00+00:00: 68.1 ore senza run, ma la cadenza è ogni
+	 *  1440 min». `null` quando il job è fresco. */
+	readonly stale_reason?: string | null;
 }
 
 /** Envelope returned by `GET /clodia/jobs`.
