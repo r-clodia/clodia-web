@@ -63,7 +63,7 @@ const leggi = (f) => {
 };
 
 const dot = leggi(DOT);
-if (dot) {
+if (dot !== null) {
 	const nudo = senzaCommenti(dot);
 
 	// L'elenco KNOWN è ciò che decide fra «pallino colorato» e «unknown».
@@ -127,7 +127,7 @@ if (dot) {
 }
 
 const types = leggi(TYPES);
-if (types) {
+if (types !== null) {
 	const nudo = senzaCommenti(types);
 	const jobStatus = nudo.match(/export type JobStatus\s*=[^;]*;/);
 	if (!jobStatus) {

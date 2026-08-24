@@ -17,19 +17,16 @@
  * `resetLive` nel giro dei messaggi compila, passa i tipi, non emette nulla —
  * si vede solo guardando una chat dal vivo e sapendo cosa aspettarsi.
  */
-import { readFileSync } from 'node:fs';
+import { leggiSorgente } from './lib/sorgente.mjs';
 
 const FILE = 'src/routes/topics/[tier]/[name]/+page.svelte';
 const guasti = [];
 
-let src = '';
-try {
-	src = readFileSync(FILE, 'utf8');
-} catch {
-	guasti.push(`${FILE}: file assente — spostato o rinominato`);
-}
+// Vuoto e assente sono entrambi «niente da controllare», e nessuno dei due
+// deve produrre un verde (#290).
+const src = leggiSorgente(FILE, guasti);
 
-if (src) {
+if (src !== null) {
 	if (!/function resetLiveReply\s*\(/.test(src)) {
 		guasti.push(
 			`${FILE}: manca resetLiveReply — senza di essa l'unico azzeramento è quello totale`

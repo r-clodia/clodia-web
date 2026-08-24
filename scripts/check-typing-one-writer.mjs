@@ -27,7 +27,7 @@
  * e si cerca la FORMA del costrutto, non il vocabolo. Misurato: con `seedName`
  * lasciato solo nel commento e il filtro rimosso, questo script fallisce.
  */
-import { readFileSync } from 'node:fs';
+import { leggiSorgente } from './lib/sorgente.mjs';
 
 const PAGINA = 'src/routes/topics/[tier]/[name]/+page.svelte';
 const guasti = [];
@@ -35,14 +35,11 @@ const guasti = [];
 const senzaCommenti = (s) =>
 	s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
-let pagina = '';
-try {
-	pagina = readFileSync(PAGINA, 'utf8');
-} catch {
-	guasti.push(`${PAGINA}: file assente — spostato o rinominato`);
-}
+// Vuoto e assente sono entrambi «niente da controllare», e nessuno dei due
+// deve produrre un verde (#290).
+const pagina = leggiSorgente(PAGINA, guasti);
 
-if (pagina) {
+if (pagina !== null) {
 	const nudo = senzaCommenti(pagina);
 
 	// L'unione vive in `activeWorking`. Se sparisce il nome, questo controllo non

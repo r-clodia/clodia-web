@@ -33,7 +33,7 @@ const leggi = (f) => {
 };
 
 const client = leggi(CLIENT);
-if (client) {
+if (client !== null) {
 	if (!/export async function overruleRouting\s*\(/.test(client)) {
 		guasti.push(`${CLIENT}: manca overruleRouting()`);
 	}
@@ -45,7 +45,7 @@ if (client) {
 }
 
 const page = leggi(PAGE);
-if (page) {
+if (page !== null) {
 	const fn = page.match(/async function overruleRoute\([^)]*\)\s*\{[\s\S]*?\n\t\}/);
 	if (!fn) {
 		guasti.push(`${PAGE}: manca overruleRoute() — il chip non ha più cosa chiamare`);

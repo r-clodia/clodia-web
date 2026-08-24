@@ -47,7 +47,7 @@ const leggi = (f) => {
 };
 
 const page = leggi(PAGE);
-if (page) {
+if (page !== null) {
 	const mappa = page.match(/const routingReason: Record<string, string> = \{[\s\S]*?\n\t\};/);
 	if (!mappa) {
 		guasti.push(`${PAGE}: manca la mappa routingReason`);
@@ -74,7 +74,7 @@ if (page) {
 }
 
 const client = leggi(CLIENT);
-if (client) {
+if (client !== null) {
 	const fn = client.match(/export async function overruleRouting\([\s\S]*?\n\}/);
 	if (!fn) {
 		guasti.push(`${CLIENT}: manca overruleRouting()`);

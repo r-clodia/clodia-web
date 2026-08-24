@@ -55,6 +55,50 @@ for (const f of new Set(citate)) {
 	if (!sulDisco.includes(f)) guasti.push(`«${f}» è in «npm run check» e non sul disco: il comando si spacca`);
 }
 
+// Agganciata non basta: una guard può essere verde perché non ha guardato
+// niente. Sette di queste passavano su un file di zero byte, perché il `catch`
+// copriva il file assente e il `if (src) { …controlli… }` che seguiva saltava
+// tutto in silenzio (clodia-platform#290). Il rimedio è `leggiSorgente`, che
+// tratta vuoto e assente come lo stesso esito negativo; questo controllo esiste
+// perché la forma difettosa non rientri dal prossimo guard scritto copiandone
+// uno vecchio — che è esattamente come si era propagata.
+//
+// Si cerca la FORMA, non il vocabolo: un `readFileSync` dentro un `try` seguito
+// da un cancello `if (<variabile>)` sulla variabile che ha letto. Un guard che
+// legge con `leggiSorgente` è a posto per costruzione e non viene esaminato.
+for (const f of sulDisco) {
+	let src = '';
+	try {
+		src = readFileSync(`scripts/${f}`, 'utf8');
+	} catch {
+		guasti.push(`«${f}» è nell'elenco ma non si legge`);
+		continue;
+	}
+	if (!/\breadFileSync\s*\(/.test(src)) continue; // non legge file: niente da dire
+	if (/\bleggiSorgente\s*\(/.test(src)) continue; // usa l'helper: a posto
+	// Le variabili assegnate da un readFileSync dentro un try, o da una
+	// funzione locale `leggi(...)` che lo incapsula.
+	const lette = new Set([
+		...[...src.matchAll(/(?:const|let)\s+(\w+)\s*=\s*readFileSync\s*\(/g)].map((m) => m[1]),
+		...[...src.matchAll(/(\w+)\s*=\s*readFileSync\s*\(/g)].map((m) => m[1]),
+		...[...src.matchAll(/(?:const|let)\s+(\w+)\s*=\s*leggi\s*\(/g)].map((m) => m[1])
+	]);
+	for (const v of lette) {
+		// Il cancello difettoso: `if (v) {` o `if (v !== null)` va bene solo se
+		// il vuoto è già stato dichiarato un guasto da qualche parte nel file.
+		const cancelloDebole = new RegExp(`if\\s*\\(\\s*${v}\\s*\\)\\s*\\{`).test(src);
+		const guardaIlVuoto =
+			/\.trim\(\)\s*===\s*''/.test(src) || /VUOTO/.test(src) || /length\s*===\s*0/.test(src);
+		if (cancelloDebole && !guardaIlVuoto) {
+			guasti.push(
+				`«${f}»: \`if (${v})\` salta i controlli quando il file è VUOTO — ` +
+					`una stringa di zero byte è falsy, quindi la guard esce verde senza ` +
+					`aver guardato niente. Usa \`leggiSorgente\` da scripts/lib/sorgente.mjs`
+			);
+		}
+	}
+}
+
 if (guasti.length) {
 	console.error('guard agganciate:');
 	for (const g of guasti) console.error(`  - ${g}`);

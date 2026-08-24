@@ -17,23 +17,20 @@
  * esercitava l'etichetta su un oggetto finto che rispettava il contratto, mentre
  * l'oggetto vero non lo rispettava — verde su un requisito inerte.
  */
-import { readFileSync } from 'node:fs';
+import { leggiSorgente } from './lib/sorgente.mjs';
 
 const PAGINA = 'src/routes/topics/[tier]/[name]/+page.svelte';
 const AGENTS = 'src/lib/agents.ts';
 const guasti = [];
 
+// Vuoto e assente sono entrambi «niente da controllare», e nessuno dei due
+// deve produrre un verde: la distinzione la fa `leggiSorgente` (#290).
 function leggi(file) {
-	try {
-		return readFileSync(file, 'utf8');
-	} catch {
-		guasti.push(`${file}: file assente — spostato o rinominato`);
-		return null;
-	}
+	return leggiSorgente(file, guasti);
 }
 
 const pagina = leggi(PAGINA);
-if (pagina) {
+if (pagina !== null) {
 	if (!/'spawn_label'/.test(pagina)) {
 		guasti.push(
 			`${PAGINA}: l'evento spawn_label non è gestito — i box live tornerebbero ` +
@@ -57,7 +54,7 @@ if (pagina) {
 }
 
 const agents = leggi(AGENTS);
-if (agents) {
+if (agents !== null) {
 	if (!/setKnownSeeds/.test(agents)) {
 		guasti.push(`${AGENTS}: manca setKnownSeeds — senza i seed noti, seedName non può tagliare nome-N`);
 	}
