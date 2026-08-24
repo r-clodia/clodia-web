@@ -25,6 +25,7 @@
 		$isAdmin || (!!owner && owner === $session?.principal);
 	import type { Job, JobStatus } from '$lib/api/types';
 	import StatusDot from '$lib/components/StatusDot.svelte';
+	import StaleBadge from '$lib/components/StaleBadge.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import JobFormDialog from '$lib/components/JobFormDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -212,22 +213,6 @@
 		return j.enabled === false;
 	}
 
-	/**
-	 * Perché questo job è considerato fermo — `null` se gira come previsto.
-	 *
-	 * Si affianca allo stato, non lo sostituisce: «ultimo esito ok» e «ultimo
-	 * esito di tre giorni fa» sono entrambe vere, e mostrare solo la prima è il
-	 * guasto della #287, dove due job di backup ISO 27001 fermi da 68 e 355 ore
-	 * si presentavano come `ok`.
-	 *
-	 * Il confronto è con `=== true` e non con la verità javascript: il campo
-	 * arriva dalla rete, e una stringa `"false"` sarebbe truthy.
-	 */
-	function staleOf(j: Job): string | null {
-		if (j.stale !== true) return null;
-		return j.stale_reason ?? 'non gira da più della sua cadenza';
-	}
-
 	function hrefFor(j: Job): string {
 		return `/jobs/${encodeURIComponent(j.id)}`;
 	}
@@ -311,7 +296,7 @@
 			</thead>
 			<tbody>
 				{#each sortJobs(jobs) as job (job.id)}
-					<tr class="row" class:paused={isPaused(job)}>
+					<tr class="row" class:paused={isPaused(job)} class:stale={job.stale === true}>
 						<td>
 							<a class="name-link" href={hrefFor(job)}>
 								{job.nome || job.id}
@@ -325,10 +310,12 @@
 						<td><time class="mono ts" title={job.last_run ?? ''}>{fmtTs(job.last_run)}</time></td>
 						<td class="mono dur">{fmtDuration(job.durata)}</td>
 						<td>
-							<StatusDot state={statoOf(job)} />
-							{#if staleOf(job)}
-								<span class="stale-badge" title={staleOf(job)}>fermo</span>
-							{/if}
+							<div class="stato-cell">
+								<StatusDot state={statoOf(job)} />
+								{#if job.stale}
+									<StaleBadge reason={job.stale_reason} />
+								{/if}
+							</div>
 						</td>
 						<td class="actions-col">
 							<div class="row-actions">
@@ -493,6 +480,21 @@
 		background: rgba(255, 255, 255, 0.015);
 	}
 
+	/* Un job fermo si deve vedere SCORRENDO la lista, non aprendone la riga: il
+	   difetto di #287 era che nulla, in questa tabella, distingueva un backup
+	   fatto stanotte da uno fermo da 355 ore. Il bordo non è l'unico canale — il
+	   badge STALE con il motivo sta nella colonna Stato. */
+	.row.stale {
+		box-shadow: inset 3px 0 0 var(--warn, #e0a800);
+	}
+
+	.stato-cell {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+
 	.skel-row td {
 		cursor: default;
 	}
@@ -506,26 +508,6 @@
 		color: var(--accent);
 		text-decoration: underline;
 	}
-	/* «fermo»: il job non gira da molto più della sua cadenza (#287).
-	   Colore `--warn` e non `--danger`, per la stessa ragione dello stato
-	   `missed`: non è un run andato male, è un run che non c'è. Ma è distinto
-	   da `.paused-badge`, che dice «fermo perché qualcuno l'ha voluto» — qui
-	   nessuno l'ha voluto, ed è il punto. */
-	.stale-badge {
-		display: inline-flex;
-		margin-left: 8px;
-		padding: 1px 7px;
-		border-radius: 999px;
-		border: 1px solid rgba(224, 168, 0, 0.5);
-		color: var(--warn, #e0a800);
-		background: rgba(224, 168, 0, 0.08);
-		font-size: 10px;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		cursor: help;
-	}
-
 	.paused-badge {
 		display: inline-flex;
 		margin-left: 8px;

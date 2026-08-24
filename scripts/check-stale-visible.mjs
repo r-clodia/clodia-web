@@ -1,0 +1,188 @@
+#!/usr/bin/env node
+/**
+ * Un job FERMO non si mostra come «ok»: dove si legge lo stato, si legge anche
+ * la freschezza (issue clodia-platform#287).
+ *
+ * Il difetto misurato il 24 ago 2026 sull'istanza: i due backup ISO 27001
+ * A.8.13 erano fermi da 68 e 355 ore e nella webui risultavano `ok`. Non per un
+ * dato mancante — `GET /clodia/jobs` allega `stale` e `stale_reason` a ogni job
+ * dal fix di #273, e `normaliseJob` li porta fino al componente con lo spread
+ * dei campi ignoti. Semplicemente **nessuno li leggeva**: `grep -rn stale src`
+ * dava zero occorrenze. Il campo esisteva, era corretto, viaggiava nel payload e
+ * moriva nel client; l'unico posto in cui il guasto era visibile restava il log
+ * del container, cioè il posto in cui nessuno guarda se non sta già cercando un
+ * guasto.
+ *
+ * È il tipo di difetto che nessun tipo e nessun errore segnalano: la pagina si
+ * costruisce, il test passa, e a schermo compare un'affermazione falsa. Per
+ * questo il controllo sta qui e non nella `svelte-check`.
+ *
+ * Il badge NON sostituisce lo stato dell'ultimo run: `last_status` («l'ultima
+ * volta è andata bene») e `stale` («l'ultima volta è di tre giorni fa») sono due
+ * fatti veri INSIEME, e mostrarne uno al posto dell'altro perde l'informazione
+ * che chi apre la pagina è venuto a cercare. Quindi si pretende che sulle stesse
+ * superfici ci siano entrambi.
+ *
+ * LIMITE DICHIARATO: questo controllo verifica le superfici ELENCATE sotto, non
+ * scopre quelle nuove. Una terza pagina che domani mostri lo stato di un job
+ * senza la freschezza passa verde — chi la aggiunge aggiunge la riga. È lo
+ * stesso prezzo (e la stessa scelta) di `check-multi-spawn-badge.mjs`.
+ */
+import { readFileSync } from 'node:fs';
+
+/** file → cosa mostra (il testo compare nel messaggio d'errore). */
+const SUPERFICI = {
+	'src/routes/jobs/+page.svelte': 'colonna Stato della lista job',
+	'src/routes/jobs/[id]/+page.svelte': 'stato del job nel dettaglio'
+};
+
+const BADGE = 'StaleBadge';
+const guasti = [];
+
+/** Il file, o `null` con il guasto registrato: un ENOENT qui è un esito del
+ *  controllo (la superficie non c'è più), non un incidente da stack trace. */
+function leggi(file, cosa) {
+	try {
+		return readFileSync(file, 'utf8');
+	} catch {
+		guasti.push(`${file}: file assente — spostato, rinominato o mai creato (${cosa})`);
+		return null;
+	}
+}
+
+/** Un guard che cerca una parola la trova anche nel commento che spiega la
+ *  regola (web#181): si spoglia il file prima di cercarci dentro. */
+const senzaCommenti = (s) =>
+	s
+		.replace(/\/\*[\s\S]*?\*\//g, '')
+		.replace(/<!--[\s\S]*?-->/g, '')
+		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+for (const [file, cosa] of Object.entries(SUPERFICI)) {
+	const src = leggi(file, cosa);
+	if (src === null) continue;
+	const nudo = senzaCommenti(src);
+	if (!nudo.includes(`${BADGE}.svelte`)) {
+		guasti.push(
+			`${file}: non importa ${BADGE} — un job fermo da giorni si legge «ok» (${cosa})`
+		);
+		continue;
+	}
+	if (!new RegExp(`<${BADGE}\\b`).test(nudo)) {
+		guasti.push(`${file}: importa ${BADGE} ma non lo rende (${cosa})`);
+	}
+	// Il badge affianca lo stato, non lo sostituisce: se da questa superficie
+	// sparisse `StatusDot`, il badge starebbe raccontando metà della verità.
+	if (!/<StatusDot\b/.test(nudo)) {
+		guasti.push(
+			`${file}: non rende più StatusDot: la freschezza ha sostituito l'esito ` +
+				`dell'ultimo run invece di affiancarlo (${cosa})`
+		);
+	}
+}
+
+// Il badge deve dire PERCHÉ: «stale» da solo è un'etichetta, `stale_reason` è il
+// fatto («68.1 ore senza run, ma la cadenza è ogni 1440 min») ed è ciò che
+// permette di decidere se rieseguire a mano.
+// Si cerca la PROP dichiarata, non la parola: la prima versione di questo
+// controllo chiedeva che il file contenesse «reason» da qualche parte, e
+// rinominare `export let reason` in `export let motivo` la attraversava — il
+// corpo del componente continuava a nominare la vecchia variabile. Svelte non
+// protegge da questo: una prop passata e non dichiarata non è un errore, il
+// badge si renderebbe muto e nessun check diventerebbe rosso.
+const badge = leggi(`src/lib/components/${BADGE}.svelte`, 'componente del badge');
+if (badge !== null && !/export\s+let\s+reason\b/.test(senzaCommenti(badge))) {
+	guasti.push(
+		`${BADGE}.svelte: non dichiara più la prop \`reason\` — il badge direbbe ` +
+			`solo CHE il job è fermo, e il «da quanto» resterebbe nel log`
+	);
+}
+// E le superfici gliela devono passare: un badge che accetta il motivo e non lo
+// riceve è muto allo stesso modo.
+for (const [file, cosa] of Object.entries(SUPERFICI)) {
+	const src = leggi(file, cosa);
+	if (src === null) continue;
+	const nudo = senzaCommenti(src);
+	if (new RegExp(`<${BADGE}\\b`).test(nudo) && !/reason=\{/.test(nudo)) {
+		guasti.push(`${file}: rende ${BADGE} senza passargli \`reason\` (${cosa})`);
+	}
+}
+
+// Un campo consumato ma non tipizzato è consumato per caso: `normaliseJob` lo fa
+// passare con lo spread, e il primo refactor che stringe il tipo lo perde senza
+// che niente diventi rosso.
+const tipi = leggi('src/lib/api/types.ts', 'contratto del payload jobs');
+for (const campo of ['stale', 'stale_reason']) {
+	if (tipi !== null && !new RegExp(`\\b${campo}\\b`).test(senzaCommenti(tipi))) {
+		guasti.push(`src/lib/api/types.ts: il campo ${campo} del payload jobs non è tipizzato`);
+	}
+}
+
+// La normalizzazione al CONFINE è ciò che rende sicuro il `{#if job.stale}` nei
+// template: `r.stale === true` fa entrare nel client un booleano vero, quindi
+// nessuna pagina deve ripetere il confronto stretto. Se quella riga diventasse
+// un `r.stale` nudo, un `stale: "false"` stringa dalla rete — che è quello che
+// manda un serializzatore distratto — sarebbe truthy e marcherebbe come fermo un
+// job sano, in ogni superficie in una volta. Difendere il confine costa una riga
+// qui; difendere ogni template costerebbe una regola per pagina.
+const client = leggi('src/lib/api/client.ts', 'normalizzazione del payload jobs');
+if (client !== null) {
+	const nudo = senzaCommenti(client);
+	if (!/\bstale\s*=\s*r\.stale\s*===\s*true/.test(nudo)) {
+		guasti.push(
+			`src/lib/api/client.ts: \`stale\` non è più normalizzato con \`=== true\` ` +
+				`al confine: da lì dentro non è più garantito un booleano, e i \`{#if ` +
+				`job.stale}\` delle pagine accetterebbero una stringa "false"`
+		);
+	}
+	if (!/\bstale_reason\b/.test(nudo)) {
+		guasti.push(`src/lib/api/client.ts: \`stale_reason\` non è più normalizzato`);
+	}
+}
+
+// I due campi sono resi come loro riga nel dettaglio: se non sono anche
+// dichiarati noti, il pannello «altri campi» li ristampa in forma grezza e la
+// pagina racconta due volte la stessa cosa. Difetto vero, misurato sulla prima
+// versione di questa feature (clodia-web#187), dove `Freschezza` e `stale: true`
+// comparivano a otto righe di distanza.
+const dettaglio = leggi('src/routes/jobs/[id]/+page.svelte', 'dettaglio del job');
+if (dettaglio !== null) {
+	const nudo = senzaCommenti(dettaglio);
+	const i = nudo.indexOf('KNOWN_TOP_LEVEL');
+	const blocco = i < 0 ? '' : nudo.slice(i, nudo.indexOf(']', i) + 1);
+	if (!blocco) {
+		guasti.push(
+			`src/routes/jobs/[id]/+page.svelte: non trovo KNOWN_TOP_LEVEL — se è ` +
+				`stato rinominato, riscrivi anche questo controllo`
+		);
+	} else {
+		for (const campo of ['stale', 'stale_reason']) {
+			if (!new RegExp(`['"]${campo}['"]`).test(blocco)) {
+				guasti.push(
+					`src/routes/jobs/[id]/+page.svelte: \`${campo}\` non è in ` +
+						`KNOWN_TOP_LEVEL: comparirebbe anche sotto «altri campi», in forma ` +
+						`grezza e in aggiunta alla riga che lo spiega`
+				);
+			}
+		}
+	}
+}
+
+// Il colore: un job che non gira è un'assenza, non un fallimento. `--warn` come
+// `.pill.missed`, mai `--danger`, che è già preso da «è partito e è andato male».
+if (badge !== null && /--danger/.test(senzaCommenti(badge))) {
+	guasti.push(
+		`${BADGE}.svelte: usa \`--danger\`: un job fermo non è un run fallito — ` +
+			`il vocabolario del colore va tenuto separato (come \`missed\`)`
+	);
+}
+
+if (guasti.length) {
+	console.error('freschezza dei job invisibile:');
+	for (const g of guasti) console.error(`  - ${g}`);
+	process.exit(1);
+}
+console.log(
+	`freschezza dei job: badge STALE + motivo accanto allo stato in ` +
+		`${Object.keys(SUPERFICI).length} superfici ✓`
+);
