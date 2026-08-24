@@ -2342,6 +2342,19 @@ export interface ProviderStatus {
 	sovereignty?: ProviderSovereignty | null;
 	/** In pausa: connesso ma escluso dalla selezione (gli agent ripiegano altrove). */
 	paused?: boolean;
+	/** Provider a ENDPOINT dichiarato dall'admin (clodia-platform#265): nomi dei
+	 *  campi che il collegamento deve chiedere (`['base_url', 'model']`), in
+	 *  ordine. `null` per i provider a endpoint fisso. */
+	configurable?: string[] | null;
+	/** La API key è FACOLTATIVA: un endpoint locale (ollama, LM Studio) non ne
+	 *  chiede nessuna, e ciò che rende il provider collegato è il `base_url`. */
+	apikey_optional?: boolean | null;
+	/** Endpoint attualmente configurato. NON è un segreto — a differenza della
+	 *  chiave, che dal backend non esce mai — e serve a ripresentare il form di
+	 *  «Riconnetti» già compilato: `set_key` riscrive il bundle intero. */
+	base_url?: string | null;
+	/** Modello attualmente configurato sull'endpoint, se dichiarato. */
+	model?: string | null;
 }
 
 export interface ProviderSovereignty {
@@ -2365,13 +2378,19 @@ export async function getProviders(opts: RequestOptions = {}): Promise<{ provide
 	return apiGet('/api/providers', opts);
 }
 
-/** POST `/api/providers/{id}/key` — salva la API key (→ keystore/env). */
+/** POST `/api/providers/{id}/key` — salva la credenziale (→ keystore/env).
+ *
+ *  Il corpo porta anche i campi `configurable` del provider a endpoint
+ *  (`base_url`, `model`): il backend li accetta SOLO se il provider li dichiara
+ *  e rifiuta con 400 quelli che non conosce, quindi si mandano quelli scelti da
+ *  `connectPayload` (src/lib/providerConnect.js), non tutto ciò che è a schermo.
+ *  `api_key` è facoltativa per i provider `apikey_optional`. */
 export async function setProviderKey(
 	id: string,
-	api_key: string,
+	body: { api_key?: string; base_url?: string; model?: string },
 	opts: RequestOptions = {}
-): Promise<{ connected: boolean; via: string }> {
-	return apiPost(`/api/providers/${encodeURIComponent(id)}/key`, { api_key }, opts);
+): Promise<{ connected: boolean; via: string; base_url?: string | null; model?: string | null }> {
+	return apiPost(`/api/providers/${encodeURIComponent(id)}/key`, body, opts);
 }
 
 /** POST `/api/providers/{id}/login/start` — avvia il login-abbonamento OAuth+PKCE.
