@@ -41,6 +41,7 @@
 		'error',
 		'fatal',
 		'failed',
+		'missed',
 		'up',
 		'down',
 		'degraded',
@@ -58,6 +59,8 @@
 			? 'Idle'
 			: normalised === 'success'
 			? 'Last run succeeded'
+			: normalised === 'missed'
+			? 'Il fire non è avvenuto: scartato per misfire'
 			: normalised === 'fatal'
 			? 'Il turno è finito e il lavoro non è stato fatto'
 			: normalised === 'failed'
@@ -205,6 +208,22 @@
 	   spawn («errore sull'ultimo turno»), e cambiarle colore qui avrebbe
 	   ridipinto un sottosistema che questa modifica non riguarda. La differenza
 	   fra error e fatal la porta l'etichetta, che è già il nome dello stato. */
+	/* `missed` NON e' rosso come `failed`: quello e' un run partito e andato male,
+	   questo e' un run che non e' mai iniziato. Un backup scartato mentre la
+	   macchina dormiva chiede attenzione, non segnala una rottura — e distinguere
+	   le due cose a colpo d'occhio e' il punto di clodia-platform#273, dove il
+	   difetto era proprio che il registro non diceva la differenza.
+	   `--warn` non e' definita in nessun foglio: la convenzione del repo e'
+	   `var(--warn, <fallback>)`, come in TrifectaBadge. */
+	.pill.missed {
+		color: var(--warn, #e0a800);
+		border-color: rgba(224, 168, 0, 0.5);
+		background: rgba(224, 168, 0, 0.08);
+	}
+	.pill.missed .dot {
+		background: var(--warn, #e0a800);
+		box-shadow: 0 0 0 2px rgba(224, 168, 0, 0.18);
+	}
 	.pill.fatal {
 		color: var(--danger);
 		border-color: rgba(232, 93, 117, 0.55);

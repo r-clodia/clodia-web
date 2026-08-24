@@ -270,7 +270,18 @@ export type AgentRunState = 'idle' | 'running';
  * source of truth; any unrecognised string is preserved as-is via the
  * fallback `string` branch and rendered neutrally.
  */
-export type JobStatus = 'idle' | 'running' | 'success' | 'error' | 'fatal' | 'failed';
+export type JobStatus =
+	| 'idle'
+	| 'running'
+	| 'success'
+	| 'error'
+	| 'fatal'
+	| 'failed'
+	/** Il fire non è avvenuto: scartato per misfire (macchina sospesa, processo
+	 *  fermo). NON è un esito terminale — quelli descrivono un run partito, e
+	 *  questo non è mai iniziato: nessuna durata, nessuna chat, nessun agente che
+	 *  possa dichiararne l'esito (clodia-platform#273). */
+	| 'missed';
 
 /** One row from `GET /clodia/jobs`. */
 export interface Job {
