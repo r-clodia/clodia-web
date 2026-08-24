@@ -60,7 +60,7 @@
 		type ChannelFile,
 	} from '$lib/api/client';
 	import { getTopicAgentsMd, saveTopicAgentsMd, type TopicAgentsMd } from '$lib/api/client';
-	import { toastSuccess, toastError } from '$lib/stores/toasts';
+	import { toastSuccess } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import { consumePersistedAll } from '$lib/liveReply';
 	import { gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
@@ -1497,20 +1497,6 @@
 			: Array.isArray(participantsRaw)
 				? 'contributor'
 				: ((participantsRaw as Record<string, string>)?.[p] || 'contributor');
-	let roleBusy = '';
-	async function setRole(p: string, role: 'contributor' | 'reader') {
-		if (roleBusy) return;
-		roleBusy = p;
-		try {
-			await setChannelParticipant(tier, name, p, true, role);
-			await refreshInfo();
-			toastSuccess(`${p}: ${role}`);
-		} catch (e) {
-			toastError('Ruolo non cambiato', e instanceof Error ? e.message : String(e));
-		} finally {
-			roleBusy = '';
-		}
-	}
 	// Partecipanti mostrati: nascondi i non idonei al tier (eligible=false). I super
 	// sotto tier restano (eligible=true) e li marchiamo con ⚠️ via eligibility[p].warn.
 	$: shownParticipants = participants.filter((p) => eligibility[p]?.eligible ?? true);
@@ -2791,22 +2777,19 @@
 									{/each}
 								</ul>
 							{/if}
-							{#if isOwner && p !== info?.meta?.owner}
-								<!-- Il ruolo lo decide l'owner, qui, accanto a chi riguarda.
-								     Un contributor scrive nella stanza; un reader legge e
-								     parla, e se chiede una mutazione diventa un gate
-								     rivolto a te invece che un rifiuto. -->
-								<select class="role-sel" value={roleOf(p)} disabled={roleBusy === p}
-									title="contributor: può modificare · reader: legge e parla"
-									on:change={(e) => setRole(p, (e.currentTarget as HTMLSelectElement).value as 'contributor' | 'reader')}>
-									<option value="contributor">contributor</option>
-									<option value="reader">reader</option>
-								</select>
-								<button class="x" type="button" on:click={() => removeParticipant(p)} aria-label="Rimuovi">×</button>
-							{:else if p === info?.meta?.owner}
+							{#if p === info?.meta?.owner}
 								<span class="role-fixed" title="La proprietà dello scope, non un grado di accesso">owner</span>
 							{:else}
+								<!-- Il ruolo si LEGGE e basta (issue clodia-platform#292): la
+								     select che lo cambiava a mano non l'ha usata nessuno, e
+								     ogni partecipante è di fatto `contributor`, il default
+								     del server quando si invita senza ruolo. Il modello
+								     owner/contributor/reader resta intero lato server e via
+								     API — qui sparisce solo il controllo manuale. -->
 								<span class="role-fixed">{roleOf(p)}</span>
+								{#if isOwner}
+									<button class="x" type="button" on:click={() => removeParticipant(p)} aria-label="Rimuovi">×</button>
+								{/if}
 							{/if}
 						</li>
 					{/each}
@@ -3996,10 +3979,6 @@
 	}
 	.mount-chip.sel { opacity: 1; border-color: currentColor; font-weight: 600; }
 
-	/* Ruolo nello scope: si vede sempre, si cambia solo se sei l'owner. */
-	.role-sel { font-size: .7rem; padding: .1rem .2rem; border-radius: 4px;
-		border: 1px solid var(--border, #3a3a3a); background: transparent;
-		color: inherit; opacity: .75; }
-	.role-sel:hover { opacity: 1; }
+	/* Ruolo nello scope: si legge e basta, per tutti (#292). */
 	.role-fixed { font-size: .7rem; opacity: .55; padding: 0 .3rem; }
 </style>
