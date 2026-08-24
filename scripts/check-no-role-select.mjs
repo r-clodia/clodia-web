@@ -60,6 +60,35 @@ if (src) {
 	for (const [ago, cosa] of RICHIESTI) {
 		if (!codice.includes(ago)) guasti.push(`manca «${ago}» — ${cosa}`);
 	}
+
+	// I due sopra si cercano come PAROLA, e la parola sopravvive alla sua
+	// scomparsa dal markup: `roleOf` resta nella propria definizione e
+	// `removeParticipant` in altri usi, quindi togliere l'etichetta del ruolo o
+	// il pulsante × dalla lista dei partecipanti passava inosservato. Misurato
+	// sabotando questa stessa guard: due casi su quattro sfuggivano.
+	//
+	// Qui si cerca la FORMA nel posto giusto. Sono le due cose che l'utente
+	// perde per davvero se la rimozione sfora: vedere il ruolo, e poter togliere
+	// qualcuno dalla stanza.
+	if (!/class="role-fixed"[^>]*>\s*\{roleOf\(/.test(codice)) {
+		guasti.push(
+			'il ruolo non è più RESO accanto al nome: `roleOf` compare nel file ma ' +
+				"non dentro l'etichetta `role-fixed`, quindi a schermo non si legge"
+		);
+	}
+	const bottoneX = /<button[^>]*on:click=\{\(\)\s*=>\s*removeParticipant\(/.test(codice);
+	if (!bottoneX) {
+		guasti.push(
+			'il pulsante × non è più nel markup dei partecipanti: `removeParticipant` ' +
+				"compare nel file ma nessun bottone lo chiama, quindi l'owner non può " +
+				'più togliere nessuno dalla stanza'
+		);
+	} else if (!/\{#if isOwner\}[\s\S]{0,200}?removeParticipant\(/.test(codice)) {
+		guasti.push(
+			"il pulsante × non è più condizionato a `{#if isOwner}`: lo vedrebbe " +
+				'anche chi non è owner, e il rifiuto arriverebbe dal backend'
+		);
+	}
 }
 
 if (guasti.length) {
