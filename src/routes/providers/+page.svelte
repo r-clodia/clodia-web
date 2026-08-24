@@ -10,6 +10,12 @@
 		resumeProvider,
 		type ProviderSovereignty
 	} from '$lib/api/client';
+	import {
+		connectFields,
+		connectInitialValues,
+		connectPayload,
+		validateConnect
+	} from '$lib/providerConnect.js';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { toastSuccess } from '$lib/stores/toasts';
 
@@ -48,39 +54,89 @@
 		seal?: string | null; // livello SEAL effettivo
 		sovereignty?: ProviderSovereignty | null; // breakdown SOV + dimensioni + dpa_url
 		paused?: boolean; // connesso ma escluso dalla selezione
+		// Provider a ENDPOINT dichiarato dall'admin (#265): campi da chiedere al
+		// collegamento e valori attualmente configurati (non segreti).
+		configurable?: string[] | null;
+		apikey_optional?: boolean | null;
+		base_url?: string | null;
+		model?: string | null;
 	}
 
-	// Metadati di presentazione per id (engine + blurb + DPA). Lo stato (connesso,
-	// mechanism reale) arriva dal backend; questo è solo display.
-	const META: Record<string, { engine: string; blurb: string; dpa: string }> = {
+	// Metadati di presentazione per id (nome + engine + blurb + DPA + meccanismo).
+	// Lo STATO (connesso, in pausa, SEAL) arriva dal backend; questo è display, e
+	// serve prima che il backend risponda.
+	//
+	// Il `mechanism` sta qui e non in un'euristica sull'id (clodia-platform#281):
+	// era dedotto da `id.endsWith('-api')`, che indovina su cinque provider e
+	// sbaglia sugli altri tre del catalogo — `generic-openai` e `scaleway` sono
+	// apikey e finivano classificati come abbonamento, cioè «Connetti» avrebbe
+	// avviato un flusso OAuth che quei provider non hanno.
+	const META: Record<
+		string,
+		{ name: string; engine: string; blurb: string; dpa: string; mechanism: Mechanism }
+	> = {
 		'anthropic-api': {
+			name: 'Anthropic API',
 			engine: 'Claude (claude-agent-sdk)',
 			blurb: 'Anthropic via API, fatturazione a consumo. DPA commerciale (zero-retention/no-training): adatto ai dati confidenziali.',
-			dpa: 'DPA commerciale'
+			dpa: 'DPA commerciale',
+			mechanism: 'apikey'
 		},
 		'claude-pro-max': {
+			name: 'Claude Pro/Max',
 			engine: 'Claude (claude-agent-sdk)',
 			blurb: 'Abbonamento Claude Pro/Max via login OAuth: costo fisso, niente consumo API. DPA consumer — non adatto di default ai dati confidenziali.',
-			dpa: 'DPA consumer'
+			dpa: 'DPA consumer',
+			mechanism: 'subscription'
+		},
+		'claude-team': {
+			name: 'Claude Team',
+			engine: 'Claude (claude-agent-sdk)',
+			blurb: 'Abbonamento business claude.ai (login con account Team): Commercial Terms, quindi DPA + no-training contrattuali — un gradino sopra Pro/Max. Inferenza US: non per i dati che richiedono residenza EU.',
+			dpa: 'DPA commerciale · US',
+			mechanism: 'subscription'
 		},
 		'openai-api': {
+			name: 'OpenAI API',
 			engine: 'Codex (codex exec)',
 			blurb: 'OpenAI via API, a consumo. DPA commerciale: adatto ai dati confidenziali.',
-			dpa: 'DPA commerciale'
+			dpa: 'DPA commerciale',
+			mechanism: 'apikey'
 		},
 		codex: {
+			name: 'Codex / ChatGPT',
 			engine: 'Codex (codex exec)',
 			blurb: 'Abbonamento ChatGPT (codex login): costo fisso. DPA consumer — non adatto di default ai dati confidenziali.',
-			dpa: 'DPA consumer'
+			dpa: 'DPA consumer',
+			mechanism: 'subscription'
 		},
 		'aws-region-eu': {
+			name: 'AWS Bedrock (EU)',
 			engine: 'Claude via AWS Bedrock',
 			blurb: 'Claude via Amazon Bedrock, region EU (eu-west-1, Irlanda). DPA+SCC, no-training, no-retention, data residency EU: il miglior profilo tra i provider a controllo US.',
-			dpa: 'DPA commerciale · EU'
+			dpa: 'DPA commerciale · EU',
+			mechanism: 'apikey'
+		},
+		scaleway: {
+			name: 'Scaleway (EU sovereign)',
+			engine: 'OpenCode (OpenAI-compatible)',
+			blurb: 'Cloud sovrano EU (Scaleway SAS, Francia): modelli open (Mistral, Llama, …) serviti da datacenter fr-par/nl-ams, fuori dal CLOUD Act. Modelli diversi da GPT/Claude: cambiano le capacità.',
+			dpa: 'DPA commerciale · EU',
+			mechanism: 'apikey'
+		},
+		'generic-openai': {
+			name: 'LLM generico (OpenAI-compatible)',
+			engine: 'OpenCode (OpenAI-compatible)',
+			blurb: "Endpoint dichiarato da te: ollama, LM Studio, vLLM o qualunque gateway OpenAI-compatible. La chiave è facoltativa; ciò che collega il provider è l'indirizzo. La piattaforma non può verificare chi ospita quell'host, quindi resta SEAL-0.",
+			dpa: 'DPA ignoto',
+			mechanism: 'apikey'
 		}
 	};
 
-	// Fallback statico se il backend non risponde: bedrock EU (SEAL-2) prima, poi API→abbonamento.
+	// Fallback statico se il backend non risponde: i provider a endpoint restano
+	// fuori (`generic-openai` senza il suo `configurable` non è collegabile, e
+	// `scaleway` non è nel default per-SDK). Ordine: bedrock EU (SEAL-2) prima,
+	// poi API → abbonamento.
 	const ORDER = ['aws-region-eu', 'anthropic-api', 'claude-pro-max', 'openai-api', 'codex'];
 	function staticCard(id: string): Provider {
 		const m = META[id];
@@ -89,17 +145,13 @@
 			name: prettyName(id),
 			engine: m?.engine ?? '',
 			blurb: m?.blurb ?? '',
-			mechanism: id.endsWith('-api') || id === 'aws-region-eu' ? 'apikey' : 'subscription',
+			mechanism: m?.mechanism ?? 'apikey',
 			dpa: m?.dpa ?? '',
 			connected: false
 		};
 	}
 	function prettyName(id: string): string {
-		return (
-			{ 'anthropic-api': 'Anthropic API', 'claude-pro-max': 'Claude Pro/Max',
-			  'openai-api': 'OpenAI API', codex: 'Codex / ChatGPT',
-			  'aws-region-eu': 'AWS Bedrock (EU)' }[id] ?? id
-		);
+		return META[id]?.name ?? id;
 	}
 
 	// "SEAL-2" → "2" per il breakdown compatto; "–" se assente.
@@ -147,7 +199,11 @@
 					via: l.via ?? undefined,
 					seal: l.seal ?? l.sovereignty?.seal ?? null,
 					sovereignty: l.sovereignty ?? null,
-					paused: l.paused ?? false
+					paused: l.paused ?? false,
+					configurable: l.configurable ?? null,
+					apikey_optional: l.apikey_optional ?? null,
+					base_url: l.base_url ?? null,
+					model: l.model ?? null
 				};
 			});
 		} catch {
@@ -162,16 +218,31 @@
 	let modalProvider: Provider | null = null;
 	let step: 'oauth' | 'key' = 'key';
 	let apiKey = '';
+	// Campi `configurable` del provider a endpoint (#265/#281): non sono segreti
+	// e si ripresentano compilati su «Riconnetti» — `set_key` riscrive il bundle
+	// intero, quindi riconnettersi senza endpoint cancellerebbe la configurazione
+	// di un provider che stava funzionando (e il backend risponde 400).
+	let baseUrl = '';
+	let model = '';
 	let oauthCode = ''; // stringa `code#state` incollata dopo l'autorizzazione
 	let authUrl = ''; // authorize URL del provider (aperto in una tab)
 	let busy = false;
 	let modalError = '';
 
+	// Il form del provider aperto: `api_key` c'è sempre (facoltativa o no), i
+	// campi a endpoint solo se il provider li dichiara.
+	$: campiForm = connectFields(modalProvider);
+	$: campiConf = campiForm.filter((c) => c.name !== 'api_key');
+	$: chiaveObbligatoria = campiForm.find((c) => c.name === 'api_key')?.required ?? true;
+
 	function openConnect(p: Provider) {
 		modalProvider = p;
 		// La card ha un solo meccanismo → vai dritto allo step giusto.
 		step = p.mechanism === 'subscription' ? 'oauth' : 'key';
-		apiKey = '';
+		const iniziali = connectInitialValues(p);
+		apiKey = iniziali.api_key;
+		baseUrl = iniziali.base_url;
+		model = iniziali.model;
 		oauthCode = '';
 		authUrl = '';
 		modalError = '';
@@ -225,15 +296,20 @@
 
 	async function submitApiKey() {
 		if (!modalProvider) return;
-		if (!apiKey.trim()) {
-			modalError = 'Inserisci la API key.';
+		const valori = { api_key: apiKey, base_url: baseUrl, model };
+		// Quali campi sono obbligatori dipende dal provider: su un endpoint locale
+		// la chiave non serve e l'obbligatorio è l'indirizzo. La regola sta in
+		// providerConnect.js perché è la stessa del backend, e lì si può provare.
+		const errore = validateConnect(modalProvider, valori);
+		if (errore) {
+			modalError = errore;
 			return;
 		}
 		busy = true;
 		modalError = '';
 		try {
-			await setProviderKey(modalProvider.id, apiKey.trim());
-			toastSuccess(`${modalProvider.name} connesso`, 'API key');
+			await setProviderKey(modalProvider.id, connectPayload(modalProvider, valori));
+			toastSuccess(`${modalProvider.name} connesso`, campiConf.length ? 'endpoint' : 'API key');
 			closeModal();
 			await load();
 		} catch (err) {
@@ -274,7 +350,9 @@
 			<p class="blurb">{p.blurb}</p>
 			<div class="tags">
 				<span class="tag">{p.mechanism === 'apikey' ? 'API · a consumo' : 'Abbonamento · costo fisso'}</span>
-				<span class="tag" class:tag-dpa={p.dpa.includes('commerciale')}>{p.dpa}</span>
+				<!-- Un provider che il catalogo del backend ha e META no (aggiunto lì e
+				     non qui) non deve produrre una pastiglia vuota accanto alle altre. -->
+				{#if p.dpa}<span class="tag" class:tag-dpa={p.dpa.includes('commerciale')}>{p.dpa}</span>{/if}
 			</div>
 
 			{#if p.seal || p.sovereignty}
@@ -344,9 +422,35 @@
 				<p class="muted-note">Lo scambio avviene su clodia-logic; il token resta nel keystore, mai esposto al modello.</p>
 			{:else}
 				<label class="field">
-					<span>API key {modalProvider.name}</span>
+					<span>API key {modalProvider.name}{#if !chiaveObbligatoria} <em class="opt">— facoltativa</em>{/if}</span>
 					<input type="password" bind:value={apiKey} placeholder="sk-…" autocomplete="off" />
 				</label>
+				{#if !chiaveObbligatoria}
+					<p class="muted-note">Chiave non richiesta per endpoint locali (ollama, LM Studio): lascia vuoto se il tuo non ne chiede.</p>
+				{/if}
+				<!-- Campi a ENDPOINT (#265): l'indirizzo non è noto al repository, lo
+				     dichiara l'admin qui. `base_url` è OBBLIGATORIO quando il provider
+				     lo dichiara — è lui, non la chiave, a rendere collegabile questo
+				     provider — e su «Riconnetti» arriva già compilato. -->
+				{#each campiConf as campo (campo.name)}
+					{#if campo.name === 'base_url'}
+						<label class="field">
+							<span>Endpoint OpenAI-compatible</span>
+							<input type="text" bind:value={baseUrl} placeholder="host:port oppure http://host:port/v1" autocomplete="off" />
+						</label>
+					{:else if campo.name === 'model'}
+						<label class="field">
+							<span>Modello <em class="opt">— facoltativo</em></span>
+							<input type="text" bind:value={model} placeholder="es. llama3.1:8b" autocomplete="off" />
+						</label>
+					{/if}
+				{/each}
+				{#if campiConf.length}
+					<p class="muted-note">
+						L'endpoint lo dichiari tu e la piattaforma non può verificarlo: questo provider
+						resta <strong>SEAL-0</strong> e non è utilizzabile nei topic con riservatezza.
+					</p>
+				{/if}
 				<p class="muted-note">La chiave viene salvata nel keystore di clodia-logic, mai esposta al modello.</p>
 			{/if}
 
@@ -356,7 +460,7 @@
 				<button type="button" class="btn" on:click={closeModal} disabled={busy}>Annulla</button>
 				{#if step === 'key'}
 					<button type="button" class="btn primary" on:click={submitApiKey} disabled={busy}>
-						{busy ? 'Salvo…' : 'Salva API key'}
+						{busy ? 'Salvo…' : campiConf.length ? 'Collega endpoint' : 'Salva API key'}
 					</button>
 				{:else if step === 'oauth'}
 					<button type="button" class="btn primary" on:click={submitOauthCode} disabled={busy}>
@@ -416,6 +520,7 @@
 	.x { background: transparent; border: none; color: var(--fg-muted); font-size: 22px; line-height: 1; cursor: pointer; }
 	.note { margin: 0; font-size: 12.5px; color: var(--fg-muted); line-height: 1.5; }
 	.field { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--fg-muted); }
+	.field .opt { font-style: normal; opacity: .7; }
 	.field input { padding: 9px 11px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 13px; }
 	.muted-note { margin: 0; font-size: 11.5px; color: var(--fg-muted); font-style: italic; }
 	.modal-err { font-size: 12px; color: var(--danger); font-family: var(--mono); word-break: break-word; }
