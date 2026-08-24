@@ -306,6 +306,7 @@ import { authToken } from '$lib/auth/session';
  *   last_run_at   → last_run
  *   last_status   → stato
  *   id (number)   → id (stringified — URLs need a string)
+ *   stale / stale_reason → passati avanti come sono (giudizio del server)
  *
  * Unknown fields pass through unchanged so the "Raw payload" panel in the
  * detail view shows the full server response.
@@ -352,14 +353,12 @@ function normaliseJob(raw: unknown): Job {
 			: typeof r.last_duration_s === 'number'
 			? r.last_duration_s
 			: null;
-	// Freschezza (clodia-platform#287). Normalizzata come gli altri campi e non
-	// lasciata allo spread qui sotto per due ragioni: lo spread è chiuso da un
-	// `as Job`, quindi un campo non normalizzato resta invisibile al compilatore
-	// e nessuno si accorge se il server smette di mandarlo; e un `stale: "true"`
-	// stringa — che è quello che manda un serializzatore distratto — sarebbe
-	// truthy nel template pur non essendo un booleano.
-	const stale = typeof r.stale === 'boolean' ? (r.stale as boolean) : undefined;
-	const stale_reason = typeof r.stale_reason === 'string' ? (r.stale_reason as string) : null;
+	// Freschezza (clodia-platform#287). Passava già di qui con lo spread dei
+	// campi ignoti, ma per caso: normalizzarla esplicitamente la rende un campo
+	// del contratto invece di un residuo, e un server più vecchio — che quei
+	// campi non li manda — resta un job semplicemente non stale.
+	const stale = r.stale === true;
+	const stale_reason = typeof r.stale_reason === 'string' ? r.stale_reason : null;
 	// Preserve every server field on the result so the raw-payload viewer
 	// stays useful; the canonical names (nome/schedule/...) win on
 	// collision via the spread order.

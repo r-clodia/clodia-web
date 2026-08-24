@@ -12,6 +12,7 @@
 	} from '$lib/api/client';
 	import type { Job, JobDetail, JobRun, JobStatus } from '$lib/api/types';
 	import StatusDot from '$lib/components/StatusDot.svelte';
+	import StaleBadge from '$lib/components/StaleBadge.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import JobFormDialog from '$lib/components/JobFormDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -227,6 +228,11 @@
 		'last_run',
 		'durata',
 		'stato',
+		// Resi come loro riga (badge STALE + motivo): senza queste due voci
+		// ricomparirebbero anche in «altri campi», raccontando due volte la
+		// stessa cosa e una volta in forma grezza.
+		'stale',
+		'stale_reason',
 		'description',
 		'command',
 		'prompt',
@@ -283,11 +289,8 @@
 					{/if}
 					<span class="dot-sep">·</span>
 					<StatusDot state={statoOf(job?.stato)} />
-					{#if job?.stale === true}
-						<span
-							class="stale-badge"
-							title={job.stale_reason ?? 'non gira da più della sua cadenza'}>fermo</span
-						>
+					{#if job?.stale}
+						<StaleBadge reason={job?.stale_reason} />
 					{/if}
 					{#if paused}
 						<span class="paused-badge">Pausato</span>
@@ -445,21 +448,21 @@
 
 				<dt>Stato</dt>
 				<dd>
-					<StatusDot state={statoOf(job.stato)} />
-					{#if job.stale === true}
-						<span class="stale-badge">fermo</span>
-					{/if}
+					<div class="stato-cell">
+						<StatusDot state={statoOf(job.stato)} />
+						{#if job.stale}
+							<StaleBadge reason={job.stale_reason} />
+						{/if}
+					</div>
 				</dd>
 
-				{#if job.stale === true}
-					<!-- Nel dettaglio il motivo va per esteso, non nel `title`: qui si
-					     arriva quando si vuole capire, e «da quanto» è l'informazione
-					     che distingue un ritardo di dieci minuti da due settimane di
-					     backup mancanti (#287). -->
+				<!-- Il motivo per esteso sta accanto allo stato, dove si viene a
+				     capire cos'è successo: il badge dice CHE è fermo, questa riga
+				     dice DA QUANTO e rispetto a quale cadenza — cioè quello che
+				     serve per decidere se rieseguire il job a mano. -->
+				{#if job.stale && job.stale_reason}
 					<dt>Freschezza</dt>
-					<dd class="stale-why">
-						{job.stale_reason ?? 'non gira da più della sua cadenza'}
-					</dd>
+					<dd class="stale-reason">{job.stale_reason}</dd>
 				{/if}
 
 				{#if configEntries(job).length > 0}
@@ -723,26 +726,6 @@
 		border-bottom-color: var(--accent);
 		font-weight: 700;
 	}
-	/* «fermo» (#287): `--warn` come lo stato `missed`, non `--danger` — non è un
-	   run andato male, è un run che non c'è. Distinto da `.paused-badge`, che
-	   dice «fermo perché qualcuno l'ha voluto». */
-	.stale-badge {
-		display: inline-flex;
-		margin-left: 8px;
-		padding: 1px 7px;
-		border-radius: 999px;
-		border: 1px solid rgba(224, 168, 0, 0.5);
-		color: var(--warn, #e0a800);
-		background: rgba(224, 168, 0, 0.08);
-		font-size: 10px;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		cursor: help;
-	}
-	.stale-why {
-		color: var(--warn, #e0a800);
-	}
 	.badge {
 		display: inline-block;
 		margin-left: 6px;
@@ -842,6 +825,17 @@
 		font-size: 11.5px;
 		white-space: pre-wrap;
 		word-break: break-word;
+	}
+
+	.stato-cell {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-wrap: wrap;
+	}
+
+	.stale-reason {
+		color: var(--warn, #e0a800);
 	}
 
 	.raw {
