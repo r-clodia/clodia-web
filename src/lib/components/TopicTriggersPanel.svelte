@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import HooksPanel from '$lib/components/HooksPanel.svelte';
 	import {
 		deleteTopicCronTrigger,
 		getTopicCronTrigger,
@@ -126,10 +125,6 @@
 </script>
 
 <div class="triggers">
-	<section class="trigger-kind">
-		<HooksPanel {tier} {name} showHeading={false} />
-	</section>
-
 	<section class="trigger-kind cron">
 		<header>
 			<span>Cron</span>
@@ -233,7 +228,6 @@
 <style>
 	.triggers { display: flex; min-width: 0; flex-direction: column; gap: 12px; }
 	.trigger-kind { min-width: 0; }
-	.trigger-kind + .trigger-kind { border-top: 1px solid var(--border); padding-top: 10px; }
 	header { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; }
 	.info { position: relative; border: 0; padding: 0; background: none; color: var(--fg-muted); cursor: help; font: inherit; line-height: 1; outline: none; }
 	.info:hover, .info:focus { color: var(--accent); }

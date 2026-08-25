@@ -63,6 +63,7 @@
 	import { toastSuccess } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import { consumePersistedAll, resolveLiveKey } from '$lib/liveReply';
+	import { routingReasonLabel, isFallbackReason, coordinatorHint } from '$lib/routingReason';
 	import { gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
 	import type { TierWarning } from '$lib/api/types';
 
@@ -658,19 +659,12 @@
 			routingConfirmed = false;
 		}
 	}
-	const routingReason: Record<string, string> = {
-		tagged: 'richiesto esplicitamente con @menzione',
-		relevance: 'dominio più pertinente al messaggio (embedding)',
-		'multi-match fallback': 'più specialisti pertinenti coinvolti in parallelo',
-		'fallback-rank': 'nessuno abbastanza pertinente → fallback per rango',
-		rank: 'per rango (routing per rilevanza disattivato)',
-		// clodia-platform#253 · Le due decisioni prese da una PERSONA mancavano
-		// dalla mappa, quindi a schermo finiva la stringa interna del backend —
-		// e proprio nei due casi in cui chi legge vuole sapere che la scelta non
-		// è stata del router.
-		'router overruled by human': 'scelta del router scavalcata da una persona',
-		'routing ambiguity resolved by human': 'ambiguità risolta da una persona'
-	};
+	// Etichette e «è un ripiego?» stanno in `$lib/routingReason`, non qui:
+	// questa pagina se lo chiedeva in TRE punti confrontando la reason con
+	// `'fallback-rank'`, e la #357 dell'altro repo ha smesso di emettere quella
+	// stringa — tre comportamenti spenti in silenzio (clodia-platform#293).
+	// Il modulo ha il suo controllo eseguibile, che gira sulle reason vere del
+	// router: `scripts/check-routing-fallback-reasons.mjs`.
 
 	// --- Ragionamento / attività live del turno del risponditore -----------
 	// Il backend emette thinking_chunk / message_chunk / tool_use sul bus, con
@@ -2544,21 +2538,26 @@
 				{/each}
 			{/if}
 			{#if lastRouting}
-				<div class="routing" class:open={routingOpen} class:fallback={lastRouting.reason === 'fallback-rank'}>
+				<div class="routing" class:open={routingOpen} class:fallback={isFallbackReason(lastRouting.reason)}>
 					<button type="button" class="routing-head" on:click={() => (routingOpen = !routingOpen)}
 						aria-expanded={routingOpen}>
 						<span class="caret" class:open={routingOpen}>▸</span>
 						<span class="routing-title">🧭 Routing → <b>{lastRouting.chosen}</b></span>
-						<span class="routing-why">{routingReason[lastRouting.reason] ?? lastRouting.reason}</span>
+						<span class="routing-why">{routingReasonLabel(lastRouting.reason)}</span>
 						<span class="routing-hint">{routingOpen ? 'comprimi' : multiRouting ? 'dettagli' : 'correggi'}</span>
 					</button>
 					{#if routingOpen}
 						<div class="routing-body">
-							{#if lastRouting.reason === 'fallback-rank' && !routingCorrected && !routingConfirmed}
+							{#if isFallbackReason(lastRouting.reason) && !routingCorrected && !routingConfirmed}
 								<p class="routing-feedback-prompt">
 									Nessuno specialista ha superato la soglia. Indica chi avrebbe dovuto rispondere:
 									il router userà la correzione per messaggi simili.
 								</p>
+							{/if}
+							<!-- Un ripiego per rango è anche un difetto di configurazione dello
+							     scope, e si aggiusta là, non correggendo il routing (#293). -->
+							{#if coordinatorHint(lastRouting.reason)}
+								<p class="routing-config-hint">{coordinatorHint(lastRouting.reason)}</p>
 							{/if}
 							{#if lastRouting.candidates && lastRouting.candidates.length}
 								<div class="routing-meta">
@@ -3470,6 +3469,9 @@
 	.routing { margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-subtle, rgba(127,127,127,.06)); font-size: 12px; }
 	.routing.fallback { border-color: color-mix(in srgb, #f59e0b 65%, var(--border)); background: color-mix(in srgb, #f59e0b 7%, var(--card-bg)); }
 	.routing-feedback-prompt { margin: 0 0 8px; padding: 7px 9px; border-radius: 6px; background: color-mix(in srgb, #f59e0b 12%, transparent); color: var(--fg); line-height: 1.4; }
+	/* Suggerimento di configurazione, non un allarme: tono più basso del prompt
+	   che chiede una correzione (#293). */
+	.routing-config-hint { margin: 0 0 8px; font-size: 11px; color: var(--fg-muted); line-height: 1.4; }
 	.routing-correct { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 	.rc-label { font-size: 11px; color: var(--fg-muted); }
 	.rc-chip { font: inherit; font-size: 11px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--fg); cursor: pointer; }

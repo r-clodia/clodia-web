@@ -93,9 +93,6 @@ export default defineConfig({
 			// all'agent-server → 404. Con `^/clodia/` gli asset (senza slash) cadono sul
 			// serving statico, le route API (`/clodia/packs`, `/clodia/channels`, …) no.
 			'^/clodia/': { target: API, changeOrigin: true },
-			// Ingress dei Chat Hook (webhook pubblico, auth = segreto hook): proxato
-			// all'agent-server così l'URL raggiungibile è lo stesso origin della webui.
-			'/hooks': { target: API, changeOrigin: true },
 			'/daemons': { target: API, changeOrigin: true },
 			'/topics': { target: API, changeOrigin: true, bypass: htmlBypass },
 			'/health': { target: API, changeOrigin: true },

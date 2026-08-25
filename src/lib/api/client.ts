@@ -828,7 +828,6 @@ export async function createChannel(
 		/** Storage dei file del topic: assente/local = default; drive = Google Drive
 		 *  (folder = link/id di una cartella esistente, oppure vuoto per crearne una). */
 		storage_config?: { type: 'drive'; folder?: string; account?: string };
-		hook_enabled?: boolean;
 	},
 	opts: RequestOptions = {}
 ): Promise<{ tier: string; name: string }> {
@@ -939,15 +938,6 @@ export async function interruptChannel(
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/interrupt`, {}, opts);
 }
 
-/** Evento di audit di un hook (ultimi ingress). */
-export interface HookEvent {
-	ts: string;
-	status: string; // ok | bad_signature | rate_limited
-	source: string | null;
-	authority: string | null; // identity | untrusted
-	principal: string | null;
-	note: string | null;
-}
 /** Delega permanente (async·A): sblocca i gate che coprono lo scope. */
 export interface Delegation {
 	principal: string;
@@ -962,39 +952,6 @@ export async function registerDelegation(token: string): Promise<{ ok: boolean; 
 }
 export async function revokeDelegation(principal: string, verb: string): Promise<{ revoked: boolean }> {
 	return apiPost('/clodia/delegations/revoke', { principal, verb });
-}
-
-/** Chat Hook: capability per iniettare messaggi in una chat via webhook. */
-export interface ChatHook {
-	id: string;
-	tier: string;
-	name: string;
-	label: string;
-	author: string;
-	enabled: boolean;
-	created_by: string;
-	created_at: string;
-	last_used: string | null;
-	last_source: string | null;
-	uses: number;
-	rate_per_min: number;
-	events: HookEvent[];
-}
-export async function listHooks(tier: string, name: string): Promise<{ hooks: ChatHook[] }> {
-	return apiGet(`/clodia/chats/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/hooks`);
-}
-export async function createHook(
-	tier: string,
-	name: string,
-	body: { label: string; author?: string | null }
-): Promise<{ hook: ChatHook; secret: string; path: string; url: string }> {
-	return apiPost(`/clodia/chats/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/hooks`, body);
-}
-export async function revokeHook(id: string): Promise<{ revoked: boolean }> {
-	return apiPost(`/clodia/hooks/${encodeURIComponent(id)}/revoke`, {});
-}
-export async function deleteHook(id: string): Promise<{ deleted: boolean }> {
-	return apiDelete(`/clodia/hooks/${encodeURIComponent(id)}`);
 }
 
 /**

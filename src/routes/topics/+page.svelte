@@ -223,7 +223,6 @@
 	let nType = 'progetto';
 	let nStorage: 'local' | 'drive' = 'local';
 	let nDriveFolder = ''; // link/id cartella Drive (vuoto = crea nuova)
-	let nHookEnabled = true;
 	let creating = false;
 	let createErr = '';
 
@@ -234,7 +233,6 @@
 		nType = presetType || editionTypes[0]?.key || 'progetto';
 		nStorage = 'local';
 		nDriveFolder = '';
-		nHookEnabled = true;
 		createErr = '';
 		showNew = true;
 	}
@@ -254,7 +252,6 @@
 		try {
 			const r = await createChannel({
 				name, tier: nTier, title: nTitle.trim() || name, type: nType,
-				hook_enabled: nHookEnabled,
 				...(nStorage === 'drive'
 					? { storage_config: { type: 'drive' as const, folder: nDriveFolder.trim() || undefined } }
 					: {})
@@ -528,10 +525,6 @@
 					</label>
 				{/if}
 			</div>
-			<label class="nt-check">
-				<input type="checkbox" bind:checked={nHookEnabled} />
-				<span>Crea il webhook del topic</span>
-			</label>
 			{#if createErr}<div class="nt-err">{createErr}</div>{/if}
 			<div class="nt-actions">
 				<button type="button" class="nt-sec" on:click={() => (showNew = false)} disabled={creating}>Annulla</button>
@@ -1337,7 +1330,6 @@
 	.nt-field input, .nt-field select { background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 6px; }
 	.nt-hint { font-size: 11px; }
 	.nt-row { display: flex; gap: 10px; }
-	.nt-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--fg); }
 	.nt-err { color: var(--danger); font-size: 12px; }
 	.nt-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 	.nt-sec { background: transparent; border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 13px; border-radius: 6px; cursor: pointer; }
