@@ -63,3 +63,49 @@ export function consumePersistedAll(reply, persistedTexts) {
 	}
 	return resto;
 }
+
+/**
+ * Sotto quale chiave della mappa live va sottratto un messaggio persistito
+ * (clodia-platform#294).
+ *
+ * Le due parti parlano DUE VOCABOLARI, come già altrove nella piattaforma
+ * (#260, #286, #257, e la nota su `activeWorking` in questa stessa pagina):
+ *   - la mappa live è indicizzata per SPAWN (`fullstack-dev-71`), perché la
+ *     chiave arriva dall'evento `spawn_label` del turno;
+ *   - l'autore di un messaggio persistito è il SEED (`fullstack-dev`) ogni
+ *     volta che il testo è stato pubblicato via tool gateway — il backend
+ *     confronta per seed apposta (`_new_ai_messages`).
+ * Cercare l'autore grezzo dentro una mappa per spawn non trova niente: la
+ * sottrazione non avviene, il buffer resta col testo già persistito dentro, e
+ * la riconciliazione torna a smontare/rimontare la bolla. Cioè il lampeggio di
+ * #250 che rientra dalla porta di servizio.
+ *
+ * `seedOf` si riceve dal chiamante invece di importare `$lib/agents`: quella
+ * funzione ha bisogno dei seed noti registrati a runtime (`setKnownSeeds`), e
+ * riceverla permette al guard di eseguire QUESTA funzione davvero.
+ *
+ * Con più spawn dello stesso seed vivi insieme (`multi_spawn`, #94) il seed non
+ * basta a scegliere: si guarda quale buffer contiene davvero il testo appena
+ * persistito. Se resta ambiguo — o non lo contiene nessuno — si torna `null` e
+ * NON si tocca niente: sottrarre dal buffer sbagliato cancellerebbe il testo di
+ * un altro spawn, che nessuno ristreamerà. Meglio una bolla che sfarfalla di
+ * una risposta che sparisce.
+ *
+ * @param {Record<string, {reply?: string}>} live      mappa live, per SPAWN
+ * @param {string} autore                              autore del messaggio persistito (seed o spawn)
+ * @param {(n: string) => string} seedOf               riduzione nome → seed
+ * @param {readonly string[]} [persistiti]             testi appena persistiti, per disambiguare
+ * @returns {string|null} la chiave da aggiornare, o `null` se non si può decidere
+ */
+export function resolveLiveKey(live, autore, seedOf, persistiti = []) {
+	if (!autore || !live) return null;
+	if (live[autore]) return autore; // stesso vocabolario: niente da tradurre
+	const seed = seedOf(autore);
+	const candidati = Object.keys(live).filter((k) => seedOf(k) === seed);
+	if (candidati.length <= 1) return candidati[0] ?? null;
+	// multi_spawn: decide il testo, non il nome.
+	const testo = (persistiti.find((t) => (t || '').trim()) || '').trim();
+	if (!testo) return null;
+	const conTesto = candidati.filter((k) => (live[k]?.reply || '').includes(testo));
+	return conTesto.length === 1 ? conTesto[0] : null;
+}

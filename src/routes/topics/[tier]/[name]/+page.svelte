@@ -62,7 +62,7 @@
 	import { getTopicAgentsMd, saveTopicAgentsMd, type TopicAgentsMd } from '$lib/api/client';
 	import { toastSuccess } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
-	import { consumePersistedAll } from '$lib/liveReply';
+	import { consumePersistedAll, resolveLiveKey } from '$lib/liveReply';
 	import { gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
 	import type { TierWarning } from '$lib/api/types';
 
@@ -788,11 +788,16 @@
 	 *  sparire le risposte parziali sotto gli occhi di chi leggeva.
 	 */
 	function resetLiveReply(agent: string, persistiti: string[]) {
-		const cur = liveAgents[agent];
-		if (!cur || !cur.reply) return;
+		// L'autore del messaggio e la chiave del box live possono essere due nomi
+		// della stessa istanza: SEED per i messaggi postati via tool gateway,
+		// SPAWN per la mappa live (clodia-platform#294). Si traduce prima di
+		// cercare, invece di confrontare stringhe di vocabolari diversi.
+		const chiave = resolveLiveKey(liveAgents, agent, seedName, persistiti);
+		const cur = chiave ? liveAgents[chiave] : null;
+		if (!chiave || !cur || !cur.reply) return;
 		const resto = consumePersistedAll(cur.reply, persistiti);
 		if (resto === cur.reply) return;
-		liveAgents = { ...liveAgents, [agent]: { ...cur, reply: resto } };
+		liveAgents = { ...liveAgents, [chiave]: { ...cur, reply: resto } };
 	}
 	$: liveEntries = Object.entries(liveAgents).filter(([, l]) => l.think || l.reply || l.tools.length);
 	$: liveReplies = liveEntries.filter(([, l]) => l.reply);
