@@ -19,49 +19,32 @@
  *     agente, agente non instradabile) si mostra come «✓ turno passato a X» —
  *     un successo dichiarato per un turno che nessuno ha passato. È la stessa
  *     famiglia di difetto di #206: riportare successo senza aver agito.
+ *
+ * Nota (clodia-platform#293): le etichette non stanno più in una mappa dentro la
+ * pagina, sono in `$lib/routingReason`, perché la stessa famiglia di difetto ha
+ * colpito le reason di ripiego dopo il deploy della clodia-logic#357. Il
+ * controllo qui sotto ci ha guadagnato: invece di cercare due chiavi nel
+ * sorgente, ESEGUE la funzione che la pagina chiama davvero.
  */
-import { readFileSync } from 'node:fs';
-
-/**
- * Un guard che si accontenta di trovare una PAROLA la trova anche nel commento
- * che spiega la regola: misurato qui: sostituendo `if (res.acted === false)` con
- * `if (false)` — cioè cancellando l'intero comportamento — questo script restava
- * verde, perché `acted` compariva nel commento sopra. È la stessa famiglia del
- * difetto per cui è stata chiusa la web#178: un commento che asserisce ciò che il
- * codice non fa. Quindi si spogliano i commenti PRIMA di cercare, e si cerca la
- * forma della condizione, non il vocabolo.
- */
-const senzaCommenti = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+import { leggiSorgente, senzaCommenti } from './lib/sorgente.mjs';
+import { routingReasonLabel } from '../src/lib/routingReason.js';
 
 const PAGE = 'src/routes/topics/[tier]/[name]/+page.svelte';
 const CLIENT = 'src/lib/api/client.ts';
 const guasti = [];
 
-const leggi = (f) => {
-	try {
-		return readFileSync(f, 'utf8');
-	} catch {
-		guasti.push(`${f}: file assente — spostato o rinominato`);
-		return '';
+for (const reason of ['router overruled by human', 'routing ambiguity resolved by human']) {
+	const label = routingReasonLabel(reason);
+	if (!label || label === reason) {
+		guasti.push(
+			`nessuna etichetta per «${reason}»: a schermo va la stringa interna del backend, ` +
+				`proprio nel caso in cui chi legge vuole sapere che la scelta NON è stata del router`
+		);
 	}
-};
+}
 
-const page = leggi(PAGE);
+const page = leggiSorgente(PAGE, guasti, 'barra di routing');
 if (page !== null) {
-	const mappa = page.match(/const routingReason: Record<string, string> = \{[\s\S]*?\n\t\};/);
-	if (!mappa) {
-		guasti.push(`${PAGE}: manca la mappa routingReason`);
-	} else {
-		for (const reason of ['router overruled by human', 'routing ambiguity resolved by human']) {
-			if (!mappa[0].includes(`'${reason}'`)) {
-				guasti.push(
-					`${PAGE}: routingReason non ha una voce per «${reason}»: ` +
-						`a schermo va la stringa interna del backend`
-				);
-			}
-		}
-	}
-
 	const fn = page.match(/async function overruleRoute\([^)]*\)\s*\{[\s\S]*?\n\t\}/);
 	if (!fn) {
 		guasti.push(`${PAGE}: manca overruleRoute()`);
@@ -73,7 +56,7 @@ if (page !== null) {
 	}
 }
 
-const client = leggi(CLIENT);
+const client = leggiSorgente(CLIENT, guasti, 'tipo di overruleRouting');
 if (client !== null) {
 	const fn = client.match(/export async function overruleRouting\([\s\S]*?\n\}/);
 	if (!fn) {
