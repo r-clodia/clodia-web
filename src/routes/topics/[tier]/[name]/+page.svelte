@@ -63,6 +63,7 @@
 	import { toastSuccess } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
+	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
 	import { routingReasonLabel, isFallbackReason, coordinatorHint } from '$lib/routingReason';
 	import { gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
 	import type { TierWarning } from '$lib/api/types';
@@ -804,6 +805,21 @@
 		);
 	}
 	$: shownMessages = visibleMessages(messages);
+	/** Dove saldare le bolle: da `CLODIA_BUBBLE_PER_BLOCK` (clodia-platform#243)
+	 *  un turno arriva in N messaggi, e renderli come N bolle distinte è ciò che
+	 *  a schermo sembra una risposta che «collassa e ricomincia» a ogni blocco.
+	 *  Le saldature li rimettono in una bolla sola che cresce. Il calcolo sta in
+	 *  `$lib/turnGrouping` e ha il suo controllo eseguibile. */
+	$: continuity = turnContinuity(shownMessages, seedName);
+	/** ...e la coda in streaming si salda all'ultimo blocco già persistito, o il
+	 *  salto resterebbe, solo spostato di un blocco. Per chiave e non con un
+	 *  booleano: con più agenti che rispondono insieme si salda SOLO quello che
+	 *  continua l'ultimo messaggio, mentre gli altri restano bolle a sé. */
+	$: liveSaldate = new Set(
+		liveReplies
+			.map(([chiave]) => chiave)
+			.filter((chiave) => liveContinuesLast(shownMessages, chiave, seedName))
+	);
 
 	/** Reply: cita il messaggio (anteprima in corsivo) e tagga l'autore. */
 	let replyingTo: { author: string; snippet: string } | null = null;
@@ -2285,12 +2301,19 @@
 					     notifica di menzione su Telegram. Senza, il link porterebbe al
 					     topic e lascerebbe a cercare il messaggio: la meta ma non il
 					     punto, che su un telefono è quasi lo stesso che niente. -->
-					<div class="msg" id={`m-${m.id}`} class:ai={m.kind === 'ai'} class:system={m.kind === 'system'} class:mine={m.author === me}>
-						<div class="msg-head">
+					{@const cont = continuity[i] ?? { prev: false, next: false }}
+					<!-- `cont-prev`/`cont-next`: le saldature che rimettono in UNA bolla i
+					     blocchi di uno stesso turno, che il backend pubblica come messaggi
+					     distinti da clodia-platform#243. Ogni blocco tiene le sue
+					     affordance — copia, feedback, allegati, pill — e perde solo
+					     l'intestazione ripetuta, che è ciò che spezzava il discorso. -->
+					<div class="msg" id={`m-${m.id}`} class:ai={m.kind === 'ai'} class:system={m.kind === 'system'} class:mine={m.author === me}
+						class:cont-prev={cont.prev} class:cont-next={cont.next || (i === shownMessages.length - 1 && liveSaldate.size > 0)}>
+						<div class="msg-head" class:head-cont={cont.prev}>
 							{#if m.kind === 'system'}
 								<span class="system-icon" aria-hidden="true">ℹ</span>
 								<span class="author">Sistema</span>
-							{:else}
+							{:else if !cont.prev}
 								<AgentAvatar name={m.author} size={22} />
 								<span class="author">{m.author}</span>
 								<!-- Perché lo stesso participant parla con due label diverse
@@ -2502,10 +2525,18 @@
 						</div>
 					{/each}
 					{#each liveReplies as [agent, live] (agent)}
-						<div class="msg ai live-message" aria-label={`Risposta in arrivo da ${agent}`} aria-busy="true">
-							<div class="msg-head">
-								<AgentAvatar name={agent} size={22} />
-								<span class="author">{agent}</span>
+						{@const saldata = liveSaldate.has(agent)}
+						<!-- La coda in streaming è l'ultimo pezzo dello stesso discorso: se
+						     continua il blocco già persistito si salda a quello, altrimenti
+						     resta una bolla a sé (primo blocco del turno, o un altro agente
+						     che risponde in parallelo). -->
+						<div class="msg ai live-message" class:cont-prev={saldata}
+							aria-label={`Risposta in arrivo da ${agent}`} aria-busy="true">
+							<div class="msg-head" class:head-cont={saldata} class:head-live={saldata}>
+								{#if !saldata}
+									<AgentAvatar name={agent} size={22} />
+									<span class="author">{agent}</span>
+								{/if}
 								<span class="live-badge">
 									<span class="streaming-dot" aria-hidden="true"></span>
 									sta rispondendo
@@ -3456,6 +3487,50 @@
 		border-style: dashed;
 		color: var(--muted);
 	}
+	/* --- Saldature fra i blocchi di uno stesso turno (clodia-platform#243) ---
+	   Il backend pubblica un turno come N messaggi, uno per blocco. Renderli come
+	   N bolle separate è ciò che a schermo sembra una risposta che collassa e
+	   ricomincia. Qui i bordi fra blocchi consecutivi si aprono e il gap del
+	   flex si annulla: resta UNA bolla che cresce. Il DOM non cambia — ogni
+	   blocco conserva id, ancora, copia, feedback, allegati e pill. */
+	.msg { position: relative; }
+	.msg.cont-next {
+		border-bottom: 0;
+		border-bottom-left-radius: 0;
+		border-bottom-right-radius: 0;
+		padding-bottom: 2px;
+	}
+	.msg.cont-prev {
+		margin-top: -10px; /* annulla il `gap: 10px` di .stream, senza toccarlo */
+		border-top: 0;
+		border-top-left-radius: 0;
+		border-top-right-radius: 0;
+		padding-top: 0;
+	}
+	/* L'intestazione di una continuazione esce dal flusso: se restasse dentro,
+	   ripeterebbe nome e ora in mezzo al discorso — cioè lo spezzerebbe di
+	   nuovo, con il CSS invece che con i bordi. Le azioni del blocco (copia,
+	   rispondi) NON si perdono: compaiono passando sopra, dove già compaiono
+	   quelle degli altri messaggi. */
+	.msg-head.head-cont {
+		position: absolute;
+		top: 2px;
+		right: 8px;
+		gap: 4px;
+		opacity: 0;
+		transition: opacity .12s ease;
+		background: var(--card-bg);
+		border-radius: 6px;
+		padding: 0 2px;
+		z-index: 1;
+	}
+	.msg:hover .msg-head.head-cont { opacity: 1; }
+	/* Eccezione: l'intestazione della coda in streaming porta il badge «sta
+	   rispondendo», che è l'unico segnale che del testo sta ancora arrivando.
+	   Nasconderlo fino all'hover renderebbe una risposta in corso
+	   indistinguibile da una finita. */
+	.msg-head.head-cont.head-live { opacity: 1; }
+	.msg-head.head-cont .ts { font-size: 10px; }
 	.system-icon { font-size: 0.9rem; }
 	.msg-head { display: flex; gap: 7px; align-items: center; }
 	.message-feedback { display: flex; align-items: center; gap: 3px; margin-top: 5px; min-height: 24px; }
