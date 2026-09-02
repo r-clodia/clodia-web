@@ -62,7 +62,7 @@
 	import { getTopicAgentsMd, saveTopicAgentsMd, type TopicAgentsMd } from '$lib/api/client';
 	import { toastSuccess } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
-	import { consumePersistedAll, resolveLiveKey } from '$lib/liveReply';
+	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
 	import { routingReasonLabel, isFallbackReason, coordinatorHint } from '$lib/routingReason';
 	import { gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
 	import type { TierWarning } from '$lib/api/types';
@@ -1675,8 +1675,11 @@
 			// server). Si richiedono DUE assenze consecutive perché fra l'arrivo di un
 			// chunk SSE e il poll successivo un turno appena nato può non essere
 			// ancora in lista, e azzerare lì cancellerebbe una bolla legittima.
-			const live = Object.keys(liveAgents);
-			const idleNow = live.filter((a) => !workingResponders.includes(a));
+			//
+			// Il confronto passa per il SEED (`idleLiveKeys`): le chiavi live sono
+			// SPAWN e `active_responders` porta SEED, quindi confrontarle a stringa
+			// dichiarava orfana ogni bolla di un turno vivo — vedi la funzione.
+			const idleNow = idleLiveKeys(Object.keys(liveAgents), workingResponders, seedName);
 			for (const a of idleNow) if (_idleLastPoll.includes(a)) resetLive(a);
 			_idleLastPoll = idleNow;
 			void loadEligibility(tier, name); // i provider possono cambiare stato
