@@ -109,3 +109,39 @@ export function resolveLiveKey(live, autore, seedOf, persistiti = []) {
 	const conTesto = candidati.filter((k) => (live[k]?.reply || '').includes(testo));
 	return conTesto.length === 1 ? conTesto[0] : null;
 }
+
+/**
+ * Quali bolle live NON hanno più un turno attivo dietro, secondo il backend.
+ *
+ * È il conto della «cintura» che spegne una bolla rimasta orfana — un turno
+ * morto senza postare (errore, watchdog, interruzione) lascerebbe altrimenti il
+ * testo a metà sullo schermo per sempre.
+ *
+ * Il confronto va fatto per SEED, e qui sta il difetto che questa funzione
+ * chiude: le due sorgenti parlano DUE VOCABOLARI, come già in `resolveLiveKey`
+ * (clodia-platform#294) e come la pagina documenta per `activeWorking`.
+ *   - le chiavi della mappa live sono SPAWN (`avvocato-42`), perché arrivano da
+ *     `spawn_label` dell'evento del turno;
+ *   - `active_responders` è per contratto una lista di SEED (`avvocato`).
+ * Confrontare `'avvocato-42'` contro `['avvocato']` non combacia MAI: ogni
+ * bolla risultava orfana a ogni poll, e alla seconda assenza consecutiva la
+ * cintura cancellava una bolla di un turno vivo. Con il poll a 5 s la risposta
+ * spariva ogni ~10 s e ricompariva col delta dopo — il box che «cresce, sparisce
+ * e ricomincia» segnalato da Davide, che si vede su ogni agente con uno spawn
+ * materializzato, cioè quasi sempre.
+ *
+ * Su multi_spawn il seed è deliberatamente GROSSOLANO: se due spawn dello stesso
+ * seed sono vivi insieme e uno solo dei due lavora ancora, entrambe le bolle
+ * restano. È il verso giusto in cui sbagliare — una bolla che sopravvive un
+ * poll in più la ripulisce il messaggio persistito, mentre una cancellata a
+ * metà turno porta via testo che nessuno ristreamerà.
+ *
+ * @param {readonly string[]} chiaviLive   chiavi della mappa live (SPAWN)
+ * @param {readonly string[]} attivi       `active_responders` del backend (SEED)
+ * @param {(n: string) => string} seedOf   riduzione nome → seed
+ * @returns {string[]} le chiavi live senza turno attivo dietro
+ */
+export function idleLiveKeys(chiaviLive, attivi, seedOf) {
+	const seedAlLavoro = new Set((attivi || []).map((s) => seedOf(s)));
+	return (chiaviLive || []).filter((k) => !seedAlLavoro.has(seedOf(k)));
+}
