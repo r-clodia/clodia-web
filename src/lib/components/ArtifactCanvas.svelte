@@ -7,6 +7,7 @@
 	// fit-to-window via zoom; refresh a polling (~2s), ricarica solo al cambio.
 	import { onMount, onDestroy } from 'svelte';
 	import { channelFileUrl, authHeaders } from '$lib/api/client';
+	import { artifactDelay } from '$lib/polling';
 
 	export let tier: string;
 	export let name: string;
@@ -17,7 +18,7 @@
 	let html = '';
 	let exists = false;
 	let lastKey = '';
-	let timer: ReturnType<typeof setInterval> | null = null;
+	let timer: ReturnType<typeof setTimeout> | null = null;
 	// Show/hide del canvas inline (persistito). L'icona wide (openFull) resta invariata.
 	let open = true;
 	function toggleOpen() {
@@ -26,7 +27,13 @@
 	}
 
 	function setExists(v: boolean) {
-		if (v !== exists) { exists = v; onExists?.(v); }
+		if (v !== exists) {
+			exists = v;
+			onExists?.(v);
+			// La cadenza dipende da questo: un artefatto appena comparso deve
+			// passare subito ai due secondi, uno sparito deve rallentare.
+			programma();
+		}
 	}
 	async function refresh() {
 		try {
@@ -66,12 +73,41 @@
 	// Riparte quando cambia topic.
 	$: if (tier && name) { lastKey = ''; }
 
+	// Cadenza ADATTIVA invece di 2 secondi fissi (issue del polling, 3 set 2026).
+	// Due secondi servono a vedere un canvas CAMBIARE mentre l'agente lo scrive;
+	// a scoprire che è NATO bastano venti. Su un canale senza artefatto questo
+	// timer produceva 30 richieste al minuto che rispondono 404 — 5073 contate
+	// nei log dell'agent-server in tre ore — e su una scheda in background le
+	// produceva per nessuno.
+	let visibile = true;
+	function programma() {
+		if (timer) clearTimeout(timer);
+		timer = null;
+		const attesa = artifactDelay({ visibile, esiste: exists });
+		if (attesa === null) return;
+		timer = setTimeout(async () => {
+			await refresh();
+			misura();
+			programma();
+		}, attesa);
+	}
+	function onVisibility() {
+		const prima = visibile;
+		visibile = typeof document === 'undefined' || !document.hidden;
+		if (visibile && !prima) void refresh();
+		programma();
+	}
 	onMount(() => {
 		try { open = localStorage.getItem('canvas-open') !== '0'; } catch {}
-		void refresh();
-		timer = setInterval(() => { void refresh(); misura(); }, 2000);
+		visibile = typeof document === 'undefined' || !document.hidden;
+		document.addEventListener('visibilitychange', onVisibility);
+		void refresh().then(programma);
 	});
-	onDestroy(() => { if (timer) clearInterval(timer); });
+	onDestroy(() => {
+		if (timer) clearTimeout(timer);
+		if (typeof document !== 'undefined')
+			document.removeEventListener('visibilitychange', onVisibility);
+	});
 </script>
 
 {#if exists}

@@ -64,6 +64,7 @@
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
 	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
+	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
 	import { routingReasonLabel, isFallbackReason, coordinatorHint } from '$lib/routingReason';
 	import { gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
 	import type { TierWarning } from '$lib/api/types';
@@ -510,7 +511,59 @@
 	let resetting = false;
 	let newParticipant = '';
 	let stream: HTMLElement;
-	let poll: ReturnType<typeof setInterval> | null = null;
+	// POLLING ADATTIVO (issue: 594 richieste in 3 minuti con tre topic aperti).
+	// Era `setInterval(refreshLive, 5000)`: quattro chiamate ogni cinque secondi
+	// per ogni scheda, anche in background e anche su una stanza ferma da ore.
+	// Il costo non è del server (25 ms per chiamata) ma del BROWSER, che
+	// riscaricava 368.546 caratteri dodici volte al minuto.
+	//
+	// Ora l'intervallo lo decide `pollDelay` in `$lib/polling` e si riprogramma
+	// dopo OGNI giro con setTimeout: un intervallo fisso non può cambiare passo,
+	// e cambiarlo con clearInterval/setInterval a ogni transizione era il modo
+	// per dimenticarne una.
+	let poll: ReturnType<typeof setTimeout> | null = null;
+	/** Ultimo segno di vita del canale: un messaggio nuovo o un evento SSE. */
+	let ultimoSegno = Date.now();
+	/** La scheda è in primo piano? Su SSR non c'è `document`: si assume sì. */
+	let schedaVisibile = true;
+	/** Attesa del timer in volo, per sapere se vale la pena riprogrammarlo. */
+	let attesaCorrente: number | null = null;
+	function segnoDiVita() {
+		ultimoSegno = Date.now();
+		// Si riprogramma SOLO per accorciare, cioè quando la stanza si risveglia
+		// mentre il timer è sul giro lungo. Riprogrammare a ogni segno sarebbe la
+		// trappola: durante uno streaming arrivano centinaia di delta, ognuno
+		// azzererebbe l'attesa, e il poll — la cintura — non scatterebbe MAI
+		// proprio nel momento in cui serve.
+		if (attesaCorrente !== null && attesaCorrente > POLL_ATTIVO_MS) programmaPoll();
+	}
+	function programmaPoll() {
+		if (poll) clearTimeout(poll);
+		poll = null;
+		const attesa = pollDelay({
+			visibile: schedaVisibile,
+			// `activeWorking` è la verità sul turno: la stessa che alimenta
+			// l'indicatore «sta scrivendo».
+			turnoAttivo: activeWorking.length > 0,
+			msDaUltimoSegno: Date.now() - ultimoSegno
+		});
+		attesaCorrente = attesa;
+		if (attesa === null) return; // scheda nascosta: si riprende al ritorno
+		poll = setTimeout(async () => {
+			await refreshLive();
+			programmaPoll();
+		}, attesa);
+	}
+	function onVisibilityChange() {
+		const prima = schedaVisibile;
+		schedaVisibile = typeof document === 'undefined' || !document.hidden;
+		// Tornando in primo piano si fa UN refresh subito: la scheda in
+		// background ha smesso di chiedere, quindi ciò che mostra è vecchio, e
+		// aspettare il prossimo giro sarebbe la stessa attesa di prima con
+		// l'aggravante di sembrare rotta.
+		if (schedaVisibile && !prima) void refreshLive();
+		programmaPoll();
+	}
 	let loadedKey = '';
 	let fileInput: HTMLInputElement;
 	let composer: HTMLTextAreaElement;
@@ -1757,6 +1810,7 @@
 			// `refreshInfo`), unica fonte che la conosca.
 			for (const [a, testi] of newAiTexts(messages, previousLastId)) resetLiveReply(a, testi);
 			if (last && previousLastId && last.id !== previousLastId) {
+				segnoDiVita();
 				await tick();
 				if (wasNearBottom) {
 					scrollDown();
@@ -2043,7 +2097,9 @@
 			const raw = localStorage.getItem(SIDE_WIDTH_KEY);
 			if (raw) sideWidth = clampSideWidth(Number(raw) || sideWidth);
 		} catch {}
-		poll = setInterval(refreshLive, 5000);
+		schedaVisibile = typeof document === 'undefined' || !document.hidden;
+		document.addEventListener('visibilitychange', onVisibilityChange);
+		programmaPoll();
 		void refreshGateInfo();
 		getAgents()
 			.then((as) => {
@@ -2075,6 +2131,10 @@
 		stopStream = startEventStream();
 		offEvt = onEventStream((ev) => {
 			const p = (ev.payload ?? {}) as Record<string, unknown>;
+			// Qualunque evento è un segno che la stanza è viva: se il polling era
+			// sul giro lungo, torna reattivo. Non riprogramma a ogni delta —
+			// `segnoDiVita` accorcia soltanto (vedi la nota là).
+			segnoDiVita();
 			if (ev.type === 'channel_typing') {
 				if (p.tier !== tier || p.name !== name) return;
 				setTyping(String(p.agent), p.state === 'start');
@@ -2140,7 +2200,9 @@
 		});
 	});
 	onDestroy(() => {
-		if (poll) clearInterval(poll);
+		if (poll) clearTimeout(poll);
+		if (typeof document !== 'undefined')
+			document.removeEventListener('visibilitychange', onVisibilityChange);
 		offEvt?.();
 		stopStream?.();
 		for (const t of Object.values(typingTimers)) clearTimeout(t);
