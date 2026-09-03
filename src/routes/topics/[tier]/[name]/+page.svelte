@@ -65,6 +65,7 @@
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
 	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
+	import { fondiConEcho } from '$lib/echoLocale';
 	import { routingReasonLabel, isFallbackReason, coordinatorHint } from '$lib/routingReason';
 	import { gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
 	import type { TierWarning } from '$lib/api/types';
@@ -1770,7 +1771,14 @@
 		try {
 			const wasNearBottom = isNearBottom;
 			const previousLastId = _lastMsgId;
-			({ messages, presence: presenza } = await getChannelMessagesAndPresence(tier, name));
+			// FUSIONE, non sovrascrittura: un giro di polling partito PRIMA di un
+			// invio torna con una lista che non contiene il messaggio appena
+			// scritto, e assegnarla cancellerebbe l'echo ottimistico — il
+			// messaggio spariva da sotto le dita e ricompariva al giro dopo
+			// (30-60 s col polling adattivo). Vedi `$lib/echoLocale`.
+			const arrivati = await getChannelMessagesAndPresence(tier, name);
+			messages = fondiConEcho(arrivati.messages, messages);
+			presenza = arrivati.presence;
 			// smetti di mostrare "scrivendo" ogni agente che ha appena postato — non
 			// solo l'ultimo: con più agenti attivi, il penultimo restava "scrivendo"
 			// fino allo scadere del timeout di 90s.
@@ -1863,6 +1871,10 @@
 			ts: new Date().toISOString()
 		} as ChannelMessage;
 		messages = [...messages, echo];
+		// Un invio è il segno di vita più forte che esista: senza questo, su una
+		// stanza quieta il polling resta sul giro da 60 s e la conferma del
+		// server arriva un minuto dopo aver premuto invio.
+		segnoDiVita();
 		await tick();
 		scrollDown();
 		try {
