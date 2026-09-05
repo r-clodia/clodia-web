@@ -7,6 +7,7 @@
 	import StatusDot from './StatusDot.svelte';
 	import { pauseAgent, resumeAgent, createOrOpenDm } from '$lib/api/client';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
+	import { riassumiPerTier, vaMostrata } from '$lib/providerPerTier';
 	import type { Agent, AgentRunState } from '$lib/api/types';
 
 	export let agent: Agent;
@@ -40,8 +41,13 @@
 	// `provider_connected === false` significa: ci sono provider compatibili ma
 	// nessuno è collegato (provider EFFETTIVO null). È il segnale autoritativo.
 	$: disconnected = agent.provider_connected === false;
-	// Etichetta: provider effettivo se collegato, altrimenti il preferito della lista.
+	// Etichetta: provider PREFERITO se collegato, altrimenti il primo della lista.
+	// Non è «quello in uso»: dentro un topic decide il tier — vedi `perTier`.
 	$: providerLabel = agent.provider ?? agent.providers?.[0] ?? null;
+	// Il provider dipende dalla stanza (clodia-platform#306). Si mostra solo
+	// quando cambia da un tier all'altro: se risponde sempre lo stesso, la riga
+	// direbbe due volte la stessa cosa.
+	$: perTier = vaMostrata(agent.provider_by_tier) ? riassumiPerTier(agent.provider_by_tier) : '';
 	// Stato mostrato dal dot: 'disconnected' ha priorità sul runState.
 	$: cardState = disconnected ? 'disconnected' : runState;
 
@@ -84,11 +90,19 @@
 				<div class="model" title="model (stack in uso)">{agent.effective_model || agent.model}</div>
 			{/if}
 			{#if providerLabel}
-				<div class="provider" class:off={disconnected} title="provider">
+				<div class="provider" class:off={disconnected} title="provider preferito, fuori da un topic">
 					{providerLabel}{#if disconnected} · non collegato{/if}
 					{#if agent.provider_seal && !disconnected}
-						<span class="seal-chip" title="SEAL del provider effettivo">{agent.provider_seal}</span>
+						<span class="seal-chip" title="SEAL del provider preferito">{agent.provider_seal}</span>
 					{/if}
+				</div>
+			{/if}
+			{#if perTier}
+				<div
+					class="per-tier"
+					title="Dentro un topic il provider è il meno costoso che regge il tier della stanza: lo stesso agente può girare su provider diversi. «—» = in quel tier non può prendere turni."
+				>
+					{perTier}
 				</div>
 			{/if}
 		</div>
@@ -242,6 +256,13 @@
 		font-family: var(--mono);
 		font-size: 11px;
 		color: var(--fg-muted);
+	}
+	.per-tier {
+		font-size: 10px;
+		color: var(--fg-muted);
+		opacity: 0.85;
+		line-height: 1.35;
+		word-break: break-word;
 	}
 	.provider {
 		margin-top: 1px;
