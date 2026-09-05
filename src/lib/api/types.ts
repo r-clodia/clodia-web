@@ -49,9 +49,17 @@ export interface ProviderOption {
 	readonly effective: boolean;
 }
 
+/** Provider effettivo per ciascun tier: dentro un topic decide il tier della
+ *  stanza, non l'ordine di preferenza dell'agente (clodia-platform#306).
+ *  `null` = in quel tier nessun provider dell'agente regge il livello, quindi
+ *  non può prendere turni. */
+export type ProviderByTier = Readonly<Record<string, string | null>>;
+
 /** Shape returned by `GET /api/agents/{name}` and embedded in the list. */
 export interface Agent {
 	readonly name: string;
+	/** Provider effettivo per tier: il vero, quello che dipende dalla stanza. */
+	readonly provider_by_tier?: ProviderByTier;
 	readonly display_name?: string;
 	readonly description?: string;
 	/** Categoria KYA: super (clodia/ophelia, poteri pieni) | normal (worker) | human. */
