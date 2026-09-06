@@ -274,6 +274,7 @@ import type {
 	ChatsListResponse,
 	InstanceProfile,
 	Pack,
+	PackDrift,
 	Plugin,
 	Rule,
 	RuleDetail,
@@ -1974,6 +1975,16 @@ export async function updatePack(
 	opts: RequestOptions = {}
 ): Promise<{ updated: string; version: string; agents_restarted: number }> {
 	return apiPost(`/clodia/packs/${encodeURIComponent(name)}/update`, {}, opts);
+}
+
+/** POST `/clodia/packs/{name}/drift` — i seed installati corrispondono ancora a
+ *  quelli dichiarati dal pack? (clodia-platform#266)
+ *
+ *  POST benché sia una lettura: risolvere il riferimento può costare un download
+ *  dall'upstream, e non è cosa da mettere dietro una GET che una cache qualsiasi
+ *  si sente in diritto di ripetere. */
+export async function checkPackDrift(name: string, opts: RequestOptions = {}): Promise<PackDrift> {
+	return apiPost(`/clodia/packs/${encodeURIComponent(name)}/drift`, {}, opts);
 }
 
 /** GET `/clodia/rules` — deduplicated rule catalog. */

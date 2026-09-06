@@ -10,9 +10,10 @@
 		deletePack,
 		deletePlugin,
 		updatePack as apiUpdatePack,
-		checkPackUpdate as apiCheckPackUpdate
+		checkPackUpdate as apiCheckPackUpdate,
+		checkPackDrift as apiCheckPackDrift
 	} from '$lib/api/client';
-	import type { Pack, Plugin } from '$lib/api/types';
+	import type { Pack, PackDrift, PackDriftAgent, Plugin } from '$lib/api/types';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import PluginNode from '$lib/components/PluginNode.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
@@ -59,6 +60,58 @@
 		}
 	}
 
+	// Esito del "Check drift" per pack (clodia-platform#266). Il seed installato
+	// può divergere da quello che il pack dichiara — un campo tolto, un valore
+	// cambiato — senza che niente lo dica: il file carica, l'agente gira, e un
+	// update del pack fa tornare il campo cambiando il comportamento di un agente
+	// per una ragione che nessuno collega all'aggiornamento.
+	let driftResults: Record<string, PackDrift> = {};
+	let checkingDrift: string | null = null;
+
+	async function checkDrift(p: Pack) {
+		if (checkingDrift) return;
+		checkingDrift = p.name;
+		try {
+			const r = await apiCheckPackDrift(p.name);
+			driftResults = { ...driftResults, [p.name]: r };
+			if (r.unavailable) {
+				// Non è un successo e non è un errore: è una domanda rimasta senza
+				// risposta, e dirlo è metà del punto della issue.
+				toastError(r.reason || `${p.name}: drift non calcolabile`);
+			} else if (!r.drifted) {
+				toastSuccess(`${p.name}: i ${r.checked ?? 0} seed corrispondono al pack`);
+			}
+		} catch (err) {
+			toastError(errorMessage(err).message);
+		} finally {
+			checkingDrift = null;
+		}
+	}
+
+	/** Il drift di UN agente, se il pack è stato controllato ed è divergente. */
+	function driftOf(pack: string, agent: string): PackDriftAgent | null {
+		return driftResults[pack]?.agents?.find((a) => a.name === agent) ?? null;
+	}
+
+	/** La riga che si legge accanto all'agente: quali campi, non quanti. */
+	function driftText(d: PackDriftAgent): string {
+		if (d.error) return d.error;
+		if (!d.installed) return 'dichiarato dal pack, non installato';
+		const parti: string[] = [];
+		if (d.missing.length) parti.push(`manca: ${d.missing.join(', ')}`);
+		for (const c of d.changed) {
+			const dettaglio = [
+				c.removed.length ? `−${c.removed.join(' ')}` : '',
+				c.added.length ? `+${c.added.join(' ')}` : ''
+			]
+				.filter(Boolean)
+				.join(' ');
+			parti.push(dettaglio ? `${c.field} (${dettaglio})` : `${c.field}: ${c.pack} → ${c.local}`);
+		}
+		if (d.extra.length) parti.push(`solo locale: ${d.extra.join(', ')}`);
+		return parti.join(' · ');
+	}
+
 	async function updatePack(p: Pack) {
 		if (updating) return;
 		updating = p.name;
@@ -66,6 +119,11 @@
 			const r = await apiUpdatePack(p.name);
 			toastSuccess(`${p.name} aggiornato a v${r.version} · ${r.agents_restarted} agenti riavviati`);
 			checkResults = { ...checkResults, [p.name]: { remote: r.version, update_available: false } };
+			// L'update RIMPIAZZA i seed: il drift misurato prima parla di file che
+			// non ci sono più. Tenerlo a schermo sarebbe mostrare come attuale una
+			// divergenza appena risolta (o appena creata).
+			const { [p.name]: _tolto, ...resto } = driftResults;
+			driftResults = resto;
 			await load();
 		} catch (err) {
 			toastError(errorMessage(err).message);
@@ -348,6 +406,19 @@
 							{#if p.third_party}<span class="tp-badge" title="Pack di terze parti: download opt-in, accetti la licenza">3ª parte</span>{/if}
 							{#if p.license_missing}<span class="warn-badge" title="Licenza non dichiarata su alcune skill — bloccante all'install">⚠ licenza</span>{/if}
 							{#if p.dpa_missing}<span class="warn-badge" title="Provider senza profilo DPA/sovranità completo — bloccante + consenso owner">⚠ DPA</span>{/if}
+							{#if driftResults[p.name]?.unavailable}
+								<span class="drift-badge unknown" title={driftResults[p.name].reason}>drift ignoto</span>
+							{:else if driftResults[p.name]?.drifted}
+								<span
+									class="drift-badge"
+									title={`Seed che non corrispondono più alla dichiarazione del pack (${driftResults[p.name].source}). Un update del pack ripristinerebbe i valori dichiarati.`}
+									>⚠ {driftResults[p.name].drifted} seed divergono</span
+								>
+							{:else if driftResults[p.name]}
+								<span class="ok-badge" title={`Confrontati con ${driftResults[p.name].source}`}
+									>✓ seed allineati</span
+								>
+							{/if}
 						</span>
 						{#if $isAdmin}
 							<!-- Bottone multi-stato: Check update → Update vX.Y.Z → Finish setup -->
@@ -359,6 +430,19 @@
 								<span class="update-badge" title="Sei alla versione più recente">✓ aggiornato</span>
 							{:else if p.has_upstream}
 								<button type="button" class="check-btn" disabled={checking === p.name} on:click={() => checkUpdate(p)}>{checking === p.name ? 'Controllo…' : 'Check update'}</button>
+							{/if}
+							<!-- Il drift è una domanda diversa dall'update («la versione è
+							     la più recente?» vs «questa istanza ha ancora i seed di
+							     quella versione?»), quindi è un bottone suo e non uno
+							     stato dell'altro. Compare solo dove una risposta esiste. -->
+							{#if p.drift_checkable}
+								<button
+									type="button"
+									class="check-btn"
+									title="Confronta i seed installati con quelli dichiarati dal pack: campi spariti, valori cambiati"
+									disabled={checkingDrift === p.name}
+									on:click={() => checkDrift(p)}>{checkingDrift === p.name ? 'Confronto…' : 'Check drift'}</button
+								>
 							{/if}
 						{/if}
 						{#if p.deletable !== false}
@@ -380,6 +464,13 @@
 										{#if a.missing_plugins.length}
 											<span class="warn" title={`Plugin richiesti mancanti: ${a.missing_plugins.join(', ')}`}>
 												⚠ manca: {a.missing_plugins.join(', ')}
+											</span>
+										{/if}
+										{#if driftOf(p.name, a.name)}
+											<!-- QUALI campi, non quanti: «3 seed divergono» senza i
+											     campi rimanda a confrontare due file a mano. -->
+											<span class="drift" title={`Divergenza fra il seed installato e la dichiarazione del pack (${driftResults[p.name]?.source})`}>
+												⚠ drift: {driftText(driftOf(p.name, a.name)!)}
 											</span>
 										{/if}
 									</a>
@@ -593,6 +684,20 @@
 		border: 1px solid var(--border);
 	}
 	.lic-badge { font-family: var(--mono); color: var(--fg-muted); }
+	/* Drift dei seed: stessa famiglia dei badge di pack, colori diversi perché
+	   dicono cose diverse — divergente (giallo), non calcolabile (grigio: NON
+	   è «pulito»), allineato (verde). */
+	.drift-badge, .ok-badge {
+		font-size: 10px;
+		padding: 1px 7px;
+		border-radius: 999px;
+		white-space: nowrap;
+		flex-shrink: 0;
+		border: 1px solid var(--border);
+	}
+	.drift-badge { color: #e0a800; border-color: rgba(224,168,0,0.5); font-weight: 600; }
+	.drift-badge.unknown { color: var(--fg-muted); font-weight: 400; }
+	.ok-badge { color: #16a34a; border-color: rgba(22,163,74,0.4); }
 	.tp-badge { color: #a855f7; border-color: rgba(168,85,247,0.5); }
 	.warn-badge { color: #e0a800; border-color: rgba(224,168,0,0.5); font-weight: 600; }
 	.pack-desc {
@@ -677,6 +782,15 @@
 		font-size: 11px;
 		color: #e8a33d;
 		white-space: nowrap;
+	}
+	/* Il dettaglio per agente: non va a capo con `warn` (che è pinnato a destra),
+	   perché qui il testo è lungo — sono nomi di campi. */
+	.drift {
+		flex-basis: 100%;
+		margin-left: 60px;
+		font-size: 11px;
+		color: #e8a33d;
+		overflow-wrap: anywhere;
 	}
 	.empty-child {
 		color: var(--fg-muted);

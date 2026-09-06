@@ -608,6 +608,10 @@ export interface Pack {
 	// first-party con upstream dichiarato → la UI mostra "Check update".
 	readonly first_party?: boolean;
 	readonly has_upstream?: boolean;
+	// Esiste una dichiarazione del pack (bundled o upstream) con cui confrontare
+	// i seed installati? Senza, il bottone "Check drift" prometterebbe una
+	// risposta che non c'è (clodia-platform#266).
+	readonly drift_checkable?: boolean;
 	// Setup: il pack ha roba da provisionare (MCP/RAG/datastore) e non è ancora
 	// stato fatto → la UI mostra il bottone "Finish setup".
 	readonly needs_setup?: boolean;
@@ -628,6 +632,44 @@ export interface Pack {
 		readonly agents: number;
 		readonly plugins: number;
 	};
+}
+
+/** Un campo il cui VALORE è cambiato fra la dichiarazione del pack e la copia
+ *  installata. Su una lista si guardano `added`/`removed`: `gated_tools` ha 19
+ *  voci, e la riga utile è quale manca — non l'elenco. */
+export interface PackDriftChange {
+	readonly field: string;
+	readonly pack: string;
+	readonly local: string;
+	readonly added: ReadonlyArray<string>;
+	readonly removed: ReadonlyArray<string>;
+}
+
+/** Il drift di UN seed rispetto a ciò che il pack dichiara. */
+export interface PackDriftAgent {
+	readonly name: string;
+	readonly installed: boolean;
+	/** Dichiarati dal pack e spariti dalla copia locale: il caso della #266. */
+	readonly missing: ReadonlyArray<string>;
+	readonly changed: ReadonlyArray<PackDriftChange>;
+	/** Solo locali. Non è un difetto — è una cosa da sapere. */
+	readonly extra: ReadonlyArray<string>;
+	readonly error: string;
+}
+
+/** Esito di `POST /clodia/packs/{name}/drift`.
+ *
+ *  `unavailable` NON è «nessuna divergenza»: è «non c'era niente con cui
+ *  confrontare». Tenerli distinti è metà della issue. */
+export interface PackDrift {
+	readonly name: string;
+	readonly unavailable?: boolean;
+	readonly reason?: string;
+	readonly source?: string;
+	readonly checked?: number;
+	readonly drifted?: number;
+	readonly cached?: boolean;
+	readonly agents?: ReadonlyArray<PackDriftAgent>;
 }
 
 /* ------------------------------------------------------------------------ */
