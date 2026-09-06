@@ -369,9 +369,22 @@
 	let newFieldKey = '';
 	let agentNames: string[] = [];
 	$: customKeys = Object.keys(pf).filter((k) => !PROFILE_FIELDS.includes(k));
+	/** Recapiti che sono campi della SCHEDA agente, non dati del profilo. Scritti
+	 *  qui non li legge nessuno: è così che il contatto Telegram dell'owner è
+	 *  finito dove né il riconoscimento dei messaggi in ingresso né le notifiche
+	 *  di menzione lo cercano (clodia-platform#200). Il gateway li rifiuta; qui
+	 *  li fermiamo prima, per dire dove vanno invece di dare un errore a salvataggio. */
+	const FIXED_CONTACT_KEYS = ['telegram', 'telegram_id', 'telegram_handle', 'telegram_chat_id', 'chat_id'];
 	function addCustomField() {
 		const k = newFieldKey.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_');
 		if (!k || k in pf) { newFieldKey = ''; return; }
+		if (FIXED_CONTACT_KEYS.includes(k)) {
+			toastError(
+				`«${k}» non è un dato del profilo`,
+				'È un campo della scheda agente: qui non lo leggerebbe nessuno. Scrivilo in ✎ Modifica → Telegram.'
+			);
+			return;
+		}
 		pf = { ...pf, [k]: '' };
 		newFieldKey = '';
 	}
@@ -671,9 +684,19 @@
 			<label>Clearance<select bind:value={sForm.clearance}><option value="">(nessuna)</option><option value="SEAL-0">SEAL-0</option><option value="SEAL-1">SEAL-1</option><option value="SEAL-2">SEAL-2</option><option value="SEAL-3">SEAL-3</option><option value="SEAL-4">SEAL-4</option></select></label>
 			<label>Mailbox parent<input type="text" bind:value={sForm.mailbox_parent} placeholder="clodia | ophelia" /></label>
 			<label>Email<input type="text" bind:value={sForm.email} placeholder="nome@dominio" /></label>
-			<label>Telegram <span class="opt">(opz.)</span><input type="text" bind:value={sForm.telegram} placeholder="@handle o chat_id" /></label>
+			<label>Telegram <span class="opt">(opz.)</span><input type="text" bind:value={sForm.telegram} placeholder="76632169 (chat_id) o @handle" /></label>
 		</div>
 		<p class="sf-hint">Lascia un campo vuoto per azzerarlo. L'email dei regular, se vuota, viene derivata (subaddress di Clodia/Ophelia).</p>
+		<!-- «Opzionale» era esatto e insufficiente: non diceva né a cosa serve il
+		     campo né che una delle due forme ammesse non consegna niente
+		     (clodia-platform#200). -->
+		<p class="sf-hint">
+			<strong>Telegram è il canale di ultima istanza</strong>: sotto R4 ci arrivano le
+			menzioni che la persona non vede nella webui. Il <strong>chat_id numerico</strong>
+			identifica e riceve; l'<strong>@handle</strong> identifica soltanto — il bot non sa
+			risolverlo in un destinatario, quindi con quello le notifiche non partono. Vuoto =
+			raggiungibile solo dentro la webui.
+		</p>
 		{#if sErr}<div class="sf-err">{sErr}</div>{/if}
 	</div>
 	<svelte:fragment slot="actions">
@@ -778,14 +801,32 @@
 				{#if isProxy}
 					<dt>Canali di contatto</dt>
 					<dd><span class="muted-note">n/a</span></dd>
-				{:else if agent.contact_channels && (agent.contact_channels.email || agent.contact_channels.telegram)}
+				{:else if agent.contact_channels && (agent.contact_channels.email || agent.contact_channels.telegram || isHuman)}
 					<dt>Canali di contatto</dt>
 					<dd>
 						{#if agent.contact_channels.email}
 							<div>✉️ <a href={`mailto:${agent.contact_channels.email}`}>{agent.contact_channels.email}</a></div>
 						{/if}
 						{#if agent.contact_channels.telegram}
-							<div>✈️ {agent.contact_channels.telegram}</div>
+							<div>
+								✈️ {agent.contact_channels.telegram}
+								{#if !agent.contact_channels.telegram_delivers}
+									<span class="tg-warn" title="Il bot non consegna a un handle: come destinatario vale solo il chat_id numerico">
+										handle — non recapitabile
+									</span>
+								{/if}
+							</div>
+							{#if !agent.contact_channels.telegram_delivers && isHuman}
+								<div class="muted-note">
+									Un handle identifica chi scrive, non riceve: le menzioni che questa persona
+									non vede nella webui non la raggiungono. Per le notifiche serve il chat_id numerico.
+								</div>
+							{/if}
+						{:else if isHuman}
+						<!-- Prima qui non c'era niente, e «nessun recapito» aveva lo stesso aspetto di
+						     «recapito a posto»: la notifica cadeva in silenzio e la scheda non lo
+						     diceva (clodia-platform#200). -->
+							<div>✈️ <span class="tg-warn">nessun Telegram — irraggiungibile fuori dalla webui</span></div>
 						{:else if agent.type === 'normal'}
 							<div class="muted-note">Telegram: nessuno (gli agent regular usano solo l'email subaddress)</div>
 						{/if}
@@ -1747,6 +1788,14 @@
 		color: var(--fg-muted);
 		font-size: 12px;
 		font-style: italic;
+	}
+	/* Un recapito che non recapita non è una nota a margine: si legge come
+	   un'avvertenza, o passa per un contatto valido come tutti gli altri.
+	   Stesso ambra degli altri avvisi di questa pagina (`.vnote.warn`). */
+	.tg-warn {
+		color: #d97706;
+		font-size: 12px;
+		font-weight: 600;
 	}
 	.prov-picker { display: flex; flex-wrap: wrap; gap: 6px; }
 	.prov-opt {
