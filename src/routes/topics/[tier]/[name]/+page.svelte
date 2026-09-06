@@ -45,7 +45,6 @@
 		downloadTopicZip,
 		channelFileUrl,
 		signedChannelFileUrl,
-		setTopicPortable,
 		listTopicMcpClients,
 		issueTopicMcpClient,
 		setTopicLogo,
@@ -1296,20 +1295,6 @@
 	let metaDeadlineDraft = '';
 	$: metaStatus = normalizeTopicStatus(info?.meta?.status);
 	$: if (info) metaDeadlineDraft = info.meta?.deadline ?? '';
-
-	$: metaPortable = !!info?.meta?.portable;
-	async function saveTopicPortable(next: boolean) {
-		if (!isOwner || metaBusy || next === metaPortable) return;
-		metaBusy = true;
-		try {
-			const r = await setTopicPortable(tier, name, next);
-			if (info) info = { ...info, meta: { ...info.meta, portable: r.portable } };
-		} catch (e) {
-			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			metaBusy = false;
-		}
-	}
 
 	// ── Presenza degli umani in questa stanza ───────────────────────────────
 	//
@@ -2820,26 +2805,6 @@
 							<span class="meta-value">{info?.meta?.deadline ?? '—'}</span>
 						{/if}
 					</label>
-
-					<label class="meta-field">
-						<span>Portabile</span>
-						{#if isOwner}
-							<input type="checkbox" checked={metaPortable} disabled={metaBusy}
-								on:change={(e) => saveTopicPortable((e.currentTarget as HTMLInputElement).checked)} />
-						{:else}
-							<span class="meta-value">{metaPortable ? 'sì' : 'no'}</span>
-						{/if}
-					</label>
-					<p class="meta-note">
-						{#if metaPortable}
-							I <b>partecipanti</b> di questo topic ne leggono i contenuti anche
-							da altre stanze, <b>fino al tier della stanza in cui si trovano</b>:
-							in una stanza più bassa il contenuto non li segue.
-						{:else}
-							I contenuti restano leggibili solo qui. Renderlo portabile è un atto
-							sui muri dello scope, non una preferenza.
-						{/if}
-					</p>
 
 					<!-- summary.md e meta.json sono usciti dalla vista file il 7 ago 2026
 					     (la radice dell'albero mostra i due mount e basta). Non dovevano

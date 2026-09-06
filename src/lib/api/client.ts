@@ -664,10 +664,6 @@ export interface ChannelInfo {
 		deadline?: string | null;
 		/** I mount dello scope: cartelle Drive, repository, gruppi Telegram. */
 		mounts?: TelegramMount[];
-		/** Portabilità dichiarata DAL TOPIC (non dall'agente): i partecipanti ne
-		 *  leggono i contenuti anche da altre stanze, entro il tier della stanza
-		 *  in cui si trovano. */
-		portable?: boolean;
 		/** Path (dentro il topic) dell'immagine con cui la stanza si presenta.
 		 *  La imposta solo l'owner; `logo_kind` è il tipo rilevato dai byte al
 		 *  caricamento — il file non ha estensione, quindi chi lo serve non
@@ -2441,16 +2437,6 @@ export async function downloadTopicZip(tier: string, name: string): Promise<void
 	const a = document.createElement('a');
 	a.href = url; a.download = `${name}.zip`; a.click();
 	URL.revokeObjectURL(url);
-}
-
-/** POST `/api/topics/{tier}/{name}/portable` — dichiara o revoca la portabilità.
- *  Portabile = i PARTECIPANTI di questo topic ne leggono i contenuti anche da
- *  altre stanze, entro il tier della stanza in cui si trovano. Lo decide
- *  l'owner: è un atto sui muri dello scope, non una preferenza. */
-export async function setTopicPortable(tier: string, name: string, portable: boolean,
-	opts: RequestOptions = {}): Promise<{ ok: boolean; portable: boolean }> {
-	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/portable`,
-		{ portable }, opts);
 }
 
 /** Un gruppo Telegram collegato a un topic: è un **mount** dello scope, come una
