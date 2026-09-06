@@ -488,13 +488,13 @@
 	// Idoneità degli AeI al tier del topic: name → {eligible, warn}. I non idonei
 	// (clearance/provider sotto il tier) spariscono dalla lista partecipanti e dal
 	// dropdown invito; i super sotto tier restano ma con ⚠️.
-	type Elig = { eligible: boolean; warn: boolean; context: import('$lib/api/client').AgentContext | null };
+	type Elig = { eligible: boolean; warn: boolean; context: import('$lib/api/client').AgentContext | null; provider: string | null };
 	let eligibility: Record<string, Elig> = {};
 	async function loadEligibility(t: string, n: string) {
 		try {
 			const r = await getChannelEligibility(t, n);
 			const m: Record<string, Elig> = {};
-			for (const a of r.agents) m[a.name] = { eligible: a.eligible, warn: a.warn, context: a.context };
+			for (const a of r.agents) m[a.name] = { eligible: a.eligible, warn: a.warn, context: a.context, provider: a.provider ?? null };
 			eligibility = m;
 		} catch {
 			/* ignore: in assenza di dati non filtriamo nulla */
@@ -2396,6 +2396,9 @@
 								{#if multiSpawn[seedName(m.author)]}
 									<MultiSpawnBadge name={m.author} maxSpawns={multiSpawn[seedName(m.author)].max} />
 								{/if}
+								{#if eligibility[seedName(m.author)]?.provider}
+									<span class="author-provider" title="provider in questa stanza">{eligibility[seedName(m.author)]?.provider}</span>
+								{/if}
 							{/if}
 							<time class="ts">{fmtTs(m.ts)}</time>
 							{#if m.kind === 'ai'}
@@ -2610,6 +2613,9 @@
 								{#if !saldata}
 									<AgentAvatar name={agent} size={22} />
 									<span class="author">{agent}</span>
+									{#if eligibility[seedName(agent)]?.provider}
+										<span class="author-provider" title="provider in questa stanza">{eligibility[seedName(agent)]?.provider}</span>
+									{/if}
 								{/if}
 								<span class="live-badge">
 									<span class="streaming-dot" aria-hidden="true"></span>
@@ -2868,6 +2874,11 @@
 									<span class="part-name">{#if presenza[p]}<span
 											class="presenza presenza-{presenza[p]}"
 											title={titoloPresenza(p, presenza[p])}></span>{/if}{p}{#if multiSpawn[p]} <MultiSpawnBadge name={p} maxSpawns={multiSpawn[p].max} />{/if}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
+									{#if eligibility[p]?.provider}
+										<!-- Provider EFFETTIVO in QUESTA stanza (clodia-platform#310, A14):
+										     dipende dal tier del topic, può differire da un topic all'altro. -->
+										<span class="part-provider" title="provider in questa stanza">{eligibility[p]?.provider}</span>
+									{/if}
 									{#if c}
 										<span class="ctx-bar" title={`Contesto ${Math.round(c.pct * 100)}% — ${c.used.toLocaleString()}/${c.window.toLocaleString()} token`}>
 											<span class="ctx-fill" style="width:{Math.min(100, c.pct * 100)}%; background:{ctxColor(c.pct)}"></span>
@@ -3613,6 +3624,13 @@
 	.message-feedback button:disabled { cursor: wait; }
 	.message-feedback span { margin-left: 4px; color: var(--fg-muted); font-size: 10px; }
 	.author { font-weight: 700; font-size: 12.5px; }
+	.author-provider {
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--fg-muted);
+		opacity: 0.75;
+	}
 	.reply-btn, .copy-btn { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 5px; opacity: 0; transition: opacity .12s ease, background .12s ease; }
 	.copy-btn { margin-left: auto; }
 	.msg:hover .reply-btn, .msg:hover .copy-btn, .copy-btn.copied { opacity: 1; }
@@ -3929,6 +3947,14 @@
 	.part-id { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 	.part-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 	.part-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.part-provider {
+		font-size: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--fg-muted);
+		opacity: 0.75;
+		white-space: nowrap;
+	}
 
 	/* Presenza: quattro stati, quattro colori, e nessuno che si legge come un
 	   guasto. Il grigio è PIENO e non un cerchio vuoto: un contorno senza

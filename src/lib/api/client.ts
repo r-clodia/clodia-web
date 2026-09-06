@@ -1060,6 +1060,9 @@ export interface AgentEligibility {
 	eligible: boolean;
 	warn: boolean;
 	context: AgentContext | null;
+	/** Provider EFFETTIVO in questa stanza (clodia-platform#310, A14) — dipende
+	 *  dal tier del topic, non dal preferito fuori-stanza. `null` per gli umani. */
+	provider: string | null;
 }
 /** Feedback sulla scelta del router, distinto dal feedback sulla risposta. */
 export async function recordRoutingFeedback(
