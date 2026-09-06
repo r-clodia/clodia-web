@@ -617,6 +617,11 @@
 	// Human e proxy non sono eseguiti: niente system prompt. Il tab Logs resta.
 	$: isHuman = agent?.type === 'human';
 	$: isProxy = agent?.type === 'proxy';
+	// I campi del sandbox che QUESTO runtime non porta, per nome. Il server li
+	// dà già così (`sandbox_info.unenforced`), e si marcano uno per uno: dire
+	// «il sandbox non è applicato» manderebbe a cercare quale, che è
+	// l'informazione che serve (clodia-platform#296).
+	$: sandboxOff = new Set<string>(agent?.sandbox_info?.unenforced ?? []);
 	$: if ((isHuman || isProxy) && tab === 'system-prompt') tab = 'definition';
 	$: events = activity.kind === 'ok' ? activity.events : [];
 	// Newest first
@@ -1151,8 +1156,11 @@
 					{#if agent.sandbox}
 						<div class="sandbox">
 							{#if agent.sandbox.allow_read?.length}
-								<div class="sandbox-sec">
+								<div class="sandbox-sec" class:inerte={sandboxOff.has('allow_read')}>
 									<span class="sk">allow_read</span>
+									{#if sandboxOff.has('allow_read')}
+										<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
+									{/if}
 									<ul class="paths">
 										{#each agent.sandbox.allow_read as p}
 											<li><code>{p}</code></li>
@@ -1161,8 +1169,11 @@
 								</div>
 							{/if}
 							{#if agent.sandbox.deny_read?.length}
-								<div class="sandbox-sec">
+								<div class="sandbox-sec" class:inerte={sandboxOff.has('deny_read')}>
 									<span class="sk deny">deny_read</span>
+									{#if sandboxOff.has('deny_read')}
+										<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
+									{/if}
 									<ul class="paths">
 										{#each agent.sandbox.deny_read as p}
 											<li><code>{p}</code></li>
@@ -1171,8 +1182,11 @@
 								</div>
 							{/if}
 							{#if agent.sandbox.allow_write?.length}
-								<div class="sandbox-sec">
+								<div class="sandbox-sec" class:inerte={sandboxOff.has('allow_write')}>
 									<span class="sk">allow_write</span>
+									{#if sandboxOff.has('allow_write')}
+										<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
+									{/if}
 									<ul class="paths">
 										{#each agent.sandbox.allow_write as p}
 											<li><code>{p}</code></li>
@@ -1181,8 +1195,11 @@
 								</div>
 							{/if}
 							{#if agent.sandbox.allow_shell_cmds?.length}
-								<div class="sandbox-sec">
+								<div class="sandbox-sec" class:inerte={sandboxOff.has('allow_shell_cmds')}>
 									<span class="sk">allow_shell_cmds</span>
+									{#if sandboxOff.has('allow_shell_cmds')}
+										<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
+									{/if}
 									<ul class="chips">
 										{#each agent.sandbox.allow_shell_cmds as c}
 											<li><code>{c}</code></li>
@@ -1191,8 +1208,11 @@
 								</div>
 							{/if}
 							{#if agent.sandbox.deny_shell_patterns?.length}
-								<div class="sandbox-sec">
+								<div class="sandbox-sec" class:inerte={sandboxOff.has('deny_shell_patterns')}>
 									<span class="sk deny">deny_shell_patterns</span>
+									{#if sandboxOff.has('deny_shell_patterns')}
+										<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
+									{/if}
 									<ul class="chips">
 										{#each agent.sandbox.deny_shell_patterns as c}
 											<li><code>{c}</code></li>
@@ -1201,6 +1221,14 @@
 								</div>
 							{/if}
 						</div>
+						{#if sandboxOff.size}
+							<p class="vnote warn">⚠ Il runtime <code>{agent.agent_sdk}</code> NON
+								applica {sandboxOff.size}
+								{sandboxOff.size === 1 ? 'campo' : 'campi'} di questo sandbox:
+								<code>{[...sandboxOff].join(', ')}</code>.
+								Per quelli, la restrizione che si legge qui sopra a runtime non
+								esiste.</p>
+						{/if}
 					{:else}—{/if}
 				</dd>
 
@@ -1867,6 +1895,27 @@
 	}
 	.sk.deny {
 		color: var(--danger);
+	}
+	/* Un campo dichiarato che il runtime non porta. Il colore della chiave
+	   perde il verde/rosso — quelli dicono «concede»/«nega», e qui non fa né
+	   l'uno né l'altro — e l'elenco si smorza: resta leggibile, perché è ciò
+	   che il seed dichiara, ma non si legge più come una restrizione in
+	   vigore (clodia-platform#296). */
+	.sandbox-sec.inerte .sk,
+	.sandbox-sec.inerte .sk.deny {
+		color: var(--fg-muted);
+	}
+	.sandbox-sec.inerte .paths code,
+	.sandbox-sec.inerte .chips code {
+		opacity: 0.6;
+	}
+	.sk-off {
+		font-size: 10px;
+		color: #d97706;
+		border: 1px solid rgba(217, 119, 6, .45);
+		border-radius: 3px;
+		padding: 0 4px;
+		align-self: flex-start;
 	}
 	.paths {
 		list-style: none;

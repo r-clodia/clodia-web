@@ -146,6 +146,10 @@ export interface Agent {
 	/** Quanto di quella dichiarazione il runtime dell'agent applica davvero.
 	 *  `unenforced` non vuoto = il seed nega strumenti che l'agent CONSERVA. */
 	readonly native_tools_info?: NativeToolsInfo;
+	/** Quanto del `sandbox` dichiarato questo runtime porta davvero.
+	 *  `unenforced` non vuoto = il seed stringe la shell (o i path) e il
+	 *  runtime non lo fa. */
+	readonly sandbox_info?: SandboxInfo;
 	/** Incoerenze del seed rilevate al load: dichiara comandi che non ha modo di
 	 *  eseguire, o non dichiara `native_tools` e cade sul pavimento dell'arciseed.
 	 *  L'agent è caricato e funzionante — si segnala, non si punisce. Vuoto = il
@@ -186,6 +190,24 @@ export interface NativeToolsInfo {
 	/** Gli strumenti che la dichiarazione toglie (NOTI − concessi). */
 	readonly denied?: ReadonlyArray<string>;
 	/** Quelli che il runtime NON toglie comunque. Vuoto = la lista conta tutta. */
+	readonly unenforced?: ReadonlyArray<string>;
+}
+
+/** Il sandbox del seed e quanto ne applica il suo runtime — gemello di
+ *  `NativeToolsInfo` un piano più sotto: quello dice QUALI strumenti il seed
+ *  concede, questo COME si stringe la shell (e i path) che ha già.
+ *
+ *  `allow_read`/`deny_read`/`allow_write`/`allow_shell_cmds`/`deny_shell_patterns`
+ *  sono tradotti solo in `.claude/settings.local.json`: su codex e opencode
+ *  restano parole nel file. `ophelia` (codex) dichiara cinque comandi ammessi e
+ *  tre pattern negati, e nessuno dei due elenchi arriva al runtime — una
+ *  restrizione raccontata e inesistente è peggio di un campo assente
+ *  (clodia-platform#296). */
+export interface SandboxInfo {
+	/** La dichiarazione del seed, così com'è. `null` = nessun sandbox. */
+	readonly declared?: Record<string, unknown> | null;
+	/** I NOMI dei campi dichiarati che questo runtime non porta. Vuoto = tutto
+	 *  ciò che è dichiarato è applicato (non «non c'è niente di dichiarato»). */
 	readonly unenforced?: ReadonlyArray<string>;
 }
 
