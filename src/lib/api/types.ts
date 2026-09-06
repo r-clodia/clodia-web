@@ -64,8 +64,16 @@ export interface Agent {
 	readonly description?: string;
 	/** Categoria KYA: super (clodia/ophelia, poteri pieni) | normal (worker) | human. */
 	readonly type?: 'super' | 'normal' | 'bot' | 'human' | 'proxy';
-	/** Canali di contatto derivati (email/telegram). Solo nel dettaglio agent. */
-	readonly contact_channels?: { email?: string | null; telegram?: string | null };
+	/** Canali di contatto derivati (email/telegram). Scheda agent E lista.
+	 *  `telegram_delivers` lo decide il server: solo il chat_id numerico è un
+	 *  destinatario (`sendMessage` risolve `@nome` per i canali, mai per una
+	 *  persona). Non ridedurlo qui: due copie della regola sono il modo in cui
+	 *  una schermata dice «raggiungibile» mentre la notifica cade per terra. */
+	readonly contact_channels?: {
+		email?: string | null;
+		telegram?: string | null;
+		telegram_delivers?: boolean;
+	};
 	/** Riferimento alla costituzione (constitution-catalog) fusa nel system prompt
 	 *  al materialize. null/assente = nessuna costituzione. Es. "platform-core". */
 	readonly constitution?: string | null;

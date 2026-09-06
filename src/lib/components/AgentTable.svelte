@@ -179,6 +179,19 @@
 							<span class="agent-names">
 								<span class="agent-title"><AgentName name={titleOf(a)} />{#if a.multi_spawn} <MultiSpawnBadge name={a.name} maxSpawns={a.max_spawns ?? null} />{/if}</span>
 								<code class="agent-name">{a.name}</code>
+								<!-- Una persona senza recapito consegnabile non riceve NIENTE fuori
+								     dalla webui: sotto R4 la notifica di menzione semplicemente cade.
+								     Finora aveva lo stesso aspetto di chiunque altro, ed è per questo
+								     che il silenzio non l'ha notato nessuno (clodia-platform#200).
+								     `telegram_delivers` lo decide il server: qui non si rideduce. -->
+								{#if a.type === 'human' && !a.contact_channels?.telegram_delivers}
+									<span
+										class="unreachable"
+										title={a.contact_channels?.telegram
+											? 'Telegram è un @handle: identifica chi scrive, ma il bot non può consegnarci le notifiche. Serve il chat_id numerico.'
+											: 'Nessun recapito Telegram: le menzioni che questa persona non vede nella webui non la raggiungono.'}
+									>irraggiungibile</span>
+								{/if}
 							</span>
 						</span>
 					</td>
@@ -318,6 +331,22 @@
 		color: var(--fg-muted);
 		background: transparent;
 		padding: 0;
+	}
+	/* Ambra come gli altri avvisi della piattaforma: è una condizione da
+	   correggere, non un errore di sistema. */
+	.unreachable {
+		align-self: flex-start;
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.03em;
+		text-transform: uppercase;
+		color: #d97706;
+		border: 1px solid rgba(217, 119, 6, 0.45);
+		background: rgba(217, 119, 6, 0.1);
+		border-radius: 999px;
+		padding: 0 6px;
+		margin-top: 2px;
+		cursor: help;
 	}
 	.c-agent { min-width: 170px; }
 	.c-model code {
