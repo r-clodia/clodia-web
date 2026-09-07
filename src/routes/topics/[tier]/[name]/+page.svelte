@@ -65,6 +65,7 @@
 	import { fondiConEcho } from '$lib/echoLocale';
 	import { routingReasonLabel, isFallbackReason, coordinatorHint } from '$lib/routingReason';
 	import { gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
+	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import type { TierWarning } from '$lib/api/types';
 
 	$: params = $page.params as Record<string, string>;
@@ -225,13 +226,18 @@
 	// Idoneità degli AeI al tier del topic: name → {eligible, warn}. I non idonei
 	// (clearance/provider sotto il tier) spariscono dalla lista partecipanti e dal
 	// dropdown invito; i super sotto tier restano ma con ⚠️.
-	type Elig = { eligible: boolean; warn: boolean; context: import('$lib/api/client').AgentContext | null; provider: string | null };
+	type Elig = { eligible: boolean; warn: boolean; context: import('$lib/api/client').AgentContext | null; provider: string | null; model: string | null };
 	let eligibility: Record<string, Elig> = {};
+	/** Il chip della stanza: `provider · modello`, una coppia sola (#315). */
+	function chipDi(agent: string): { testo: string; titolo: string } {
+		const e = eligibility[agent];
+		return { testo: chipStanza(e?.provider, e?.model), titolo: titoloChip(e?.provider, e?.model) };
+	}
 	async function loadEligibility(t: string, n: string) {
 		try {
 			const r = await getChannelEligibility(t, n);
 			const m: Record<string, Elig> = {};
-			for (const a of r.agents) m[a.name] = { eligible: a.eligible, warn: a.warn, context: a.context, provider: a.provider ?? null };
+			for (const a of r.agents) m[a.name] = { eligible: a.eligible, warn: a.warn, context: a.context, provider: a.provider ?? null, model: a.model ?? null };
 			eligibility = m;
 		} catch {
 			/* ignore: in assenza di dati non filtriamo nulla */
@@ -2114,7 +2120,8 @@
 									<MultiSpawnBadge name={m.author} maxSpawns={multiSpawn[seedName(m.author)].max} />
 								{/if}
 								{#if eligibility[seedName(m.author)]?.provider}
-									<span class="author-provider" title="provider in questa stanza">{eligibility[seedName(m.author)]?.provider}</span>
+									{@const ch = chipDi(seedName(m.author))}
+									<span class="author-provider" title={ch.titolo}>{ch.testo}</span>
 								{/if}
 							{/if}
 							<time class="ts">{fmtTs(m.ts)}</time>
@@ -2331,7 +2338,8 @@
 									<AgentAvatar name={agent} size={22} />
 									<span class="author">{agent}</span>
 									{#if eligibility[seedName(agent)]?.provider}
-										<span class="author-provider" title="provider in questa stanza">{eligibility[seedName(agent)]?.provider}</span>
+										{@const ch = chipDi(seedName(agent))}
+										<span class="author-provider" title={ch.titolo}>{ch.testo}</span>
 									{/if}
 								{/if}
 								<span class="live-badge">
@@ -2572,9 +2580,12 @@
 											class="presenza presenza-{presenza[p]}"
 											title={titoloPresenza(p, presenza[p])}></span>{/if}{p}{#if multiSpawn[p]} <MultiSpawnBadge name={p} maxSpawns={multiSpawn[p].max} />{/if}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
 									{#if eligibility[p]?.provider}
-										<!-- Provider EFFETTIVO in QUESTA stanza (clodia-platform#310, A14):
-										     dipende dal tier del topic, può differire da un topic all'altro. -->
-										<span class="part-provider" title="provider in questa stanza">{eligibility[p]?.provider}</span>
+										<!-- Provider EFFETTIVO in QUESTA stanza (clodia-platform#310, A14) e
+										     modello ABBINATO a quello stack (#315): dipendono dal tier del topic
+										     e possono differire da un topic all'altro. Un chip solo perché sono
+										     una coppia, non due scelte indipendenti. -->
+										{@const ch = chipDi(p)}
+										<span class="part-provider" title={ch.titolo}>{ch.testo}</span>
 									{/if}
 									{#if c}
 										<span class="ctx-bar" title={`Contesto ${Math.round(c.pct * 100)}% — ${c.used.toLocaleString()}/${c.window.toLocaleString()} token`}>
@@ -3326,6 +3337,11 @@
 		color: var(--fg-muted);
 		opacity: 0.75;
 		white-space: nowrap;
+		/* Col modello accanto al provider il chip è il doppio più lungo e la
+		   colonna dei Partecipanti è stretta: senza taglio spingerebbe fuori
+		   il pannello. Il valore per esteso resta nel `title`. */
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
 	/* Presenza: quattro stati, quattro colori, e nessuno che si legge come un

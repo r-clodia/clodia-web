@@ -1022,6 +1022,10 @@ export interface AgentEligibility {
 	/** Provider EFFETTIVO in questa stanza (clodia-platform#310, A14) — dipende
 	 *  dal tier del topic, non dal preferito fuori-stanza. `null` per gli umani. */
 	provider: string | null;
+	/** Modello ABBINATO a quel provider (clodia-platform#315): non è un asse
+	 *  indipendente, cambia col provider scelto per il tier. `null` per gli umani
+	 *  e quando lo stack non si risolve. */
+	model: string | null;
 }
 /** Feedback sulla scelta del router, distinto dal feedback sulla risposta. */
 export async function recordRoutingFeedback(
