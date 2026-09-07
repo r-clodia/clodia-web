@@ -30,8 +30,6 @@
 		sendMessageFeedback,
 		resetChannelContext,
 		interruptChannel,
-		topicRemote,
-		type RemoteStatus,
 		setChannelParticipant,
 		decideJobProposal,
 		apiGet,
@@ -118,266 +116,6 @@
 	}
 	$: crumbs = filePath ? filePath.split('/') : [];
 
-	// --- Remote: git usa il sync; Drive è il filesystem live del topic. -------
-	let remoteStatus: RemoteStatus | null = null;
-	let remoteBusy = false;
-	// Uno scope può avere più mount (voce 33). Il legacy `meta.remote` è un
-	// oggetto singolo e si converte QUI, in lettura: i topic già collegati non
-	// hanno ancora `mounts`, e un frontend che non li vedesse mostrerebbe
-	// «storage locale» a un topic con Drive collegato — un errore che non si
-	// annuncia, perché la schermata resta plausibile.
-	$: topicMounts = (() => {
-		const m = info?.meta as Record<string, any> | undefined;
-		if (Array.isArray(m?.mounts)) return m!.mounts as Record<string, any>[];
-		return m?.remote ? [{ name: m.remote.type ?? 'remote', ...m.remote }] : [];
-	})();
-	// Quale mount guarda il pannello. Il nome, non l'indice: dopo uno scollega
-	// l'indice punta a un altro mount, e le azioni andrebbero sul mount sbagliato.
-	let mountSel: string | null = null;
-	$: if (topicMounts.length && !topicMounts.some((m) => m.name === mountSel)) {
-		mountSel = topicMounts[0].name ?? null;
-	}
-	$: remoteMeta = topicMounts.find((m) => m.name === mountSel) ?? topicMounts[0] ?? null;
-	$: isDriveRemote = remoteMeta?.type === 'drive';
-	// Nome umano del remote (cartella Drive / repo git): dal backend
-	// (config.name, gateway ≥0.90) con fallback client-side sul basename
-	// dell'URL git per i topic non ancora backfillati.
-	$: remoteName = (() => {
-		const r = remoteMeta;
-		if (!r) return null;
-		const c = r.config || {};
-		if (c.name) return String(c.name);
-		if (r.type === 'git' && c.url) {
-			const tail = String(c.url).replace(/\/+$/, '').split('/').pop() || '';
-			return tail.replace(/\.git$/, '') || null;
-		}
-		return null;
-	})();
-	function remoteUrl(): string | null {
-		const r = remoteMeta;
-		if (!r) return null;
-		const c = r.config || {};
-		if (r.type === 'drive' && c.folder) return `https://drive.google.com/drive/folders/${c.folder}`;
-		if (r.type === 'git' && c.url) {
-			const u = String(c.url);
-			const m = u.match(/^git@([^:]+):(.+?)(?:\.git)?$/); // ssh → https
-			if (m) return `https://${m[1]}/${m[2]}`;
-			return u.replace(/\.git$/, '');
-		}
-		return null;
-	}
-	// Icone brand inline (equivalenti Font Awesome, self-hosted → nessun CDN):
-	// GitHub (mark FA, monocromo currentColor), Google Drive (logo ufficiale
-	// multicolor), git generico (branch).
-	const SVG_GITHUB =
-		'<svg viewBox="0 0 496 512" width="13" height="13" fill="currentColor" aria-hidden="true" style="vertical-align:-2px"><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244 8C106.1 8 0 113.3 0 251.2c0 110.2 69.9 204.4 167.8 237.5 12.4 2.3 16.6-5.4 16.6-11.9 0-6.2-.3-40.4-.3-61.4 0 0-67 14.4-81.1-28.5 0 0-10.9-27.8-26.6-34.9 0 0-21.9-15 1.5-14.7 0 0 23.8 1.9 36.9 24.7 20.9 36.9 55.9 26.3 69.5 20 2.1-15.2 8.3-25.7 15.2-32-53.5-5.9-107.5-13.6-107.5-105.4 0-26.2 7.2-39.4 22.4-56.1-2.5-6.2-10.6-31.7 2.5-64.9 20-6.2 66 24.5 66 24.5 19-5.3 39.4-8 59.6-8 20.2 0 40.6 2.7 59.6 8 0 0 46-30.8 66-24.5 13.1 33.2 5 58.7 2.5 64.9 15.2 16.7 24.5 29.9 24.5 56.1 0 91.9-56.3 99.7-109.8 105.4 8.8 7.6 16.3 22 16.3 44.4 0 32-.3 71.7-.3 79.5 0 6.5 4.3 14.2 16.7 11.9C428.2 455.5 496 361.3 496 251.2 496 113.3 383.5 8 244 8z"/></svg>';
-	const SVG_DRIVE =
-		'<svg viewBox="0 0 87.3 78" width="13" height="13" aria-hidden="true" style="vertical-align:-2px"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/><path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.152 28h27.448c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg>';
-	const SVG_GIT =
-		'<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true" style="vertical-align:-2px"><path d="M6 3a3 3 0 0 0-1 5.83v6.34a3 3 0 1 0 2 0v-3.38c.53.32 1.15.51 1.83.55l3.02.17a3 3 0 1 0 .1-2l-3.01-.17A2 2 0 0 1 7 8.83V8.83A3 3 0 0 0 6 3z"/></svg>';
-	function remoteIconSvg(): string {
-		const r = remoteMeta;
-		if (!r) return '';
-		if (r.type === 'drive') return SVG_DRIVE;
-		if (r.type === 'git') return (remoteUrl() || '').includes('github.com') ? SVG_GITHUB : SVG_GIT;
-		return '';
-	}
-	async function loadRemoteStatus() {
-		if (!remoteMeta) { remoteStatus = null; return; }
-		try { remoteStatus = (await topicRemote(tier, name, 'status', mountArg())) as RemoteStatus; } catch { /* ignore */ }
-	}
-	// --- Stato sync PER-FILE Git: rel → synced|modified|staged|unsynced. -------
-	$: syncFiles = ((remoteStatus as unknown as { files?: Record<string, string> })?.files ?? {}) as Record<string, string>;
-	const relOf = (path: string) => path.replace(/^files\//, '');
-	function fileState(path: string): string | null {
-		if (!remoteMeta) return null;
-		return syncFiles[relOf(path)] ?? null;
-	}
-	const ADDABLE = ['unsynced', 'modified'];
-	$: folderAddable = files
-		.filter((f) => f.kind !== 'dir' && !f.remote && ADDABLE.includes(fileState(f.path) ?? ''))
-		.map((f) => relOf(f.path));
-	$: folderStaged = files
-		.filter((f) => f.kind !== 'dir' && !f.remote && fileState(f.path) === 'staged')
-		.map((f) => relOf(f.path));
-	/** Unstage di uno o più file; null = tutto (una sola chiamata senza path). */
-	async function unstageMany(paths: string[] | null) {
-		if (remoteBusy || (paths !== null && !paths.length)) return;
-		remoteBusy = true;
-		loadErr = '';
-		try {
-			if (paths === null) await topicRemote(tier, name, 'unstage', mountArg());
-			else for (const p of paths) await topicRemote(tier, name, 'unstage', { path: p, ...mountArg() });
-			await loadRemoteStatus();
-		} catch (e) {
-			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			remoteBusy = false;
-		}
-	}
-	/** Staging di uno o più file (add): refresh del solo sync status, non dei file. */
-	async function stageMany(paths: string[]) {
-		if (!paths.length || remoteBusy) return;
-		remoteBusy = true;
-		loadErr = '';
-		try {
-			for (const p of paths) await topicRemote(tier, name, 'add', { path: p, ...mountArg() });
-			await loadRemoteStatus();
-		} catch (e) {
-			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			remoteBusy = false;
-		}
-	}
-	// Gruppi della sezione "Sync status" (equivalente del git status). I file
-	// "solo locali" NON si listano qui (sarebbero centinaia sui topic grandi):
-	// restano visibili in blu nella vista file, dove si aggiungono con ⊕.
-	$: syncGroups = ([
-		{ state: 'staged', label: 'Staged — da pushare' },
-		{ state: 'modified', label: 'Modificati' }
-	] as const)
-		.map((g) => ({
-			...g,
-			paths: Object.entries(syncFiles).filter(([, v]) => v === g.state).map(([k]) => k).sort()
-		}))
-		.filter((g) => g.paths.length > 0);
-	// Report dell'ultimo pull/push (protocollo .remoteinclude/.remoteignore):
-	// conteggi per stato synced/conflict/skipped_by_*/error.
-	let lastSyncReport: { action: string; counts: Record<string, number> } | null = null;
-	const SYNC_REPORT_LABELS: Record<string, string> = {
-		synced: 'sincronizzati',
-		conflict: 'conflitti',
-		skipped_by_include: 'fuori include',
-		skipped_by_ignore: 'ignorati',
-		skipped_by_hard_deny: 'protetti',
-		error: 'errori'
-	};
-	// ── Rifiuto CONFERMABILE (clodia-platform, 4 ago 2026) ────────────────────
-	// Il backend marca i casi in cui la decisione spetta all'owner e non al
-	// sistema — collegare Drive su un topic che ha già file — con un 409 e un
-	// campo strutturato. Qui diventa una conferma, non un errore: `loadErr`
-	// mostrerebbe un messaggio rosso senza via d'uscita, mentre la via d'uscita
-	// è precisamente l'informazione che serve.
-	let confirmRemote: { message: string; field: string;
-		action: string; params: Record<string, unknown> } | null = null;
-
-	/** Il mount su cui agisce un verbo. Omesso quando non c'è: il backend
-	 *  senza `mount` si comporta come prima, e mandare `undefined` sarebbe un
-	 *  nome vuoto — che non è la stessa cosa di nessun nome. */
-	function mountArg(): Record<string, string> {
-		return remoteMeta?.name ? { mount: String(remoteMeta.name) } : {};
-	}
-
-	async function doRemote(action: string, params: Record<string, unknown> = {}) {
-		remoteBusy = true; loadErr = '';
-		try {
-			// `enable` crea un mount NUOVO: passargli quello selezionato lo
-			// sostituirebbe, che è il difetto per cui esiste questa modifica.
-			const conMount = action === 'enable' ? params : { ...mountArg(), ...params };
-			const res = (await topicRemote(tier, name, action, conMount)) as Record<string, unknown>;
-			const rep = (res?.report ?? null) as { counts?: Record<string, number> } | null;
-			if ((action === 'pull' || action === 'push' || action === 'commit') && rep?.counts) {
-				lastSyncReport = { action, counts: rep.counts };
-			}
-			await refreshInfo(); // meta.remote può cambiare (enable/disable)
-			await loadRemoteStatus();
-			await loadFiles();
-		} catch (e) {
-			const c = e instanceof ApiError && e.status === 409 ? parseConfirmable(e.body) : null;
-			if (c) {
-				confirmRemote = { message: c.message, field: c.confirm_field,
-					action, params };
-			} else {
-				loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-			}
-		} finally {
-			remoteBusy = false;
-		}
-	}
-	/** Estrae il 409 strutturato. Il nome del campo di conferma arriva dal
-	 *  backend (`confirm_field`) invece di essere scritto qui: così il giorno che
-	 *  lo rinomina la conferma non smette di funzionare in silenzio. */
-	function parseConfirmable(body: string):
-			{ message: string; confirm_field: string } | null {
-		try {
-			const d = JSON.parse(body)?.detail;
-			if (d && typeof d === 'object' && d.confirmable && d.confirm_field) {
-				return { message: String(d.message ?? ''), confirm_field: String(d.confirm_field) };
-			}
-		} catch { /* corpo non JSON: non è una conferma */ }
-		return null;
-	}
-	function acceptConfirmRemote() {
-		const c = confirmRemote;
-		confirmRemote = null;
-		if (c) void doRemote(c.action, { ...c.params, [c.field]: true });
-	}
-	// Solo gli stati con conteggio > 0, per il riepilogo compatto.
-	$: syncReportEntries = lastSyncReport
-		? Object.entries(lastSyncReport.counts).filter(([, n]) => n > 0)
-		: [];
-	// Form inline nella sidebar (non un popup effimero): l'input dell'URL/cartella
-	// resta visibile e navigabile finché non si conferma o si annulla.
-	let remoteForm: 'git' | 'drive' | null = null;
-	let remoteInput = '';
-	// Credenziale del solo SCOPE, chiesta qui perché questo è l'unico momento in
-	// cui chi la fornisce sa a quale repository serve. Vuota = si usa quella
-	// della piattaforma, e il pannello lo dice a chiare lettere: un ripiego
-	// silenzioso costruisce la convinzione di un isolamento che non c'è.
-	let remoteCred = '';
-	function openRemoteForm(kind: 'git' | 'drive') {
-		remoteForm = kind; remoteInput = ''; remoteCred = ''; remoteMountName = '';
-	}
-	function cancelRemoteForm() {
-		remoteForm = null; remoteInput = ''; remoteCred = ''; remoteMountName = '';
-	}
-	// Il nome del mount lo sceglie chi lo collega: è la CARTELLA DI PRIMO LIVELLO
-	// che comparirà nell'albero — `comms/` — e con due cartelle Drive «drive» e
-	// «drive-2» non direbbero quale è quale. Vuoto = il backend usa il tipo.
-	// Riservati `local`, `files`, `remote`: il backend li rifiuta.
-	let remoteMountName = '';
-	function submitRemoteForm() {
-		const v = remoteInput.trim();
-		const cred = remoteCred.trim();
-		const mn = remoteMountName.trim();
-		const payload = remoteForm === 'git'
-			? { type: 'git', config: v ? { url: v } : {}, ...(cred ? { credential: cred } : {}) }
-			: { type: 'drive', config: v ? { folder: v } : {} };
-		remoteForm = null; remoteInput = ''; remoteCred = ''; remoteMountName = '';
-		void doRemote('enable', { ...payload, ...(mn ? { mount: mn } : {}) });
-	}
-	// Rotazione: cambiare o togliere la credenziale senza ricollegare il remote.
-	// Senza questa via, una credenziale per topic diventa una credenziale che
-	// nessuno rinnova — è il costo ricorrente di questo disegno.
-	let rotating = false;
-	let rotateCred = '';
-	let credErr = '';
-	async function rotateCredential() {
-		credErr = '';
-		const grezzo = rotateCred.trim();
-		let payload: unknown = grezzo;
-		if (isDriveRemote && grezzo) {
-			// Per Drive la credenziale è un consenso OAuth, non una stringa: si
-			// incolla il bundle. Il JSON si valida QUI perché un errore di
-			// battitura è un errore dell'utente, non del gateway, e mandarlo
-			// giù tornerebbe come "credenziale incompleta" senza dire dove.
-			try {
-				payload = JSON.parse(grezzo);
-			} catch {
-				credErr = 'Non è JSON valido: incolla il bundle OAuth completo.';
-				return;
-			}
-			const b = payload as Record<string, unknown>;
-			const manca = ['refresh_token', 'client_id', 'client_secret'].filter((k) => !b[k]);
-			if (manca.length) {
-				credErr = `Mancano: ${manca.join(', ')}.`;
-				return;
-			}
-		}
-		await doRemote('set_credential',
-			{ credential: payload, kind: isDriveRemote ? 'drive' : 'git' });
-		rotateCred = ''; rotating = false;
-	}
 	// Timeline dei recap (TLDR storici): il recap sotto al titolo è cliccabile.
 	let showRecap = false;
 
@@ -1212,16 +950,11 @@
 		e.preventDefault();
 		void openSignedFile(decodeURIComponent(m[1]));
 	}
-	// Le radici che un path può avere in questo scope. `local` c'è sempre; ogni
-	// mount è una cartella di primo livello col suo nome (`comms/`). `files` e
-	// `dump` restano perché compaiono nei messaggi già inviati: un link che
-	// smette di funzionare per un cambio di schema è una regressione per chi
-	// rilegge una conversazione di ieri.
-	$: fileRoots = Array.from(new Set([
-		'local', 'files', 'dump',
-		...topicMounts.filter((m) => m.type === 'drive')
-			.map((m) => String(m.name || '').trim()).filter(Boolean)
-	])).filter((r) => /^[\w.-]+$/.test(r));
+	// Le radici che un path può avere in questo scope. `local` c'è sempre;
+	// `files` e `dump` restano perché compaiono nei messaggi già inviati: un
+	// link che smette di funzionare per un cambio di schema è una regressione
+	// per chi rilegge una conversazione di ieri.
+	const fileRoots = ['local', 'files', 'dump'];
 	// I formati che la finestra di anteprima sa rendere. Gli altri restano
 	// scaricabili: offrire una lente che apre una pagina illeggibile è peggio
 	// che non offrirla.
@@ -1701,7 +1434,6 @@
 			scrollDown();
 			_ackTail();
 			void loadEligibility(t, n);
-			void loadRemoteStatus();
 		} catch (e) {
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
@@ -2919,14 +2651,6 @@
 						<span>File</span>
 						<span class="section-count">{files.length}</span>
 					</summary>
-					{#if remoteMeta}{@const ru = remoteUrl()}
-						{#if ru}
-							<div class="file-remote">
-								<a class="remote-goto" href={ru} target="_blank" rel="noopener"
-									title={`Apri il remote (${remoteMeta.type})${remoteName ? ` — ${remoteName}` : ''}`}>{@html remoteIconSvg()} {remoteName || `apri ${remoteMeta.type}`}</a>
-							</div>
-						{/if}
-					{/if}
 					<nav class="crumbs" aria-label="Percorso file">
 					<button type="button" class="crumb" on:click={() => gotoCrumb(-1)}>/</button>
 					{#each crumbs as seg, i}
@@ -2934,16 +2658,6 @@
 						<button type="button" class="crumb" on:click={() => gotoCrumb(i)}>{seg}</button>
 					{/each}
 					{#if filesLoading}<span class="files-spinner" aria-label="Caricamento…" title="Caricamento…"></span>{/if}
-					{#if remoteMeta?.type === 'git' && folderAddable.length}
-						<button type="button" class="sync-add stage-all" disabled={remoteBusy}
-							title={`Metti in sync tutti i file di questa cartella (${folderAddable.length})`}
-							on:click={() => stageMany(folderAddable)}>⊕ tutti</button>
-					{/if}
-					{#if remoteMeta?.type === 'git' && folderStaged.length}
-						<button type="button" class="sync-add stage-all" class:solo-unstage={!folderAddable.length} disabled={remoteBusy}
-							title={`Togli dallo staging tutti i file di questa cartella (${folderStaged.length})`}
-							on:click={() => unstageMany(folderStaged)}>⊖ tutti</button>
-					{/if}
 				</nav>
 			{#if filesError}
 					<!-- Lo storage del topic è remoto e non risponde: dirlo, invece di
@@ -2952,21 +2666,12 @@
 				{/if}
 				<ul class="files" class:loading={filesLoading} aria-busy={filesLoading}>
 					{#each files as f}
-						{@const st = f.kind !== 'dir' ? fileState(f.path) : null}
 						<li>
 							{#if f.kind === 'dir'}
 								<button type="button" class="dir" on:click={() => openDir(f)} disabled={filesLoading}>📂 {f.name}</button>
-								{#if f.url}
-									<!-- Su un remote Drive la cartella si naviga qui dentro; aprirla su
-									     Drive resta possibile, ma come scelta esplicita (#117). -->
-									<a class="ext" href={f.url} target="_blank" rel="noopener"
-										title="Apri questa cartella su Google Drive">↗</a>
-								{/if}
-							{:else if f.remote}
-								<a href={f.url} target="_blank" rel="noopener" class="remote st-{st ?? 'none'}" title="Documento Google — apri e modifica su Drive">📄 {f.name}</a>
 							{:else}
-								<a href="#download" class="st-{st ?? 'none'}"
-									title={st ? `${f.name} — ${st}` : f.name}
+								<a href="#download"
+									title={f.name}
 									on:click|preventDefault={() => openSignedFile(f.path)}>{f.name}</a>
 								{#if f.provenance === 'untrusted' || f.provenance === 'unknown'}
 									<!-- Etichetta visibile solo quando NON è verificata: marcare anche
@@ -2982,17 +2687,6 @@
 										on:click={() => openArtifact(f.path)}>🔎</button>
 								{/if}
 							{/if}
-							{#if remoteMeta?.type === 'git' && f.kind !== 'dir' && !f.remote && ADDABLE.includes(st ?? '')}
-								<button type="button" class="sync-add"
-									title={st === 'modified' ? 'Metti in staging la modifica' : 'Aggiungi al sync'}
-									on:click={() => stageMany([relOf(f.path)])}
-									disabled={remoteBusy}>⊕</button>
-							{:else if remoteMeta?.type === 'git' && f.kind !== 'dir' && !f.remote && st === 'staged'}
-								<button type="button" class="sync-add"
-									title="Togli dallo staging"
-									on:click={() => unstageMany([relOf(f.path)])}
-									disabled={remoteBusy}>⊖</button>
-							{/if}
 						</li>
 					{:else}
 						<li class="muted">{filesLoading ? 'caricamento…' : 'cartella vuota'}</li>
@@ -3000,45 +2694,6 @@
 					</ul>
 					<p class="files-hint">Carica i file dall'input della chat: 📎, trascinamento o incolla (⌘/Ctrl+V) di immagini.</p>
 				</details>
-
-				{#if remoteMeta?.type === 'git' && syncGroups.length}
-					<details class="side-section sync-status">
-						<summary>
-							<span>Sync status</span>
-							<span class="section-count">{syncGroups.reduce((total, group) => total + group.paths.length, 0)}</span>
-						</summary>
-						{#each syncGroups as g (g.state)}
-						<div class="ss-group">
-							<div class="ss-title st-{g.state}">
-								<span class="ss-dot st-{g.state}"></span>{g.label}
-								<span class="ss-n">{g.paths.length}</span>
-								{#if g.state === 'staged'}
-									<button type="button" class="sync-add" disabled={remoteBusy}
-										title="Togli tutto dallo staging" on:click={() => unstageMany(null)}>⊖ tutti</button>
-								{:else}
-									<button type="button" class="sync-add" disabled={remoteBusy}
-										title="Metti in sync tutti" on:click={() => stageMany(g.paths)}>⊕ tutti</button>
-								{/if}
-							</div>
-							<ul class="ss-list">
-								{#each g.paths as p (p)}
-									<li>
-										<span class="ss-path st-{g.state}" title={p}>{p}</span>
-										{#if g.state === 'staged'}
-											<button type="button" class="sync-add" disabled={remoteBusy}
-												title="Togli dallo staging" on:click={() => unstageMany([p])}>⊖</button>
-										{:else}
-											<button type="button" class="sync-add" disabled={remoteBusy}
-												title={g.state === 'modified' ? 'Metti in staging' : 'Aggiungi al sync'}
-												on:click={() => stageMany([p])}>⊕</button>
-										{/if}
-									</li>
-								{/each}
-							</ul>
-							</div>
-						{/each}
-					</details>
-				{/if}
 
 				<details class="side-section mcp-panel" on:toggle={loadMcpClients}>
 					<summary>
@@ -3155,188 +2810,11 @@
 					{/if}
 				</details>
 
-				<details class="side-section remote-panel">
-					<summary>
-						<span>Remote</span>
-						{#if topicMounts.length > 1}
-							<span class="section-count">{topicMounts.length}</span>
-						{:else if remoteMeta}<span class="section-status">{remoteMeta.type}</span>{/if}
-					</summary>
-					{#if topicMounts.length > 1}
-						<!-- I mount di questo scope. Si sceglie quale guarda il pannello:
-						     senza, si vedrebbe sempre il primo e gli altri sarebbero
-						     collegati ma invisibili — cioè peggio che non averli. -->
-						<div class="mount-chips">
-							{#each topicMounts as m (m.name)}
-								<button type="button" class="mount-chip" class:sel={m.name === mountSel}
-									title={(m.config?.name ?? m.name) + ' · ' + m.type}
-									on:click={() => (mountSel = m.name)}>{m.name}</button>
-							{/each}
-						</div>
-					{/if}
-					{#if !remoteMeta}
-					<p class="muted">Storage locale. Attiva un remote per sincronizzare i file, o esporta uno ZIP.</p>
-					{#if remoteForm}
-						<form class="remote-form" on:submit|preventDefault={submitRemoteForm}>
-							<input class="remote-url-input" type="text" bind:value={remoteInput}
-								placeholder={remoteForm === 'git'
-									? 'URL repo git (vuoto = solo commit locali)'
-									: 'Link/ID cartella Drive (vuoto = nuova)'}
-								autocomplete="off" spellcheck="false"
-								on:keydown={(e) => e.key === 'Escape' && cancelRemoteForm()} />
-							<input class="remote-url-input" type="text" bind:value={remoteMountName}
-								placeholder="nome del mount, es. contratti (vuoto = {remoteForm})"
-								autocomplete="off" spellcheck="false" />
-							{#if remoteForm === 'git'}
-								<input class="remote-url-input" type="password" bind:value={remoteCred}
-									placeholder="token per QUESTO topic (vuoto = credenziale della piattaforma)"
-									autocomplete="off" spellcheck="false" />
-								<p class="cred-hint">
-									Un token ristretto a questo repository limita il danno di una stanza
-									compromessa a questo repository. Lasciandolo vuoto il topic userà la
-									credenziale della piattaforma, che raggiunge <strong>tutti</strong> i
-									repo per cui ha i permessi.
-								</p>
-							{/if}
-							<div class="remote-actions">
-								<button type="submit" disabled={remoteBusy}>collega {remoteForm}</button>
-								<button type="button" on:click={cancelRemoteForm} disabled={remoteBusy}>annulla</button>
-							</div>
-						</form>
-					{:else}
-						<div class="remote-actions">
-							<button type="button" on:click={() => openRemoteForm('git')} disabled={remoteBusy}>{@html SVG_GITHUB} git</button>
-							<button type="button" on:click={() => openRemoteForm('drive')} disabled={remoteBusy}>{@html SVG_DRIVE} Drive</button>
-							<button type="button" class="zip-all" disabled={zipping}
-								title="Esporta: scarica uno ZIP con tutti i file del topic su questo dispositivo"
-								on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
-						</div>
-					{/if}
-				{:else}
-					<p class="remote-info">
-						{@html remoteIconSvg()} <strong>{remoteMeta.type}</strong>{#if remoteName}
-							<span class="remote-name" title={remoteName}>{remoteName}</span>{/if}
-						{#if remoteStatus}
-							{#if remoteStatus.type === 'git'}<span class="muted"> · {remoteStatus.dirty ?? 0} da committare</span>
-							{:else}<span class="muted"> · live · last-write-wins</span>{/if}
-						{/if}
-						{#if remoteBusy}<span class="files-spinner" style="margin-left:6px"></span>{/if}
-					</p>
-					{#if remoteStatus?.credential_source}
-						<!-- La provenienza della credenziale, sempre visibile. Il valore
-						     non compare mai: si mostra CHI la fornisce, non qual è. -->
-						<p class="remote-info">
-							{#if remoteStatus.credential_source === 'mount'}
-								<span class="cred-source scope">🔑 credenziale di questo mount</span>
-							{:else if remoteStatus.credential_source === 'scope'}
-								<span class="cred-source scope">🔑 credenziale di questo topic</span>
-							{:else if remoteStatus.credential_source === 'platform'}
-								<span class="cred-source platform">🔑 credenziale della piattaforma</span>
-								{#if isDriveRemote}
-									<!-- Su Drive il salto è più grande che su git: la credenziale
-									     di piattaforma è un ACCOUNT Google intero. -->
-									<span class="muted"> · è un account Google intero, non questa cartella</span>
-								{:else}
-									<span class="muted"> · raggiunge tutti i repo per cui ha i permessi</span>
-								{/if}
-							{:else}
-								<span class="cred-source platform">🔑 nessuna credenziale</span>
-							{/if}
-							{#if isOwner}
-								<button type="button" class="link-btn"
-									on:click={() => (rotating = !rotating)}>cambia</button>
-							{/if}
-						</p>
-						{#if rotating && isOwner}
-							<div class="cred-rotate">
-								{#if isDriveRemote}
-									<textarea bind:value={rotateCred} rows="4" autocomplete="off"
-										placeholder={'{"refresh_token": "…", "client_id": "…", "client_secret": "…"}'}
-									></textarea>
-								{:else}
-									<input type="password" bind:value={rotateCred} autocomplete="off"
-										placeholder="nuovo token (vuoto = torna a quella di piattaforma)" />
-								{/if}
-								<button type="button" on:click={rotateCredential} disabled={remoteBusy}>salva</button>
-								<button type="button"
-									on:click={() => { rotating = false; rotateCred = ''; credErr = ''; }}>annulla</button>
-							</div>
-							{#if credErr}<p class="cred-hint" role="alert">{credErr}</p>{/if}
-						{/if}
-					{/if}
-					{#if remoteForm}
-						<!-- Lo stesso form del primo collegamento: un mount in più non è
-						     un'operazione diversa dal primo, e due form divergerebbero. -->
-						<form class="remote-form" on:submit|preventDefault={submitRemoteForm}>
-							<input class="remote-url-input" type="text" bind:value={remoteInput}
-								placeholder={remoteForm === 'git'
-									? 'URL repo git (vuoto = solo commit locali)'
-									: 'Link/ID cartella Drive (vuoto = nuova)'}
-								autocomplete="off" spellcheck="false"
-								on:keydown={(e) => e.key === 'Escape' && cancelRemoteForm()} />
-							<input class="remote-url-input" type="text" bind:value={remoteMountName}
-								placeholder="nome del mount, es. contratti (vuoto = {remoteForm})"
-								autocomplete="off" spellcheck="false" />
-							{#if remoteForm === 'git'}
-								<input class="remote-url-input" type="password" bind:value={remoteCred}
-									placeholder="token per QUESTO mount (vuoto = credenziale della piattaforma)"
-									autocomplete="off" spellcheck="false" />
-							{/if}
-							<div class="remote-actions">
-								<button type="submit" disabled={remoteBusy}>collega {remoteForm}</button>
-								<button type="button" on:click={cancelRemoteForm} disabled={remoteBusy}>annulla</button>
-							</div>
-						</form>
-					{:else if isOwner}
-						<!-- Solo l'owner monta e smonta (voce 33): il mount porta la sua
-						     credenziale, e chi lo cambia sposta il perimetro dello scope.
-						     L'export ZIP resta di tutti. -->
-						<div class="remote-actions">
-							<button type="button" class="link-btn" disabled={remoteBusy}
-								on:click={() => openRemoteForm('git')}>+ git</button>
-							<button type="button" class="link-btn" disabled={remoteBusy}
-								on:click={() => openRemoteForm('drive')}>+ Drive</button>
-						</div>
-					{/if}
-					<div class="remote-actions">
-						{#if !isDriveRemote}
-							<button type="button" on:click={() => doRemote('pull')} disabled={remoteBusy}>⬇︎ pull</button>
-							<button type="button" on:click={() => doRemote('commit').then(() => doRemote('push'))}
-								disabled={remoteBusy}>⬆︎ push</button>
-						{:else if remoteUrl()}
-							<a class="remote-open" href={remoteUrl() ?? '#'} target="_blank" rel="noopener">
-								{@html SVG_DRIVE} apri
-							</a>
-						{/if}
-						<button type="button" on:click={loadRemoteStatus} disabled={remoteBusy}>↻</button>
-						<button type="button" class="zip-all" disabled={zipping}
-							title="Esporta: scarica uno ZIP con tutti i file del topic su questo dispositivo"
-							on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
-						<button type="button" class="danger"
-							on:click={() => confirm(isDriveRemote
-								? `Scollegare il mount '${remoteMeta.name}' (Drive)? I file remoti verranno copiati nel topic locale.`
-								: `Scollegare il mount '${remoteMeta.name}'? I file locali restano.`) && doRemote('disable')}
-							disabled={remoteBusy}>disattiva</button>
-					</div>
-					{#if syncReportEntries.length}
-						<div class="sync-report" aria-label="Esito ultimo sync">
-							<span class="sr-action">{lastSyncReport?.action}:</span>
-							{#each syncReportEntries as [state, n] (state)}
-								<span class="sr-chip sr-{state}" title={SYNC_REPORT_LABELS[state] ?? state}>{n} {SYNC_REPORT_LABELS[state] ?? state}</span>
-							{/each}
-						</div>
-					{/if}
-					{#if isDriveRemote}
-						<p class="remote-filter-hint">
-							I file sono letti e salvati direttamente su Drive. Le scritture concorrenti usano last-write-wins.
-						</p>
-					{:else}
-						<p class="remote-filter-hint">
-							Filtra la sync con <code>remoteinclude</code> / <code>remoteignore</code> nella root dei file (stile <code>.gitignore</code>).
-						</p>
-					{/if}
-					{/if}
-				</details>
+				<div class="remote-actions">
+					<button type="button" class="zip-all" disabled={zipping}
+						title="Esporta: scarica uno ZIP con tutti i file del topic su questo dispositivo"
+						on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
+				</div>
 			</aside>
 	</div>
 	{/if}
@@ -3376,29 +2854,6 @@
 		</label>
 	</div>
 </Modal>
-
-{#if confirmRemote}
-	<div class="prov-backdrop" role="button" tabindex="0"
-		on:click={() => (confirmRemote = null)}
-		on:keydown={(e) => e.key === 'Escape' && (confirmRemote = null)}>
-		<div class="prov-modal" role="dialog" aria-modal="true"
-			aria-label="Conferma collegamento remote"
-			tabindex="-1" on:click|stopPropagation on:keydown|stopPropagation>
-			<h2>⚠️ Confermi il collegamento?</h2>
-			<p class="prov-why">{confirmRemote.message}</p>
-			<div class="prov-actions">
-				<button type="button" class="prov-untrusted" on:click={() => (confirmRemote = null)}>
-					Annulla
-					<small>Il topic resta com’è</small>
-				</button>
-				<button type="button" class="prov-trusted" on:click={acceptConfirmRemote}>
-					Collega il remote
-					<small>Ho fatto una copia di ciò che mi serve</small>
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 {#if pending.length}
 	<!-- Provenienza all'upload (#104 §3). Due scelte simmetriche e nessun
@@ -3742,59 +3197,12 @@
 	.prov-cancel { margin: 12px 0 0; padding: 0; font: inherit; font-size: 12px; color: var(--fg-muted); background: none; border: none; cursor: pointer; }
 	.prov-cancel:hover { color: var(--fg); }
 	.sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-	.remote-goto { font-size: 11px; font-weight: 600; color: var(--accent); text-decoration: none;
-		max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
-	.remote-name { margin-left: 6px; font-size: 11.5px; color: var(--fg-muted); font-family: var(--mono);
-		max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.remote-goto:hover { text-decoration: underline; }
-	.sync-add { margin-left: 6px; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; padding: 0 3px; border-radius: 5px; white-space: nowrap; }
-	.sync-add:hover { color: var(--accent); background: rgba(255,107,61,.12); }
-	.sync-add:disabled { opacity: .4; cursor: not-allowed; }
-	.stage-all { margin-left: auto; font-size: 11px; }
-
-	/* Codice colore stato sync (comune a git e drive, stile git status):
-	   blu = solo locale · verde = in sync · arancio = modificato · teal = staged */
-	.files a.st-unsynced, .ss-path.st-unsynced, .ss-title.st-unsynced { color: #60a5fa; }
-	.files a.st-synced { color: #4ade80; }
-	.files a.st-modified, .ss-path.st-modified, .ss-title.st-modified { color: #f59e0b; }
-	.files a.st-staged, .ss-path.st-staged, .ss-title.st-staged { color: #2dd4bf; }
-	.files a.st-none { color: var(--accent); }
-
-	/* Sync status — l'equivalente del git status sotto la vista file */
-	.sync-status { margin-top: 0; }
-	.ss-group { margin: 0 0 8px; }
-	.ss-title { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700;
-		text-transform: uppercase; letter-spacing: .05em; padding: 2px 0; }
-	.ss-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; background: currentColor; }
-	.ss-n { font-family: var(--mono); font-size: 10.5px; color: var(--fg-muted); }
-	.ss-list { list-style: none; margin: 2px 0 0; padding: 0 0 0 14px; display: flex;
-		flex-direction: column; gap: 2px; max-height: 180px; overflow-y: auto; }
-	.ss-list li { display: flex; align-items: center; gap: 4px; min-width: 0; }
-	.ss-path { font-size: 11.5px; font-family: var(--mono); overflow: hidden;
-		text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 auto; }
 	.artifact-open { margin-left: 4px; background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; padding: 0 3px; border-radius: 5px; }
 	.artifact-open:hover { color: var(--accent); background: rgba(255,107,61,.12); }
-	.remote-panel { margin-top: 0; }
-	.sync-report { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 8px 0 0; }
-	.sr-action { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-muted); }
-	.sr-chip { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: rgba(120,144,156,.16); color: var(--fg-muted); white-space: nowrap; }
-	.sr-synced { background: rgba(74,222,128,.16); color: #4ade80; }
-	.sr-conflict { background: rgba(239,68,68,.18); color: #ef4444; }
-	.sr-error { background: rgba(239,68,68,.18); color: #ef4444; }
-	.sr-skipped_by_hard_deny { background: rgba(245,158,11,.16); color: #f59e0b; }
-	.remote-filter-hint { font-size: 10.5px; color: var(--fg-muted); margin: 8px 0 0; line-height: 1.5; }
-	.remote-filter-hint code { font-size: 10px; }
-	.remote-info { font-size: 12px; margin: 2px 0 8px; display: flex; align-items: center; }
-	.remote-form { display: flex; flex-direction: column; gap: 6px; margin-bottom: 4px; }
-	.remote-url-input { width: 100%; box-sizing: border-box; font-size: 12px; padding: 5px 8px;
-		border: 1px solid var(--border); background: transparent; color: var(--fg); border-radius: 7px; }
-	.remote-url-input:focus { outline: none; border-color: var(--accent); }
 	.remote-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-	.remote-actions button, .remote-open { font-size: 12px; padding: 4px 9px; border: 1px solid var(--border); background: transparent; color: var(--fg); border-radius: 7px; cursor: pointer; }
-	.remote-open { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
-	.remote-actions button:hover:not(:disabled), .remote-open:hover { border-color: var(--accent); color: var(--accent); }
+	.remote-actions button { font-size: 12px; padding: 4px 9px; border: 1px solid var(--border); background: transparent; color: var(--fg); border-radius: 7px; cursor: pointer; }
+	.remote-actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 	.remote-actions button:disabled { opacity: .5; cursor: default; }
-	.remote-actions button.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 	.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-bottom: 6px; font-size: 11.5px; }
 	.files-error {
 		margin: 6px 0 8px;
@@ -3850,7 +3258,6 @@
 		letter-spacing: 0;
 		text-transform: none;
 	}
-	.file-remote { display: flex; justify-content: flex-end; min-width: 0; margin: -2px 0 6px; }
 	.topic-meta { display: flex; flex-direction: column; gap: 8px; }
 	.meta-field { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; color: var(--fg-muted); }
 	.meta-field > span:first-child { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
@@ -4026,19 +3433,6 @@
 
 	/* Credenziale di scope: la provenienza si vede, il valore mai. */
 	.cred-hint { margin: .3rem 0 0; font-size: .72rem; opacity: .7; line-height: 1.4; }
-	.cred-source { display: inline-flex; align-items: center; gap: .3rem;
-		font-size: .72rem; padding: .1rem .4rem; border-radius: 4px; }
-	.cred-source.scope { background: rgba(34, 197, 94, .14); border: 1px solid rgba(34, 197, 94, .4); }
-	.cred-source.platform { background: rgba(245, 158, 11, .12); border: 1px solid rgba(245, 158, 11, .4); }
-	.cred-rotate { display: flex; gap: .4rem; margin-top: .4rem; flex-wrap: wrap; }
-	.cred-rotate input, .cred-rotate textarea { flex: 1 1 10rem; min-width: 0;
-		padding: .3rem .4rem;
-		border-radius: 5px; border: 1px solid var(--border, #3a3a3a);
-		background: transparent; color: inherit; font-size: .78rem; }
-	/* Il bundle OAuth è JSON: monospazio, e larghezza piena — un consenso
-	   incollato a metà è il modo più facile di sbagliarlo. */
-	.cred-rotate textarea { flex-basis: 100%; font-family: ui-monospace, monospace;
-		resize: vertical; }
 	.link-btn { background: none; border: none; padding: 0 0 0 .4rem; font: inherit;
 		font-size: .72rem; color: inherit; opacity: .7; cursor: pointer;
 		text-decoration: underline; }
@@ -4119,15 +3513,6 @@
 
 	/* Cosa attraversa il gate: sotto la domanda, prima dei bottoni. */
 	.gate-crosses { display: block; font-size: 11px; opacity: .75; margin-top: 4px; }
-
-	/* I mount dello scope: si sceglie quale guarda il pannello. */
-	.mount-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
-	.mount-chip {
-		font-size: 11px; padding: 2px 8px; border-radius: 10px; cursor: pointer;
-		border: 1px solid var(--border, #d0d0d0); background: transparent;
-		color: inherit; opacity: 0.7;
-	}
-	.mount-chip.sel { opacity: 1; border-color: currentColor; font-weight: 600; }
 
 	/* Ruolo nello scope: si legge e basta, per tutti (#292). */
 	.role-fixed { font-size: .7rem; opacity: .55; padding: 0 .3rem; }

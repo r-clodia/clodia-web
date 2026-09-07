@@ -663,8 +663,8 @@ export interface ChannelInfo {
 		tier?: string;
 		status?: string;
 		deadline?: string | null;
-		/** I mount dello scope: cartelle Drive, repository, gruppi Telegram. */
-		mounts?: TelegramMount[];
+		/** I gruppi Telegram collegati allo scope. */
+		telegram_binds?: TelegramMount[];
 		/** Path (dentro il topic) dell'immagine con cui la stanza si presenta.
 		 *  La imposta solo l'owner; `logo_kind` è il tipo rilevato dai byte al
 		 *  caricamento — il file non ha estensione, quindi chi lo serve non
@@ -1008,44 +1008,6 @@ export async function deleteTopicCronTrigger(
 	return apiDelete(topicCronPath(tier, name));
 }
 
-/** Stato del remote di un topic (git/drive). */
-export interface RemoteStatus {
-	type?: 'git' | 'drive' | string;
-	enabled?: boolean;
-	/** Da quale credenziale passa questo remote, dal perimetro più stretto al
-	 *  più largo. `mount` = la porta questo mount, e ne raggiunge la sola
-	 *  risorsa; `scope` = è del topic (forma storica); `platform` = quella
-	 *  condivisa, che raggiunge tutti i repo per cui ha i permessi; `none` =
-	 *  non ce n'è alcuna. Il VALORE non arriva mai al frontend: solo la
-	 *  provenienza. Un ripiego silenzioso è il modo in cui ci si convince di un
-	 *  isolamento che non c'è. */
-	credential_source?: 'mount' | 'scope' | 'platform' | 'none';
-	origin?: boolean;
-	dirty?: number;
-	folder?: string | null;
-	account?: string | null;
-	mode?: 'live' | string;
-	last_write_wins?: boolean;
-	synced?: number;
-	pending?: number;
-	/** Il mount interrogato e l'ELENCO di quelli dello scope. L'elenco arriva
-	 *  sempre, anche interrogandone uno: uno stato che descrive solo il primo
-	 *  lascerebbe la sidebar a tacere degli altri. */
-	mount?: string | null;
-	mounts?: { name?: string; type?: string; label?: string | null }[];
-}
-/** Verbi Remote (git/drive) di un topic: status|enable|disable|add|commit|push|pull. */
-export async function topicRemote(
-	tier: string,
-	name: string,
-	action: string,
-	params: Record<string, unknown> = {},
-	opts: RequestOptions = {}
-): Promise<Record<string, unknown>> {
-	return apiPost(
-		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/remote`,
-		{ action, ...params }, opts);
-}
 export interface AgentContext {
 	used: number;
 	window: number;
@@ -2450,12 +2412,10 @@ export async function downloadTopicZip(tier: string, name: string): Promise<void
 	URL.revokeObjectURL(url);
 }
 
-/** Un gruppo Telegram collegato a un topic: è un **mount** dello scope, come una
- *  cartella Drive o un repository. Le menzioni delle persone mappate vengono
- *  riportate lì, con il link alla conversazione. */
+/** Un gruppo Telegram collegato a un topic. Le menzioni delle persone mappate
+ *  vengono riportate lì, con il link alla conversazione. */
 export interface TelegramMount {
 	readonly name?: string;
-	readonly type?: string;
 	readonly config?: {
 		readonly chat_id?: string;
 		/** `notify` = solo il fatto · `excerpt` = anche la riga della menzione. */
