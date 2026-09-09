@@ -48,6 +48,14 @@
 	// quando cambia da un tier all'altro: se risponde sempre lo stesso, la riga
 	// direbbe due volte la stessa cosa.
 	$: perTier = vaMostrata(agent.provider_by_tier) ? riassumiPerTier(agent.provider_by_tier) : '';
+	// E col provider cambia il MODELLO (clodia-platform#325): `provider_models`
+	// abbina un modello a ciascun provider, quindi la riga qui sopra e questa
+	// dicono le due metà dello stesso stack. La resa è la stessa perché la mappa
+	// ha la stessa forma — `providerPerTier` lavora su `tier → valore`, non sui
+	// provider in particolare, e una seconda resa divergerebbe alla prima
+	// modifica. Stessa regola di rumore: solo se il modello cambia da un tier
+	// all'altro; se è sempre lo stesso, lo dice già la riga del modello sopra.
+	$: modelPerTier = vaMostrata(agent.model_by_tier) ? riassumiPerTier(agent.model_by_tier) : '';
 	// Stato mostrato dal dot: 'disconnected' ha priorità sul runState.
 	$: cardState = disconnected ? 'disconnected' : runState;
 
@@ -86,8 +94,12 @@
 				<StatusDot state={cardState} withLabel={false} />
 			</div>
 			{#if agent.effective_model || agent.model}
-				<!-- Modello dello stack effettivo (1 seed → N stack, issue#93). -->
-				<div class="model" title="model (stack in uso)">{agent.effective_model || agent.model}</div>
+				<!-- Modello dello stack PREFERITO (1 seed → N stack, issue#93). Non
+				     «quello in uso»: dentro un topic il modello segue il provider che
+				     regge il tier — vedi `modelPerTier` (clodia-platform#325). -->
+				<div class="model" title="modello dello stack preferito, fuori da un topic">
+					{agent.effective_model || agent.model}
+				</div>
 			{/if}
 			{#if providerLabel}
 				<div class="provider" class:off={disconnected} title="provider preferito, fuori da un topic">
@@ -103,6 +115,14 @@
 					title="Dentro un topic il provider è il meno costoso che regge il tier della stanza: lo stesso agente può girare su provider diversi. «—» = in quel tier non può prendere turni."
 				>
 					{perTier}
+				</div>
+			{/if}
+			{#if modelPerTier}
+				<div
+					class="per-tier"
+					title="Il modello segue il provider della stanza: con più stack, in tier diversi l'agente gira su modelli diversi. «—» = in quel tier non può prendere turni."
+				>
+					{modelPerTier}
 				</div>
 			{/if}
 		</div>

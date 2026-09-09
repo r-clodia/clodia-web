@@ -14,6 +14,7 @@
 	import StatusDot from '$lib/components/StatusDot.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
+	import { riassumiPerTier, vaMostrata } from '$lib/providerPerTier';
 
 	$: name = $page.params.name ?? '';
 
@@ -617,6 +618,13 @@
 	// Human e proxy non sono eseguiti: niente system prompt. Il tab Logs resta.
 	$: isHuman = agent?.type === 'human';
 	$: isProxy = agent?.type === 'proxy';
+	// Il modello DENTRO una stanza segue il provider che regge il tier
+	// (clodia-platform#325): stessa mappa e stessa resa del provider per tier
+	// (#306), e si mostra solo quando cambia da un tier all'altro — altrimenti
+	// ripeterebbe la riga «Model» qui accanto.
+	$: modelPerTier = vaMostrata(agent?.model_by_tier)
+		? riassumiPerTier(agent?.model_by_tier)
+		: '';
 	// I campi del sandbox che QUESTO runtime non porta, per nome. Il server li
 	// dà già così (`sandbox_info.unenforced`), e si marcano uno per uno: dire
 	// «il sandbox non è applicato» manderebbe a cercare quale, che è
@@ -866,11 +874,22 @@
 					{#if isProxy}
 						<span class="muted-note">nessuno</span>
 					{:else}
-						<!-- Modello dello stack EFFETTIVO (1 seed → N stack, issue#93): con
-						     più stack può differire dal model dichiarato in testa al seed. -->
+						<!-- Modello dello stack PREFERITO (1 seed → N stack, issue#93): con
+						     più stack può differire dal model dichiarato in testa al seed.
+						     Non è «quello in uso»: dentro un topic il modello segue il
+						     provider che regge il tier (clodia-platform#325), e la riga
+						     qui sotto lo dice tier per tier quando cambia. -->
 						{agent.effective_model || agent.model || '—'}
 						{#if agent.effective_model && agent.model && agent.effective_model !== agent.model}
-							<span class="hint-inline">(stack in uso — dichiarato: {agent.model})</span>
+							<span class="hint-inline">(stack preferito — dichiarato: {agent.model})</span>
+						{/if}
+						{#if modelPerTier}
+							<div
+								class="hint-inline"
+								title="Il modello segue il provider della stanza: con più stack, in tier diversi l'agente gira su modelli diversi. «—» = in quel tier non può prendere turni."
+							>
+								in stanza: {modelPerTier}
+							</div>
 						{/if}
 					{/if}
 				</dd>
@@ -906,7 +925,10 @@
 									{#if opt.model}<span class="prov-model mono">{opt.model}</span>{/if}
 									{#if opt.seal}<span class="prov-seal">{opt.seal}</span>{/if}
 									{#if opt.default}<span class="prov-tag" title="default (preferenza)">★</span>{/if}
-									{#if opt.effective}<span class="prov-tag on">in uso</span>
+									<!-- `effective` è il PREFERITO fuori da un topic: il backend lo
+									     documenta così da #306, l'etichetta era rimasta indietro. In
+									     una stanza decide il tier — vedi la riga «in stanza» sopra. -->
+									{#if opt.effective}<span class="prov-tag on" title="preferito fuori da un topic">preferito</span>
 									{:else if !opt.connected}<span class="prov-tag muted">off</span>
 									{:else if opt.paused}<span class="prov-tag muted">pausa</span>{/if}
 								</button>

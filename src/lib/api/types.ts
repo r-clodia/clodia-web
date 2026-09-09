@@ -55,6 +55,13 @@ export interface ProviderOption {
  *  non può prendere turni. */
 export type ProviderByTier = Readonly<Record<string, string | null>>;
 
+/** Modello per ciascun tier: segue `provider_by_tier`, perché
+ *  `provider_models` abbina un modello a ciascun provider
+ *  (clodia-platform#325). Stessa forma della mappa dei provider — e per questo
+ *  la stessa resa (`$lib/providerPerTier`) vale per entrambe. `null` dove
+ *  nessun provider regge il tier: là non gira nessun modello. */
+export type ModelByTier = Readonly<Record<string, string | null>>;
+
 /** Shape returned by `GET /api/agents/{name}` and embedded in the list. */
 export interface Agent {
 	readonly name: string;
@@ -107,9 +114,13 @@ export interface Agent {
 	/** Livello SEAL del provider a cui l'agent è ATTUALMENTE attribuito (es. 'SEAL-2'),
 	 *  null se nessun provider attivo. */
 	readonly provider_seal?: string | null;
-	/** Modello dello stack EFFETTIVO (può differire da `model` quando il provider
-	 *  effettivo ha un override per-provider). La UI mostra questo. */
+	/** Modello dello stack PREFERITO, cioè fuori da un topic (può differire da
+	 *  `model` quando quel provider ha un override per-provider). NON è «quello
+	 *  in uso»: dentro una stanza il modello lo dice `model_by_tier`
+	 *  (clodia-platform#325), come per `provider` → `provider_by_tier` (#306). */
 	readonly effective_model?: string | null;
+	/** Modello per tier: quello che gira DENTRO una stanza di quel livello. */
+	readonly model_by_tier?: ModelByTier;
 	/** Stack dichiarati/normalizzati del seed: tuple (model, provider) in ordine
 	 *  di preferenza (1 seed → N stack, issue clodia-platform#93). */
 	readonly stacks?: ReadonlyArray<{ readonly model: string; readonly provider: string }>;

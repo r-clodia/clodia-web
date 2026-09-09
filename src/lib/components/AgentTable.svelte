@@ -6,6 +6,7 @@
 	import MultiSpawnBadge from './MultiSpawnBadge.svelte';
 	import { pauseAgent, resumeAgent, createOrOpenDm } from '$lib/api/client';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
+	import { riassumiPerTier, vaMostrata } from '$lib/providerPerTier';
 	import type { Agent, AgentRunState } from '$lib/api/types';
 
 	export let agents: ReadonlyArray<Agent> = [];
@@ -21,6 +22,15 @@
 	const isPaused = (a: Agent) => a.paused === true;
 	const isDisconnected = (a: Agent) => a.provider_connected === false;
 	const providerLabel = (a: Agent) => a.provider ?? a.providers?.[0] ?? null;
+	// Questa tabella è la lista GLOBALE: non c'è una stanza, quindi il preferito
+	// fuori-stanza è la risposta giusta — purché non venga spacciato per «quello
+	// in uso» (clodia-platform#325). Dove il modello cambia col tier lo dice il
+	// tooltip: una colonna in più su una tabella già larga sarebbe rumore per
+	// tutti gli agenti a stack unico, che sono la maggioranza.
+	const modelTitle = (a: Agent) =>
+		vaMostrata(a.model_by_tier)
+			? `stack preferito, fuori da un topic. In stanza: ${riassumiPerTier(a.model_by_tier)}`
+			: 'modello dello stack preferito, fuori da un topic';
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// Costo per 1M token (input / output), derivato dalla combinazione
@@ -195,7 +205,7 @@
 							</span>
 						</span>
 					</td>
-					<td class="c-model"><code>{a.effective_model || a.model || '—'}</code></td>
+					<td class="c-model" title={modelTitle(a)}><code>{a.effective_model || a.model || '—'}</code></td>
 					<td class="c-provider">
 						{#if providerLabel(a)}
 							<span class="prov" class:off={isDisconnected(a)}>{providerLabel(a)}</span>
