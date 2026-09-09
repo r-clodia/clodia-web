@@ -20,6 +20,7 @@
 		'/packs':     '❖',
 		'/tools':     '⨄',
 		'/providers': '⛽︎',
+		'/databases': '⛁',
 		'/settings':  '⚙',
 		'/topics':    '▤',
 	};
@@ -38,6 +39,7 @@
 		...(prof.features.packs_ui   ? [{ href: '/packs',     label: 'PACKS',                                                                                 icon: ICONS['/packs'], adminOnly: true }] : []),
 		...(prof.features.integrations !== 'off' ? [{ href: '/tools',     label: term(prof, 'integration', 'INTEGRATIONS', { plural: true, upper: true }), icon: ICONS['/tools'], adminOnly: true }] : []),
 		...(prof.features.providers_ui ? [{ href: '/providers', label: term(prof, 'provider', 'PROVIDERS', { plural: true, upper: true }),                   icon: ICONS['/providers'], adminOnly: true }] : []),
+		...(prof.features.databases_ui ? [{ href: '/databases', label: 'DATABASES',                                                                            icon: ICONS['/databases'], adminOnly: true }] : []),
 		{ href: '/settings',  label: 'SETTINGS',                                                                                                               icon: ICONS['/settings'], adminOnly: true  },
 		...(prof.features.topics === 'off'
 			? []

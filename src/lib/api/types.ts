@@ -498,6 +498,7 @@ export interface InstanceFeatures {
 	readonly channels: boolean;
 	readonly packs_ui: boolean;
 	readonly providers_ui: boolean;
+	readonly databases_ui: boolean;
 	readonly activity: boolean;
 	readonly pwa: boolean;
 	readonly helpdesk: boolean;
@@ -595,6 +596,44 @@ export interface PluginDatastore {
 	readonly purpose: string;
 	readonly pii: boolean;
 	readonly backup: boolean;
+}
+
+/* ------------------------------------------------------------------------ */
+/*  DATABASES — GET /clodia/datastores (inventario dati indipendenti dai    */
+/*  topic: datastore SQL dei pack + collection RAG, con lo stato)           */
+/* ------------------------------------------------------------------------ */
+
+export type DatabaseStatus = 'active' | 'archived' | 'orphaned';
+
+/** Una riga datastore dell'inventario: `path` è relativo alla dir del pack
+ *  (attivi) o assente per l'entry "cartella intera" (archiviati senza
+ *  datastore dichiarati). `archive_dir`/`archived_at` solo per `archived`. */
+export interface DatabaseEntry {
+	readonly path?: string;
+	readonly purpose: string;
+	readonly pii: boolean | null;
+	readonly backup?: boolean;
+	readonly pack: string;
+	readonly status: DatabaseStatus;
+	readonly archive_dir?: string;
+	readonly archived_at?: string;
+}
+
+/** Una riga collection RAG dell'inventario. `pack` è `null` per le orfane
+ *  (nessun pack installato la dichiara più). */
+export interface RagCollectionEntry {
+	readonly name: string;
+	readonly description?: string;
+	readonly tier: string;
+	readonly documents?: number;
+	readonly chunks?: number;
+	readonly pack: string | null;
+	readonly status: DatabaseStatus;
+}
+
+export interface DatabasesInventory {
+	readonly datastores: ReadonlyArray<DatabaseEntry>;
+	readonly rag_collections: ReadonlyArray<RagCollectionEntry>;
 }
 
 /** Prerequisito (soft) di un agent seed verso un plugin. */
