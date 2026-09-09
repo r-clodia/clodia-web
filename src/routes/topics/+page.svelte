@@ -26,6 +26,7 @@
 		getAgents,
 		type TopicCatalogItem
 	} from '$lib/api/client';
+	import { openSignedFile } from '$lib/download';
 	import TopicMark from '$lib/components/TopicMark.svelte';
 	import type { Topic } from '$lib/api/types';
 	import { session } from '$lib/auth/session';
@@ -712,12 +713,16 @@
 								{#each t.recent_artifacts as a}
 									<li class="artifact">
 										<span class="artifact-icon">{fileIcon(a.name)}</span>
+										<!-- Il download passa da un URL FIRMATO: un href diretto verso
+										     /download arriva senza header Bearer e prende 401 a ogni
+										     click (clodia-platform#323). `stopPropagation` resta perché
+										     il click non deve espandere/chiudere la card sotto. -->
 										<a
 											class="artifact-name"
 											title={a.path}
-											href={`${API_BASE_URL}/topics/${t.tier}/${t.name}/download?path=${encodeURIComponent(a.path)}`}
-											download={a.name}
-											on:click|stopPropagation
+											href="#download"
+											on:click|preventDefault|stopPropagation={() =>
+												void openSignedFile(t.tier, t.name, a.path)}
 										>{a.name}</a>
 										<span class="artifact-date">{fmtTs(a.mtime_iso)}</span>
 									</li>

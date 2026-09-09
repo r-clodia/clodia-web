@@ -42,7 +42,6 @@
 		uploadChannelFile,
 		downloadTopicZip,
 		channelFileUrl,
-		signedChannelFileUrl,
 		listTopicMcpClients,
 		issueTopicMcpClient,
 		setTopicLogo,
@@ -57,6 +56,7 @@
 		type ChannelFile,
 	} from '$lib/api/client';
 	import { getTopicAgentsMd, saveTopicAgentsMd, type TopicAgentsMd } from '$lib/api/client';
+	import { openSignedFile } from '$lib/download';
 	import { toastSuccess } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
@@ -927,16 +927,6 @@
 	// link markdown scaricabili, PRIMA del render → renderMarkdown li rende <a>.
 	// Salta i CODE span (`…` / ```…```): un path lì dentro deve restare testo,
 	// non diventare un link grezzo dentro <code> (gli LLM citano i path tra backtick).
-	/** Fix sicurezza 7 lug 2026: i download passano da URL FIRMATI a scadenza.
-	 *  I link diretti (senza firma) rispondono 401/403 dal backend. */
-	async function openSignedFile(path: string) {
-		try {
-			const u = await signedChannelFileUrl(tier, name, path);
-			window.open(u, '_blank', 'noopener');
-		} catch (e) {
-			console.error('download non autorizzato', e);
-		}
-	}
 	/** Delegazione: intercetta i link file renderizzati nel markdown dei
 	 *  messaggi (linkifyFiles) e li apre con URL firmato. */
 	function handleStreamClick(e: MouseEvent) {
@@ -954,7 +944,7 @@
 		const m = a.href.match(/\/topics\/[^/]+\/[^/]+\/download\?path=([^&]+)/);
 		if (!m) return;
 		e.preventDefault();
-		void openSignedFile(decodeURIComponent(m[1]));
+		void openSignedFile(tier, name, decodeURIComponent(m[1]));
 	}
 	// Le radici che un path può avere in questo scope. `local` c'è sempre;
 	// `files` e `dump` restano perché compaiono nei messaggi già inviati: un
@@ -2319,7 +2309,7 @@
 						{#if m.attachments?.length}
 							<div class="atts">
 								{#each m.attachments as a}
-									<a class="att" href="#download" on:click|preventDefault={() => openSignedFile(`files/${a}`)}>📎 {a}</a>
+									<a class="att" href="#download" on:click|preventDefault={() => openSignedFile(tier, name, `files/${a}`)}>📎 {a}</a>
 								{/each}
 							</div>
 						{/if}
@@ -2683,7 +2673,7 @@
 							{:else}
 								<a href="#download"
 									title={f.name}
-									on:click|preventDefault={() => openSignedFile(f.path)}>{f.name}</a>
+									on:click|preventDefault={() => openSignedFile(tier, name, f.path)}>{f.name}</a>
 								{#if f.provenance === 'untrusted' || f.provenance === 'unknown'}
 									<!-- Etichetta visibile solo quando NON è verificata: marcare anche
 									     i file fidati farebbe rumore su ogni riga e nessuno la
