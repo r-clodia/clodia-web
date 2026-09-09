@@ -21,6 +21,7 @@ export const FULL_PROFILE: InstanceProfile = {
 		channels: true,
 		packs_ui: true,
 		providers_ui: true,
+		databases_ui: true,
 		activity: true,
 		pwa: true,
 		helpdesk: true,

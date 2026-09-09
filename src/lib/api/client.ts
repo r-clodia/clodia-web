@@ -272,6 +272,7 @@ import type {
 	ChatHistoryResponse,
 	ChatMessage,
 	ChatsListResponse,
+	DatabasesInventory,
 	InstanceProfile,
 	Pack,
 	PackDrift,
@@ -1870,6 +1871,23 @@ export async function getPlugin(name: string, opts: RequestOptions = {}): Promis
 /** DELETE `/clodia/plugins/{name}` — rimuove un plugin non nativo. */
 export async function deletePlugin(name: string, opts: RequestOptions = {}): Promise<void> {
 	await apiDelete(`/clodia/plugins/${encodeURIComponent(name)}`, opts);
+}
+
+/** GET `/clodia/datastores` — inventario datastore SQL + collection RAG dei
+ *  pack (attivi/archiviati/orfani), indipendenti dai topic. */
+export async function listDatabases(opts: RequestOptions = {}): Promise<DatabasesInventory> {
+	return apiGet<DatabasesInventory>('/clodia/datastores', { cache: true, ...opts });
+}
+
+/** DELETE `/clodia/datastores/archived/{dir}` — purge definitivo di un
+ *  datastore già archiviato (pack rimosso). Unica azione distruttiva
+ *  dell'inventario: le collection RAG orfane restano sola lettura finché il
+ *  servizio eu-rag-search non espone un modo di cancellarle. */
+export async function purgeArchivedDatastore(
+	archiveDir: string,
+	opts: RequestOptions = {}
+): Promise<void> {
+	await apiDelete(`/clodia/datastores/archived/${encodeURIComponent(archiveDir)}`, opts);
 }
 
 /** GET `/clodia/packs` — pack (aggregati di agent seeds + plugins). */
