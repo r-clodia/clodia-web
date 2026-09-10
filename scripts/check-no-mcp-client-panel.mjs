@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 /**
- * La sidebar del topic non offre più il «Client MCP» di una persona.
+ * La sidebar del topic non offre più né il «Client MCP» di una persona, né il
+ * pannello «Proxy» che lo aveva superato.
  *
- * Quel pannello emetteva un frammento di configurazione con dentro un token da
- * incollare in un client esterno (issue clodia-platform#242). Il proxy l'ha
- * superato: un sistema terzo entra in una stanza come partecipante con un nome,
- * una chiave e un owner che l'ha ammesso, e riceve un CONTRATTO — dove chiedere
- * il token firmando — non un segreto da copiare.
+ * Storia in due passi. Il primo pannello (clodia-platform#242) emetteva un
+ * frammento di configurazione con dentro un token da incollare in un client
+ * esterno; il proxy l'ha superato — un sistema terzo entra come partecipante
+ * con un nome, una chiave e un owner che l'ha ammesso, e riceve un CONTRATTO,
+ * non un segreto da copiare. Questo controllo verificava che il primo non
+ * tornasse e che il secondo restasse.
  *
- * Perché un controllo e non solo il diff: la metà rimossa e la metà rimasta
- * vivono nello stesso modulo e chiamano lo stesso endpoint. Reintrodurre il caso
- * umano costa una `<option>` e un campo di testo libero sul principal, e passa
- * inosservato in review — il pannello continuerebbe a chiamarsi «Proxy». Il
- * server rifiuta l'emissione (clodia-logic, `POST /mcp-clients`), quindi il
- * danno sarebbe una UI che promette una credenziale e riceve un 403: qui si
- * controlla che non la prometta.
+ * Il secondo passo (Davide, 10 set 2026): anche il pannello Proxy sparisce
+ * dalla sidebar del topic — sostituito da una sezione egress/ingress LOCALE
+ * al topic, sola lettura, con un link alle impostazioni globali. L'emissione/
+ * revoca dei grant proxy non è stata spostata altrove in questo giro: se
+ * tornerà, sarà una decisione a sé, non un ritorno silenzioso di questa UI.
  *
  * LIMITE DICHIARATO: è un controllo sul TESTO del file, non sul DOM reso. Vede
  * le tracce elencate qui sotto, non un pannello equivalente scritto con altre
@@ -25,21 +25,26 @@ import { readFileSync } from 'node:fs';
 
 const PAGINA = 'src/routes/topics/[tier]/[name]/+page.svelte';
 
-/** Tracce del pannello dismesso: se una torna, torna la credenziale. */
+/** Tracce dei due pannelli dismessi: se una torna, torna la credenziale
+ *  incollata a mano o l'emissione di grant proxy da questa superficie. */
 const VIETATI = [
-	['Client MCP</span>', 'il titolo della sezione rimossa'],
+	['Client MCP</span>', 'il titolo della sezione «Client MCP» (primo pannello)'],
 	['collega un client', 'il bottone che apriva la coniazione per una persona'],
 	['"anthropic-api"', 'le opzioni di provider del client di una persona'],
 	["'anthropic-api'", 'il provider di default del client di una persona'],
-	['configurazione MCP del client', 'le istruzioni per incollare il frammento']
+	['configurazione MCP del client', 'le istruzioni per incollare il frammento'],
+	['<span>Proxy</span>', 'il titolo della sezione «Proxy» (secondo pannello)'],
+	['proxyCandidates', 'la scelta del principal tra i proxy della stanza'],
+	['mcpFresh', 'il contratto reso al posto del segreto'],
+	['issueTopicMcpClient', 'la funzione che coniava/revocava un grant proxy'],
+	['ammetti un proxy', 'il bottone che apriva il form di arruolamento']
 ];
 
-/** Ciò che deve restare: l'arruolamento del proxy è l'unica cosa che questa
- *  superficie fa, e va offerto solo per chi è davvero un proxy. */
+/** Ciò che deve restare: la sezione che ha preso il posto del pannello Proxy. */
 const RICHIESTI = [
-	['proxyCandidates', 'la scelta del principal tra i proxy della stanza'],
-	["a.type === 'proxy'", 'i proxy letti dal payload /api/agents'],
-	['mcpFresh.contract', 'il contratto reso al posto del segreto']
+	['getTopicEgressScope', 'la lettura dell\'egress/ingress locale del topic'],
+	['Egress/Ingress', 'il titolo della nuova sezione'],
+	['/settings/egress', 'il link alle impostazioni globali']
 ];
 
 const guasti = [];
@@ -49,7 +54,7 @@ try {
 } catch {
 	// Un ENOENT qui è un esito: la pagina è stata spostata e il controllo non
 	// guarda più niente. Meglio rosso che verde per assenza.
-	console.error(`pannello Client MCP: ${PAGINA} assente — spostato o rinominato`);
+	console.error(`pannello Client MCP/Proxy: ${PAGINA} assente — spostato o rinominato`);
 	process.exit(1);
 }
 
@@ -65,4 +70,4 @@ if (guasti.length) {
 	for (const g of guasti) console.error(`  - ${g}`);
 	process.exit(1);
 }
-console.log('sidebar del topic: nessun pannello «Client MCP», solo proxy ✓');
+console.log('sidebar del topic: nessun pannello «Client MCP»/«Proxy», solo egress/ingress locale ✓');

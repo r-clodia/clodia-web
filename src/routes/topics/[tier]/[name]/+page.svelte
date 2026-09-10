@@ -42,12 +42,10 @@
 		uploadChannelFile,
 		downloadTopicZip,
 		channelFileUrl,
-		listTopicMcpClients,
-		issueTopicMcpClient,
+		getTopicEgressScope,
 		setTopicLogo,
 		clearTopicLogo,
 		API_BASE_URL,
-		type McpClientGrant,
 		setTopicStatus,
 		setTopicDeadline,
 		TOPIC_STATUSES,
@@ -1133,95 +1131,21 @@
 		logoDialogOpen = true;
 	}
 
-	// ── Proxy ammessi in questa stanza ──────────────────────────────────────
-	// Un proxy è un sistema terzo con un posto qui: parla e legge il canale,
-	// nient'altro. Ammetterlo manda la conversazione a qualcuno fuori — è un atto
-	// sulle mura, come montare una cartella Drive — quindi lo fa l'owner e il tier
-	// governa.
-	//
-	// Qui non si consegna un segreto: il proxy ha la propria chiave e ottiene
-	// token brevi firmando. Fino a #242 lo stesso modulo emetteva anche il
-	// frammento di configurazione per il client MCP di una PERSONA: quella metà è
-	// sparita, e con lei la credenziale da incollare a mano.
-	let mcpGrants: McpClientGrant[] = [];
-	let mcpOpen = false;
-	let mcpPrincipal = '';
-	let mcpProvider = '';
-	let mcpTtl = 30;
-	let mcpConsent = false;
-	let mcpErr = '';
-	/** Il contratto appena coniato: dove chiedere il token, cosa firmare, dove
-	 *  parlare. Non è un segreto — non contiene nulla che valga da solo — ma vive
-	 *  comunque solo qui in memoria: serve una volta, a chi configura il proxy. */
-	let mcpFresh: { id: string; contract: string; expires: number;
-	                verbs: string[] } | null = null;
-	$: mcpTierAlto = ['SEAL-2', 'SEAL-3', 'SEAL-4'].includes(String(info?.meta?.tier ?? tier));
+	// ── Egress/ingress locali a questa stanza ───────────────────────────────
+	// Sola lettura: le voci che valgono SOLO in questo topic (oltre a quelle
+	// globali, che restano nelle impostazioni). Sostituisce il pannello Proxy
+	// (emissione/revoca client MCP), rimosso il 10 set 2026.
+	let egressScope: { egress: string[]; ingress: string[] } | null = null;
+	let egressScopeErr = '';
 
-	async function loadMcpClients() {
-		if (!isOwner) return;
+	async function loadEgressScope() {
+		egressScopeErr = '';
 		try {
-			mcpGrants = (await listTopicMcpClients(tier, name)).grants ?? [];
-		} catch {
-			mcpGrants = [];
-		}
-	}
-	function openMcpForm() {
-		// Nessun default sul principal: il proxy lo scegli tra i partecipanti, e
-		// non è mai «io» — chi apre il pannello è una persona.
-		mcpPrincipal = proxyCandidates.length === 1 ? proxyCandidates[0] : '';
-		mcpProvider = '';
-		mcpTtl = 30;
-		mcpConsent = false;
-		mcpErr = '';
-		mcpFresh = null;
-		mcpOpen = true;
-		loadMcpClients();
-	}
-	async function issueMcp() {
-		mcpErr = '';
-		if (!mcpPrincipal.trim()) { mcpErr = 'Quale proxy?'; return; }
-		metaBusy = true;
-		try {
-			const r = await issueTopicMcpClient(tier, name, {
-				principal: mcpPrincipal.trim().toLowerCase(),
-				provider: mcpProvider.trim(),
-				ttl_days: mcpTtl,
-				tier_consent: mcpConsent,
-				base_url: window.location.origin
-			});
-			// I verbi EFFETTIVI del grant appena coniato: non quelli che il pannello
-			// suppone, quelli che il gateway ha scritto dentro. Un proxy ne porta
-			// quattro — parla e legge il canale — e chi lo configura deve poterlo
-			// leggere senza decodificare niente.
-			//
-			// `instructions` è il contratto; `config` resta come ripiego per un
-			// gateway che non lo mandasse, e mostrare un pannello vuoto sarebbe
-			// peggio che mostrare quello che ha risposto.
-			mcpFresh = { id: r.id,
-			             contract: JSON.stringify(r.instructions ?? r.config ?? {}, null, 2),
-			             expires: r.expires ?? 0, verbs: r.verbs ?? [] };
-			await loadMcpClients();
+			egressScope = await getTopicEgressScope(tier, name);
 		} catch (e) {
-			mcpErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			metaBusy = false;
+			egressScope = null;
+			egressScopeErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		}
-	}
-	async function revokeMcp(g: McpClientGrant) {
-		if (!confirm(`Revocare il grant di ${g.principal}? Smette di funzionare subito.`)) return;
-		metaBusy = true;
-		try {
-			await issueTopicMcpClient(tier, name, { action: 'revoke', id: g.id });
-			await loadMcpClients();
-		} catch (e) {
-			mcpErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			metaBusy = false;
-		}
-	}
-	function giorniAllaScadenza(ts: number): string {
-		const g = Math.ceil((ts * 1000 - Date.now()) / 86400000);
-		return g <= 0 ? 'scaduto' : `${g} giorn${g === 1 ? 'o' : 'i'}`;
 	}
 
 	function normalizeTopicStatus(status?: string | null): string {
@@ -1643,13 +1567,7 @@
 	// Autocomplete invito: solo agent/utenti registrati (no partecipanti inesistenti).
 	let allAgents: string[] = [];
 	let aiAgents: string[] = [];
-	let proxyAgents: string[] = [];
 	$: triggerAgents = shownParticipants.filter((participant) => aiAgents.includes(participant));
-	// I proxy che siedono QUI: gli unici principal per cui si conia un grant
-	// (#242). Non un campo di testo libero — un nome scritto a mano che non è un
-	// proxy lo rifiuta il server, e il rifiuto arriva dopo aver compilato tutto.
-	$: proxyCandidates = shownParticipants.filter((participant) =>
-		proxyAgents.includes(participant));
 	// Non proporre agent il cui tier è insufficiente per il topic (eligible=false).
 	// Gli agent senza record di idoneità (es. umani) restano proponibili.
 	$: inviteMatches = newParticipant.trim()
@@ -1841,7 +1759,6 @@
 				aiAgents = as
 					.filter((a) => a.type === 'bot' || a.type === 'normal' || a.type === 'super')
 					.map((a) => a.name);
-				proxyAgents = as.filter((a) => a.type === 'proxy').map((a) => a.name);
 				multiSpawn = Object.fromEntries(
 					as.filter((a) => a.multi_spawn)
 						.map((a) => [a.name, { max: a.max_spawns ?? null }])
@@ -1850,7 +1767,6 @@
 			.catch(() => {
 				allAgents = [];
 				aiAgents = [];
-				proxyAgents = [];
 				multiSpawn = {};
 			});
 		stopStream = startEventStream();
@@ -2696,119 +2612,44 @@
 					<p class="files-hint">Carica i file dall'input della chat: 📎, trascinamento o incolla (⌘/Ctrl+V) di immagini.</p>
 				</details>
 
-				<details class="side-section mcp-panel" on:toggle={loadMcpClients}>
+				<details class="side-section egress-panel" on:toggle={loadEgressScope}>
 					<summary>
-						<span>Proxy</span>
-						{#if mcpGrants.length}<span class="section-status">{mcpGrants.length}</span>{/if}
+						<span>Egress/Ingress</span>
+						{#if egressScope && (egressScope.egress.length || egressScope.ingress.length)}
+							<span class="section-status">{egressScope.egress.length + egressScope.ingress.length}</span>
+						{/if}
 					</summary>
-					{#if !isOwner}
-						<p class="muted">
-							Un <b>proxy</b> è un sistema terzo con un posto in questa stanza: parla e
-							legge il canale, nient'altro. Ammetterlo manda la conversazione fuori, e
-							quella è una decisione dell'owner — è lui che li ammette e li vede.
-						</p>
-					{:else if mcpFresh}
-						<p class="meta-note">
-							Il <b>contratto</b> per chi gestisce il proxy: dove chiedere il token
-							firmando con la propria chiave, e dove parlare. Non è un segreto — non
-							c'è nulla qui che funzioni senza quella chiave — ma si legge una volta,
-							quando si configura.
-						</p>
-						<pre class="mcp-config">{mcpFresh.contract}</pre>
-						{#if mcpFresh.verbs.length}
-							<p class="meta-note">
-								Porta {mcpFresh.verbs.length} verbi: <code>{mcpFresh.verbs.join(', ')}</code>.
-							</p>
-						{/if}
-						<p class="meta-note">Scade fra {giorniAllaScadenza(mcpFresh.expires)}.</p>
-						<div class="remote-actions">
-							<button type="button" on:click={() => navigator.clipboard?.writeText(mcpFresh?.contract ?? '')}>copia</button>
-							<button type="button" on:click={() => { mcpFresh = null; mcpOpen = false; }}>ho finito</button>
-						</div>
-					{:else if mcpOpen}
-						<form class="side-form" on:submit|preventDefault={issueMcp}>
-							{#if proxyCandidates.length}
-								<label class="side-form-row">
-									<span>Quale proxy</span>
-									<select bind:value={mcpPrincipal}>
-										<option value="">scegli…</option>
-										{#each proxyCandidates as p}<option value={p}>{p}</option>{/each}
-									</select>
-								</label>
+					<p class="muted">
+						Le destinazioni/fonti che valgono <b>solo in questa stanza</b>, oltre a
+						quelle globali (che valgono ovunque e non compaiono qui).
+					</p>
+					{#if egressScopeErr}
+						<p class="cred-hint" role="alert">{egressScopeErr}</p>
+					{:else if egressScope}
+						<div class="egress-group">
+							<span class="egress-group-label">Egress ({egressScope.egress.length})</span>
+							{#if egressScope.egress.length}
+								<ul class="mcp-list">
+									{#each egressScope.egress as u}<li><span class="mcp-who">{u}</span></li>{/each}
+								</ul>
 							{:else}
-								<p class="muted">
-									Nessun proxy tra i partecipanti di questa stanza. Un proxy si crea
-									dalla pagina <a href="/agents">Agenti</a> — serve la sua chiave
-									pubblica — e poi si invita qui come chiunque altro.
-								</p>
+								<p class="muted">Nessuna voce locale.</p>
 							{/if}
-							<p class="meta-note">
-								Il grant porta i quattro verbi con cui <b>parla e legge il canale</b>:
-								niente file, niente ricerca, niente scrittura. Un proxy che ha bisogno
-								di contesto lo riceve in un messaggio.
-							</p>
-							<label class="side-form-row">
-								<span>Quale sistema</span>
-								<input class="remote-url-input" type="text" bind:value={mcpProvider}
-									placeholder="es. sistema-crm" autocomplete="off" spellcheck="false" />
-							</label>
-							<p class="meta-note">
-								Quello che il proxy legge <b>esce da qui</b>: il tier di questa stanza è
-								un tetto anche su dove finisce. La dichiarazione resta scritta nel
-								grant — serve a sapere, dopo, dove è andato ciò che è stato letto.
-							</p>
-							<label class="side-form-row">
-								<span>Per quanto</span>
-								<select bind:value={mcpTtl}>
-									<option value={7}>7 giorni</option>
-									<option value={30}>30 giorni</option>
-									<option value={90}>90 giorni</option>
-								</select>
-							</label>
-							{#if mcpTierAlto}
-								<label class="mcp-consent">
-									<input type="checkbox" bind:checked={mcpConsent} />
-									<span>
-										Questa stanza è {info?.meta?.tier ?? tier}: il sistema dichiarato
-										non è verificabile e me ne assumo la dichiarazione.
-									</span>
-								</label>
+						</div>
+						<div class="egress-group">
+							<span class="egress-group-label">Ingress ({egressScope.ingress.length})</span>
+							{#if egressScope.ingress.length}
+								<ul class="mcp-list">
+									{#each egressScope.ingress as u}<li><span class="mcp-who">{u}</span></li>{/each}
+								</ul>
+							{:else}
+								<p class="muted">Nessuna voce locale.</p>
 							{/if}
-							{#if mcpErr}<p class="cred-hint" role="alert">{mcpErr}</p>{/if}
-							<div class="remote-actions">
-								<button type="submit" disabled={metaBusy || !proxyCandidates.length}>ammetti</button>
-								<button type="button" on:click={() => (mcpOpen = false)} disabled={metaBusy}>annulla</button>
-							</div>
-						</form>
-					{:else}
-						{#if mcpGrants.length}
-							<ul class="mcp-list">
-								{#each mcpGrants as g}
-									<li class:expired={g.expired}>
-										<span class="mcp-who">{g.principal}</span>
-										{#if g.principal_kind !== 'proxy'}
-											<!-- Residuo del pannello «Client MCP» (#242): non si conia più,
-											     e resta in elenco solo perché per revocarlo va visto. -->
-											<span class="muted" title="client MCP di una persona: non si conia più, si può solo revocare">· client MCP dismesso</span>
-										{/if}
-										<span class="muted">{g.provider || 'sistema non dichiarato'}</span>
-										<span class="muted">· {g.expired ? 'scaduto' : giorniAllaScadenza(g.expires)}</span>
-										<button type="button" class="link-btn danger"
-											on:click={() => revokeMcp(g)} disabled={metaBusy}>revoca</button>
-									</li>
-								{/each}
-							</ul>
-						{:else}
-							<p class="muted">
-								Nessun proxy ammesso. Un sistema terzo che entra qui prende posto tra i
-								partecipanti: parla, viene menzionato, e si vede quando non c'è.
-							</p>
-						{/if}
-						{#if mcpErr}<p class="cred-hint" role="alert">{mcpErr}</p>{/if}
-						<div class="remote-actions">
-							<button type="button" on:click={openMcpForm} disabled={metaBusy}>ammetti un proxy</button>
 						</div>
 					{/if}
+					<div class="remote-actions">
+						<a class="link-btn" href="/settings/egress">Impostazioni egress/ingress globali →</a>
+					</div>
 				</details>
 
 				<div class="remote-actions">
@@ -3497,25 +3338,14 @@
 	}
 	.link-btn.disabled { opacity: 0.5; pointer-events: none; }
 
-	/* Proxy: il contratto da consegnare a chi lo gestisce, e l'elenco di chi è
-	   ammesso in questa stanza. */
-	.mcp-config {
-		margin: 6px 0; padding: 8px; border-radius: 6px;
-		background: var(--surface-2, rgba(127, 127, 127, 0.12));
-		font-size: 11px; line-height: 1.35; overflow-x: auto; white-space: pre;
-		max-height: 220px; overflow-y: auto;
-	}
+	/* Egress/Ingress locali: l'elenco delle voci che valgono solo in questa
+	   stanza (sostituisce il pannello Proxy, rimosso il 10 set 2026). */
 	.mcp-list { list-style: none; margin: 4px 0; padding: 0; display: flex;
 		flex-direction: column; gap: 4px; font-size: 12px; }
 	.mcp-list li { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-	.mcp-list li.expired { opacity: 0.55; }
-	.mcp-who { font-weight: 600; }
-	.mcp-consent { display: flex; gap: 6px; align-items: flex-start;
-		font-size: 12px; line-height: 1.35; }
-	.side-form-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-	.side-form-row select { flex: 1; font: inherit; font-size: 12px; padding: 2px 4px;
-		background: transparent; color: inherit;
-		border: 1px solid var(--border, #3a3a3a); border-radius: 5px; }
+	.mcp-who { font-weight: 600; font-family: var(--mono); }
+	.egress-group { margin: 8px 0; }
+	.egress-group-label { font-size: 11px; font-weight: 600; color: var(--fg-muted); }
 
 	/* Cosa attraversa il gate: sotto la domanda, prima dei bottoni. */
 	.gate-crosses { display: block; font-size: 11px; opacity: .75; margin-top: 4px; }
