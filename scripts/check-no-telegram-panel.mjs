@@ -15,8 +15,13 @@
  * Perché un controllo e non solo il diff: `setTopicTelegram` è ancora esportato
  * dal client API — l'endpoint serve altri consumatori — quindi rimettere il
  * pannello costa una `<details>` e una chiamata, e in review sembra un dettaglio
- * del pannello Proxy che sta legittimamente lì accanto e condivide gli stessi
- * stili (`.side-form`, `.side-form-row`, che nascono proprio qui).
+ * di una sezione vicina che sta legittimamente lì accanto.
+ *
+ * Il "testimone" di non-danno-collaterale era il pannello Proxy (condivideva
+ * `.side-form`/`.side-form-row` col form Telegram): rimosso il 10 set 2026 e
+ * sostituito da una sezione egress/ingress locale, quindi qui il testimone è
+ * diventato quella — se la rimozione di Telegram si portasse via ANCHE la
+ * sezione egress/ingress, avrebbe sforato.
  *
  * LIMITE DICHIARATO: è un controllo sul TESTO del file, non sul DOM reso. Vede
  * le tracce elencate qui sotto, non un pannello equivalente scritto con altre
@@ -38,14 +43,11 @@ const VIETATI = [
 	['tg-', 'gli stili del pannello (.tg-form, .tg-mode, .tg-people, .tg-row)']
 ];
 
-/** Ciò che deve restare: il pannello Proxy usava gli stessi stili del form
- *  Telegram. Se la rimozione si porta via anche quelli, ha sforato. */
+/** Ciò che deve restare: la sezione egress/ingress locale, vicina di posto
+ *  alla Telegram rimossa. Se sparisse anche lei, la rimozione ha sforato. */
 const RICHIESTI = [
-	['class="side-form"', 'il form della sezione (lo usa il pannello Proxy)'],
-	['.side-form {', 'lo stile del form della sezione'],
-	['class="side-form-row"', 'la riga etichetta+select del form Proxy'],
-	['.side-form-row {', 'lo stile della riga del form'],
-	['issueMcp', 'la coniazione del contratto proxy, che quel form serve']
+	['getTopicEgressScope', 'la lettura dell\'egress/ingress locale del topic'],
+	['egress-panel', 'la sezione che ha preso il posto del pannello Proxy']
 ];
 
 const guasti = [];
@@ -71,4 +73,4 @@ if (guasti.length) {
 	for (const g of guasti) console.error(`  - ${g}`);
 	process.exit(1);
 }
-console.log('sidebar del topic: nessuna sezione «Telegram», form del Proxy intatto ✓');
+console.log('sidebar del topic: nessuna sezione «Telegram», sezione egress/ingress intatta ✓');

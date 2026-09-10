@@ -2482,53 +2482,14 @@ export async function clearTopicLogo(
 	return apiDelete(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/logo`, opts);
 }
 
-/** Un grant di questo topic verso l'esterno. Mai il token: il valore si
- *  consegna una volta sola, poi si revoca soltanto.
- *
- *  Da #242 si conia solo per un **proxy**; i grant con `principal_kind` umano
- *  sono residui del pannello «Client MCP», elencati per poterli revocare. */
-export interface McpClientGrant {
-	id: string;
-	principal: string;
-	/** Natura del principal: `human` (una persona) o `proxy` (un sistema terzo).
-	 *  Decide quanti verbi porta il token — dieci contro quattro — quindi si
-	 *  legge nell'elenco senza dover aprire il seed. Assente sui grant coniati
-	 *  prima del 14 ago 2026: allora esisteva solo il caso umano. */
-	principal_kind?: string;
-	provider: string;
-	tier: string;
-	topic: string;
-	created: number;
-	expires: number;
-	expired?: boolean;
-	created_by?: string;
-}
-
-/** GET `/api/topics/{tier}/{name}/mcp-clients` — i grant esterni del topic. */
-export async function listTopicMcpClients(
+/** GET `/api/observe/whitelist/scope/{tier}/{name}` — egress/ingress LOCALI
+ *  di un topic (sidebar del topic, sostituisce il pannello Proxy dal 10 set
+ *  2026). Solo le voci di questo scope, mai la lista globale — quella sta
+ *  in `getEgressWhitelist()` / `/settings/egress`. */
+export async function getTopicEgressScope(
 	tier: string, name: string, opts: RequestOptions = {}
-): Promise<{ grants: McpClientGrant[] }> {
-	return apiGet(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mcp-clients`, opts);
-}
-
-/** POST `/api/topics/{tier}/{name}/mcp-clients` — conia (solo per un proxy:
- *  #242 ha spento l'emissione per le persone) o revoca (qualunque grant). */
-export async function issueTopicMcpClient(
-	tier: string, name: string,
-	payload: { principal?: string; provider?: string; ttl_days?: number;
-	           tier_consent?: boolean; base_url?: string;
-	           action?: 'revoke'; id?: string },
-	opts: RequestOptions = {}
-): Promise<{ id: string; token?: string | null; expires?: number; verbs?: string[];
-             config?: unknown; revoked?: boolean;
-             /** `bearer` (una persona) o `assertion` (un proxy: firma con la
-              *  propria chiave e ottiene token brevi — nessun segreto statico). */
-             auth?: 'bearer' | 'assertion';
-             /** Il contratto per un proxy: dove chiedere il token, cosa firmare,
-              *  dove parlare. Sostituisce `config`, che conterrebbe un segreto. */
-             instructions?: unknown }> {
-	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mcp-clients`,
-		payload, opts);
+): Promise<{ egress: string[]; ingress: string[] }> {
+	return apiGet(`/api/observe/whitelist/scope/${encodeURIComponent(tier)}/${encodeURIComponent(name)}`, opts);
 }
 
 /** POST `/api/topics/{tier}/{name}/archive` — imposta status=archived. */
