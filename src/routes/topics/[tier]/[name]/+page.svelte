@@ -221,10 +221,13 @@
 	}
 	let loadErr = '';
 	let initialLoading = true;
-	// Idoneità degli AeI al tier del topic: name → {eligible, warn}. I non idonei
-	// (clearance/provider sotto il tier) spariscono dalla lista partecipanti e dal
-	// dropdown invito; i super sotto tier restano ma con ⚠️.
-	type Elig = { eligible: boolean; warn: boolean; context: import('$lib/api/client').AgentContext | null; provider: string | null; model: string | null };
+	// Idoneità degli AeI al tier del topic: name → {eligible, available, warn}.
+	// Due bit, due domande (clodia-platform#190): `eligible` è l'APPARTENENZA
+	// (durevole: lo stack dichiarato regge il tier) e filtra il solo dropdown
+	// d'invito; `available` è «può rispondere adesso» e qui è un BADGE. Nessuno
+	// dei due toglie un partecipante dalla lista: fino all'11 ago 2026 lo faceva
+	// `eligible`, e un provider in pausa bastava a mostrare una stanza vuota.
+	type Elig = { eligible: boolean; available: boolean; warn: boolean; context: import('$lib/api/client').AgentContext | null; provider: string | null; model: string | null };
 	let eligibility: Record<string, Elig> = {};
 	/** Il chip della stanza: `provider · modello`, una coppia sola (#315). */
 	function chipDi(agent: string): { testo: string; titolo: string } {
@@ -235,10 +238,13 @@
 		try {
 			const r = await getChannelEligibility(t, n);
 			const m: Record<string, Elig> = {};
-			for (const a of r.agents) m[a.name] = { eligible: a.eligible, warn: a.warn, context: a.context, provider: a.provider ?? null, model: a.model ?? null };
+			// `available` manca finché il backend non è aggiornato: il default è
+			// `true`, cioè nessun badge. Un `?? false` marcherebbe tutta la stanza
+			// come spenta nella finestra fra i due deploy.
+			for (const a of r.agents) m[a.name] = { eligible: a.eligible, available: a.available ?? true, warn: a.warn, context: a.context, provider: a.provider ?? null, model: a.model ?? null };
 			eligibility = m;
 		} catch {
-			/* ignore: in assenza di dati non filtriamo nulla */
+			/* ignore: senza dati non marchiamo e non nascondiamo nessuno */
 		}
 	}
 	// Colore del "termometro" di contesto: verde <50%, arancione <80%, rosso oltre.
@@ -1204,9 +1210,11 @@
 			: Array.isArray(participantsRaw)
 				? 'contributor'
 				: ((participantsRaw as Record<string, string>)?.[p] || 'contributor');
-	// Partecipanti mostrati: nascondi i non idonei al tier (eligible=false). I super
-	// sotto tier restano (eligible=true) e li marchiamo con ⚠️ via eligibility[p].warn.
-	$: shownParticipants = participants.filter((p) => eligibility[p]?.eligible ?? true);
+	// I partecipanti si mostrano TUTTI: la lista è la composizione del canale, e
+	// l'idoneità la governa il backend all'ingresso (409) e alla riconciliazione
+	// (uscita annunciata nel canale). Qui non si nasconde nessuno — nascondere
+	// era il difetto: la stanza sembrava vuota e non c'era niente da leggere
+	// (clodia-platform#190).
 	// «Reset trifecta»: l'owner dichiara di rispondere lui del punteggio di questo
 	// canale. Si ricarica dal server invece di aggiustare `info` a mano — il
 	// punteggio lo calcola lui, e una copia locale divergerebbe al primo dettaglio
@@ -1567,7 +1575,7 @@
 	// Autocomplete invito: solo agent/utenti registrati (no partecipanti inesistenti).
 	let allAgents: string[] = [];
 	let aiAgents: string[] = [];
-	$: triggerAgents = shownParticipants.filter((participant) => aiAgents.includes(participant));
+	$: triggerAgents = participants.filter((participant) => aiAgents.includes(participant));
 	// Non proporre agent il cui tier è insufficiente per il topic (eligible=false).
 	// Gli agent senza record di idoneità (es. umani) restano proponibili.
 	$: inviteMatches = newParticipant.trim()
@@ -2473,10 +2481,10 @@
 				<details class="side-section" open>
 					<summary>
 						<span>Partecipanti</span>
-						<span class="section-count">{shownParticipants.length}</span>
+						<span class="section-count">{participants.length}</span>
 					</summary>
 					<ul class="parts">
-					{#each shownParticipants as p}
+					{#each participants as p}
 						{@const c = eligibility[p]?.context}
 						<li>
 							<span class="part-id">
@@ -2499,6 +2507,14 @@
 										</span>
 									{/if}
 								</span>
+								{#if eligibility[p]?.available === false}
+									<!-- Lo stato TRANSITORIO, che prima faceva sparire la riga: il
+									     partecipante c'è, in questo momento non può prendere un turno
+									     (provider scollegato o in pausa). Dirlo è il punto di #190 —
+									     un membro che tace per un provider giù e un membro che tace
+									     e basta erano indistinguibili. -->
+									<span class="part-unavailable" title="Non disponibile ora: il provider di questa stanza è scollegato o in pausa. Resta partecipante.">⏸</span>
+								{/if}
 								{#if eligibility[p]?.warn}
 									<span class="part-warn" title="Provider sotto il tier del topic: attiva un provider con SEAL ≥ tier">⚠️</span>
 								{/if}
@@ -3234,6 +3250,9 @@
 	.spawn-state { opacity: 0.8; }
 
 	.part-warn { flex-shrink: 0; font-size: 12px; cursor: help; margin-left: 2px; }
+	/* Non disponibile ORA (clodia-platform#190): il partecipante resta in lista,
+	   smorzato. Un badge attenuato dice «c'è ma tace» meglio di un'assenza. */
+	.part-unavailable { flex-shrink: 0; font-size: 12px; cursor: help; margin-left: 2px; opacity: 0.65; }
 	/* Capacità dell'agente, non un punteggio: nessun bordo a pillola, che
 	   leggerebbe come un valore. Sono icone accanto al nome. */
 	.parts em { color: var(--fg-muted); font-style: normal; font-size: 11px; }
