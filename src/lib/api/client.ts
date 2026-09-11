@@ -1017,7 +1017,15 @@ export interface AgentContext {
 export interface AgentEligibility {
 	name: string;
 	type: string;
+	/** APPARTENENZA (clodia-platform#190), bit DUREVOLE: lo stack DICHIARATO dal
+	 *  seed — non quello acceso adesso — regge il tier del topic. Filtra il
+	 *  dropdown d'invito; non filtra MAI la lista dei partecipanti. */
 	eligible: boolean;
+	/** Può prendere un turno ADESSO: provider collegato, non in pausa, SEAL ≥
+	 *  tier. È un badge accanto al partecipante, non un'espulsione — un provider
+	 *  in pausa non cambia la composizione di un canale. Sempre `true` per gli
+	 *  umani, che non rispondono attraverso un provider. */
+	available: boolean;
 	warn: boolean;
 	context: AgentContext | null;
 	/** Provider EFFETTIVO in questa stanza (clodia-platform#310, A14) — dipende
