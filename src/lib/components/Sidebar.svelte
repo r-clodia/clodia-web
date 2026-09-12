@@ -436,6 +436,7 @@
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	/* In collapsed mode i nav-item mostrano il tooltip via title nativo del browser. */
@@ -472,6 +473,12 @@
 		overflow-y: auto;
 	}
 	.recent-topic {
+		/* Stesso difetto latente di `.live-steps li` (#340): `.recent-list` è
+		   una colonna flex con `max-height`, e senza `flex: none` le voci si
+		   stringono l'una sull'altra invece di far comparire la barra di
+		   scorrimento. Qui l'`overflow` non è nascosto, quindi il testo non
+		   viene tagliato: si SOVRAPPONE alla voce successiva. */
+		flex: none;
 		display: flex;
 		align-items: center;
 		gap: 8px;
