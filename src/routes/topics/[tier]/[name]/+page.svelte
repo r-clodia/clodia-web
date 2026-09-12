@@ -1251,20 +1251,36 @@
 	// i suoi verbi, che sono la fonte di quella capacità.
 	// --- @mention autocomplete -----------------------------------------------
 	// Estraggo il token @parziale in coda al testo (fino al cursore) e propongo
-	// i partecipanti che combaciano. Click/Invio inserisce "@nome ".
+	// i partecipanti che combaciano. Click/Invio inserisce "@nome " — e "nome"
+	// è sempre il nome PIENO del partecipante (namespace.shortname compreso),
+	// mai quello digitato: è qui, all'input, che lo shortname diventa il nome
+	// lungo (Davide, 12 set 2026) — fra bot si scrive sempre e solo il nome
+	// pieno, il router non fa nessuna risoluzione di shortname.
 	let mentionQuery: string | null = null;
 	$: mentionMatches =
 		mentionQuery === null
 			? []
-			: participants.filter(
-					(p) => p !== me && p.toLowerCase().startsWith(mentionQuery!.toLowerCase())
-				);
+			: participants.filter((p) => {
+					if (p === me) return false;
+					const q = mentionQuery!.toLowerCase();
+					if (p.toLowerCase().startsWith(q)) return true;
+					// Shortname = ciò che segue l'ultimo punto. Un partecipante
+					// senza namespace (niente punto) ha già fatto il confronto
+					// sopra, questo è solo per `tomato.fullstack-dev` → digitando
+					// "fullstack-dev" deve comparire in lista.
+					const dot = p.lastIndexOf('.');
+					if (dot < 0) return false;
+					return p.slice(dot + 1).toLowerCase().startsWith(q);
+				});
 	let mentionIdx = 0;
 
 	function updateMention() {
 		const pos = composer?.selectionStart ?? draft.length;
 		const upto = draft.slice(0, pos);
-		const m = upto.match(/(?:^|\s)@([a-z0-9_-]*)$/i);
+		// `.` ammesso nel token digitato: un utente che scrive già il nome
+		// lungo (`@tomato.full…`) deve continuare a vedere la lista filtrarsi,
+		// non perdere il popup a metà parola.
+		const m = upto.match(/(?:^|\s)@([a-z0-9_.-]*)$/i);
 		mentionQuery = m ? m[1] : null;
 		mentionIdx = 0;
 	}
