@@ -436,6 +436,7 @@
 		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	/* In collapsed mode i nav-item mostrano il tooltip via title nativo del browser. */
