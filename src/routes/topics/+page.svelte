@@ -1342,7 +1342,11 @@
 	.nt-sec:disabled, .nt-pri:disabled { opacity: .5; cursor: not-allowed; }
 	.exp-all { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; padding: 6px 0; border-bottom: 1px solid var(--border); }
 	.exp-list { display: flex; flex-direction: column; max-height: 320px; overflow-y: auto; margin: 4px 0; }
-	.exp-row { display: flex; align-items: center; gap: 8px; padding: 6px 2px; font-size: 12.5px; border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer; }
+	/* `flex: none`: `.exp-list` è una colonna flex con `max-height`, e le righe
+	   sono tante quante i topic esportabili. Senza, si schiacciano fino a
+	   sovrapporsi — con una casella di spunta dentro, che diventa impossibile
+	   da centrare — invece di scorrere. Stesso difetto di #340. */
+	.exp-row { flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 2px; font-size: 12.5px; border-bottom: 1px solid rgba(255,255,255,0.04); cursor: pointer; }
 	.exp-row:hover { background: rgba(255,255,255,0.03); }
 	.exp-tier { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: var(--border); color: var(--fg-muted); }
 	.exp-dm { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 999px; background: rgba(96,165,250,0.16); color: #60a5fa; }

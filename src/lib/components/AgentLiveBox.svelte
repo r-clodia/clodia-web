@@ -180,6 +180,14 @@
 	   troncava niente: la riga andava a capo, e con payload JSON lunghi la
 	   lista diventava un muro di testo (clodia-platform#340). */
 	.live-steps li {
+		/* `flex: none` — il contenitore è una COLONNA FLEX con un tetto: senza
+		   questo gli `li` si stringono per stare dentro i 180px invece di far
+		   scorrere la lista, e `overflow: hidden` taglia il testo a metà glifo.
+		   È la seconda metà di #340, quella che il solo `nowrap` non chiude: a
+		   una riga per voce il tetto regge fino a ~10 chiamate, all'undicesima
+		   le righe tornano schiacciate — e `overflow-y: auto` qui sopra non
+		   entra MAI in funzione finché i figli possono restringersi. */
+		flex: none;
 		font-size: 11px;
 		line-height: 1.5;
 		color: var(--fg-muted);
