@@ -64,7 +64,8 @@
 			{#if tools.length}
 				<ol class="live-steps" aria-label={`Tool usati da ${agent}`}>
 					{#each tools as t, i (`${i}-${t}`)}
-						<li class:current={i === tools.length - 1}>{t}</li>
+						<!-- `title`: la riga è troncata, il payload intero resta leggibile all'hover. -->
+						<li class:current={i === tools.length - 1} title={t}>{t}</li>
 					{/each}
 				</ol>
 			{/if}
@@ -174,12 +175,26 @@
 		max-height: 180px;
 		overflow-y: auto;
 	}
+	/* Una voce = una chiamata a tool = UNA riga, troncata in coda come
+	   l'anteprima qui sopra. `text-overflow: ellipsis` senza `nowrap` non
+	   troncava niente: la riga andava a capo, e con payload JSON lunghi la
+	   lista diventava un muro di testo (clodia-platform#340). */
 	.live-steps li {
+		/* `flex: none` — il contenitore è una COLONNA FLEX con un tetto: senza
+		   questo gli `li` si stringono per stare dentro i 180px invece di far
+		   scorrere la lista, e `overflow: hidden` taglia il testo a metà glifo.
+		   È la seconda metà di #340, quella che il solo `nowrap` non chiude: a
+		   una riga per voce il tetto regge fino a ~10 chiamate, all'undicesima
+		   le righe tornano schiacciate — e `overflow-y: auto` qui sopra non
+		   entra MAI in funzione finché i figli possono restringersi. */
+		flex: none;
 		font-size: 11px;
+		line-height: 1.5;
 		color: var(--fg-muted);
 		font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 		overflow: hidden;
 		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.live-steps li.current {
 		color: var(--fg);
