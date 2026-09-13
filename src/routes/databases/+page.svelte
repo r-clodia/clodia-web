@@ -69,6 +69,31 @@
 		return s === 'active' ? 'attivo' : s === 'archived' ? 'archiviato' : 'orfano';
 	}
 
+	// ── MEMBER LIST delle collection (clodia-platform#341) ───────────────────
+	// Le tre liste sono CALCOLATE dal backend girando i grant `rag_read`/
+	// `rag_write` dei seed, non lette da un manifest: arrivano sempre tutte e
+	// tre, già ordinate per nome, e `[]` è una risposta — «nessun seed dichiara
+	// quel grant». Qui non si riordina e non si accorpa: l'ordine è quello del
+	// backend, e lettura e scrittura restano due gruppi perché chi ingesta non
+	// è chi consulta.
+
+	/** `null` = il campo non è arrivato affatto (server più vecchio della member
+	 *  list): è l'unico caso in cui la pagina non può dire «nessuno», perché non
+	 *  ha ricevuto la risposta, non ha ricevuto una risposta vuota. */
+	function lista(v: ReadonlyArray<string> | undefined): ReadonlyArray<string> | null {
+		return Array.isArray(v) ? v : null;
+	}
+
+	function assi(r: RagCollectionEntry): ReadonlyArray<{
+		label: string;
+		seeds: ReadonlyArray<string> | null;
+	}> {
+		return [
+			{ label: 'Lettura', seeds: lista(r.seeds_read) },
+			{ label: 'Scrittura', seeds: lista(r.seeds_write) }
+		];
+	}
+
 	onMount(() => {
 		void load();
 	});
@@ -132,18 +157,50 @@
 			{:else}
 				<div class="tbl">
 					{#each state.data.rag_collections as r (r.name)}
-						<div class="row">
-							<span class="cell name">{r.name}</span>
-							<span class="cell pack">{r.pack ?? '—'}</span>
-							<span class="cell tier">{r.tier}</span>
-							<span class="cell counts">{r.documents ?? 0} doc · {r.chunks ?? 0} chunk</span>
-							<span class="badge status-{r.status}">{statusLabel(r.status)}</span>
+						{@const bypass = lista(r.seeds_bypass) ?? []}
+						<div class="row rag">
+							<div class="line">
+								<span class="cell name">{r.name}</span>
+								<span class="cell pack">{r.pack ?? '—'}</span>
+								<span class="cell tier">{r.tier}</span>
+								<span class="cell counts">{r.documents ?? 0} doc · {r.chunks ?? 0} chunk</span>
+								<span class="badge status-{r.status}">{statusLabel(r.status)}</span>
+							</div>
+							<div class="members">
+								{#each assi(r) as asse}
+									<div class="axis">
+										<span class="axis-label">{asse.label}</span>
+										{#if asse.seeds === null}
+											<span class="unreported">non riportata dal server</span>
+										{:else if asse.seeds.length === 0}
+											<span class="none">Nessun seed dichiarato</span>
+										{:else}
+											{#each asse.seeds as s (s)}
+												<span class="seed">{s}</span>
+											{/each}
+										{/if}
+									</div>
+								{/each}
+								{#if bypass.length > 0}
+									<div class="axis bypass">
+										<span class="axis-label">Passano comunque</span>
+										{#each bypass as s (s)}
+											<span class="seed">{s}</span>
+										{/each}
+										<span class="why">
+											non sono membri: coprono <code>rag.*</code> ed entrano senza essere in
+											lista
+										</span>
+									</div>
+								{/if}
+							</div>
 						</div>
 					{/each}
 				</div>
 				<p class="hint small">
 					Le collection RAG sono sola lettura: il servizio non espone ancora un modo di
-					cancellarle.
+					cancellarle. Lettura e scrittura sono due liste distinte, calcolate dai grant
+					dei seed: «Nessun seed dichiarato» è una risposta, non un dato mancante.
 				</p>
 			{/if}
 		</section>
@@ -206,6 +263,68 @@
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		flex-wrap: wrap;
+	}
+	.row.rag {
+		flex-direction: column;
+		align-items: stretch;
+		gap: 6px;
+	}
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+	.members {
+		display: flex;
+		flex-direction: column;
+		gap: 3px;
+	}
+	.axis {
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
+		flex-wrap: wrap;
+		font-size: 11px;
+	}
+	.axis-label {
+		color: var(--fg-muted);
+		min-width: 120px;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		font-size: 10px;
+	}
+	.seed {
+		font-family: var(--mono);
+		font-size: 11px;
+		padding: 1px 6px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+	}
+	/* Il vuoto CALCOLATO e il campo mancante non sono la stessa cosa e non
+	   devono somigliarsi: il primo è una risposta, il secondo un silenzio. */
+	.none {
+		color: var(--fg-muted);
+		font-style: italic;
+	}
+	.unreported {
+		color: #e0a800;
+	}
+	/* Il bypass non è un terzo gruppo di membri: sta staccato e porta scritto
+	   accanto perché passa comunque. */
+	.axis.bypass {
+		border-top: 1px dashed var(--border);
+		padding-top: 4px;
+		margin-top: 1px;
+	}
+	.axis.bypass .axis-label {
+		color: #e0a800;
+	}
+	.why {
+		color: var(--fg-muted);
+	}
+	.why code {
+		font-family: var(--mono);
 	}
 	.cell {
 		font-size: 12px;
