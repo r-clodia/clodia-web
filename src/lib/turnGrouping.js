@@ -11,7 +11,7 @@
  *
  * La risposta NON è tornare a una bolla per turno (si riaprirebbe #243): è
  * SALDARE i blocchi consecutivi dello stesso turno in un'unica bolla continua,
- * lasciando a ciascuno le proprie affordance (copia, feedback, allegati, pill).
+ * lasciando a ciascuno le proprie affordance (copia, allegati, pill).
  * Qui si calcola solo DOVE cade una saldatura; il resto è CSS.
  *
  * Modulo JS e non TS di proposito, come `$lib/liveReply`:

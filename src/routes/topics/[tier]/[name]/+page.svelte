@@ -27,7 +27,6 @@
 		type PresenceState,
 		getChannelAliases,
 		postChannelMessage,
-		sendMessageFeedback,
 		resetChannelContext,
 		interruptChannel,
 		setChannelParticipant,
@@ -93,8 +92,6 @@
 	let info: ChannelInfo | null = null;
 	let messages: ChannelMessage[] = [];
 	let files: ChannelFile[] = [];
-	let feedbackByMessage: Record<string, 'thumbs_up' | 'thumbs_down'> = {};
-	let feedbackBusy = '';
 	const BOTTOM_THRESHOLD_PX = 64;
 	let isNearBottom = true;
 	let showNewMessages = false;
@@ -667,32 +664,6 @@
 			if (copiedMessageId === m.id) copiedMessageId = '';
 			copyResetTimer = null;
 		}, 1600);
-	}
-
-	async function rateMessage(m: ChannelMessage, rating: 'thumbs_up' | 'thumbs_down') {
-		if (feedbackBusy) return;
-		const question = rating === 'thumbs_up'
-			? 'Cosa è stato utile in questa risposta?'
-			: 'Cosa non ha funzionato in questa risposta?';
-		const answer = window.prompt(
-			`${question}\n\nDal tuo commento l’agente ricava una lezione astratta (un metodo da ripetere o evitare), depurata dai dati, riusata nei topic futuri. Il testo grezzo è conservato per audit: evita comunque dati riservati.`,
-			''
-		);
-		if (answer === null) return;
-		const comment = answer.trim();
-		if (!comment) {
-			loadErr = 'Inserisci un commento per registrare il feedback.';
-			return;
-		}
-		feedbackBusy = m.id;
-		try {
-			await sendMessageFeedback(tier, name, m.id, rating, comment);
-			feedbackByMessage = { ...feedbackByMessage, [m.id]: rating };
-		} catch (e) {
-			loadErr = e instanceof Error ? e.message : String(e);
-		} finally {
-			feedbackBusy = '';
-		}
 	}
 
 	// Pills di scelta: un agente può includere nel testo un marcatore invisibile
@@ -2032,7 +2003,7 @@
 					<!-- `cont-prev`/`cont-next`: le saldature che rimettono in UNA bolla i
 					     blocchi di uno stesso turno, che il backend pubblica come messaggi
 					     distinti da clodia-platform#243. Ogni blocco tiene le sue
-					     affordance — copia, feedback, allegati, pill — e perde solo
+					     affordance — copia, allegati, pill — e perde solo
 					     l'intestazione ripetuta, che è ciò che spezzava il discorso. -->
 					<div class="msg" id={`m-${m.id}`} class:ai={m.kind === 'ai'} class:system={m.kind === 'system'} class:mine={m.author === me}
 						class:cont-prev={cont.prev} class:cont-next={cont.next || (i === shownMessages.length - 1 && liveSaldate.size > 0)}>
@@ -2072,19 +2043,6 @@
 							<blockquote class="quote">{splitQuote(m.text).quote}</blockquote>
 						{/if}
 						<div class="text md">{@html renderMarkdown(linkifyFiles(stripChoices(splitQuote(m.text).body)))}</div>
-						{#if m.kind === 'ai'}
-							<div class="message-feedback" aria-label="Valuta la risposta">
-								<button type="button" class:on={feedbackByMessage[m.id] === 'thumbs_up'}
-									disabled={feedbackBusy === m.id}
-									title="Risposta utile"
-									on:click={() => rateMessage(m, 'thumbs_up')}>👍</button>
-								<button type="button" class:on={feedbackByMessage[m.id] === 'thumbs_down'}
-									disabled={feedbackBusy === m.id}
-									title="Risposta da migliorare"
-									on:click={() => rateMessage(m, 'thumbs_down')}>👎</button>
-								{#if feedbackBusy === m.id}<span>salvataggio…</span>{/if}
-							</div>
-						{/if}
 						{#if i === shownMessages.length - 1}
 							{@const ch = msgChoices(m.text)}
 							{#if ch}
@@ -2871,7 +2829,7 @@
 	   N bolle separate è ciò che a schermo sembra una risposta che collassa e
 	   ricomincia. Qui i bordi fra blocchi consecutivi si aprono e il gap del
 	   flex si annulla: resta UNA bolla che cresce. Il DOM non cambia — ogni
-	   blocco conserva id, ancora, copia, feedback, allegati e pill. */
+	   blocco conserva id, ancora, copia, allegati e pill. */
 	.msg { position: relative; }
 	.msg.cont-next {
 		border-bottom: 0;
@@ -2912,11 +2870,6 @@
 	.msg-head.head-cont .ts { font-size: 10px; }
 	.system-icon { font-size: 0.9rem; }
 	.msg-head { display: flex; gap: 7px; align-items: center; }
-	.message-feedback { display: flex; align-items: center; gap: 3px; margin-top: 5px; min-height: 24px; }
-	.message-feedback button { border: 0; border-radius: 999px; padding: 2px 6px; background: transparent; opacity: .55; cursor: pointer; filter: grayscale(1); }
-	.message-feedback button:hover, .message-feedback button.on { opacity: 1; filter: none; background: rgba(127,127,127,.12); }
-	.message-feedback button:disabled { cursor: wait; }
-	.message-feedback span { margin-left: 4px; color: var(--fg-muted); font-size: 10px; }
 	.author { font-weight: 700; font-size: 12.5px; }
 	.author-provider {
 		font-size: 10px;

@@ -5,13 +5,16 @@
  * Richiesta diretta dell'owner (issue clodia-platform#238): il pannello che
  * elencava per messaggio la lezione ricavata dal feedback — con il testo grezzo
  * del commento e il bottone che la cancellava — non sta più nella colonna
- * destra. Il feedback 👍/👎 sulla bolla RESTA: è l'atto, non il suo archivio.
+ * destra. All'epoca il feedback 👍/👎 sulla bolla RESTAVA: si tolse l'archivio,
+ * non l'atto. Con clodia-platform#416 è caduto anche l'atto, e la metà «deve
+ * restare» di questo guard è passata a `check-no-message-feedback.mjs`, che
+ * ora ne vieta il ritorno. Qui resta il solo pannello.
  *
  * Perché un controllo e non solo il diff: la metà rimossa e la metà rimasta
  * vivono nello stesso modulo e nascono dallo stesso gesto. Rimettere il pannello
  * costa una `<details>` e una chiamata a `getFeedbackLessons` — che il client
  * API continua a esportare, perché l'endpoint resta in piedi per gli altri
- * consumatori — e in review sembra un dettaglio del blocco feedback che è
+ * consumatori — e in review sembrava un dettaglio del blocco feedback che era
  * legittimamente lì accanto. Il danno sarebbe rimettere sotto gli occhi i
  * commenti grezzi che l'owner ha chiesto di togliere dalla pagina.
  *
@@ -33,13 +36,6 @@ const VIETATI = [
 	['feedback-lessons', 'lo stile della lista di lesson']
 ];
 
-/** Ciò che deve restare: il gesto di valutare un messaggio, che questa issue
- *  non tocca. Se sparisce anche quello, la rimozione è andata troppo in là. */
-const RICHIESTI = [
-	['sendMessageFeedback', "l'invio del feedback su un messaggio"],
-	['feedbackByMessage', 'lo stato 👍/👎 mostrato sulla bolla'],
-	["rateMessage(m, 'thumbs_up')", 'il bottone di valutazione sulla bolla']
-];
 
 const guasti = [];
 let src;
@@ -55,13 +51,10 @@ try {
 for (const [ago, cosa] of VIETATI) {
 	if (src.includes(ago)) guasti.push(`ricompare «${ago}» — ${cosa}`);
 }
-for (const [ago, cosa] of RICHIESTI) {
-	if (!src.includes(ago)) guasti.push(`manca «${ago}» — ${cosa}`);
-}
 
 if (guasti.length) {
 	console.error(`sidebar del topic (${PAGINA}):`);
 	for (const g of guasti) console.error(`  - ${g}`);
 	process.exit(1);
 }
-console.log('sidebar del topic: nessuna sezione «Lessons», feedback 👍/👎 intatto ✓');
+console.log('sidebar del topic: nessuna sezione «Lessons» ✓');
