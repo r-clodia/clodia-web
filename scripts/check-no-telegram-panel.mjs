@@ -1,21 +1,31 @@
 #!/usr/bin/env node
 /**
- * La sidebar del topic non mostra più la sezione «Telegram».
+ * Del meccanismo A di Telegram (gruppo «collegato» a uno scope dal pannello
+ * della sidebar) non resta né la sezione in pagina né il codice che la serviva.
  *
  * Richiesta diretta dell'owner (issue clodia-platform#240): il pannello che
  * collegava/scollegava un gruppo Telegram allo scope e teneva la mappa
- * uid → persona non sta più nella colonna destra.
+ * uid → persona non sta più nella colonna destra. Con clodia-platform#362
+ * (epic #359, Telegram diventa un ingress come gli altri) è sparito anche il
+ * codice client che lo alimentava: `telegram_binds` su `ChannelInfo.meta`,
+ * l'interfaccia `TelegramMount` e la funzione `setTopicTelegram()`.
  *
  * Cosa NON viene toccato, e va detto perché è la metà che confonde: il mount
- * (`meta.mounts`, `type: "telegram"`), l'endpoint
+ * lato server (`meta.mounts`, `type: "telegram"`), l'endpoint
  * `POST /api/topics/{tier}/{name}/telegram` e la skill `mention-relay` del
  * messaggero restano in piedi. I gruppi già collegati continuano a ricevere le
- * menzioni; sparisce la superficie che li configurava da questa pagina.
+ * menzioni; qui sparisce solo il client che li configurava. Resta in piedi
+ * anche tutto il Telegram «buono»: la connessione del bot (`connectTelegram`)
+ * e il recapito ai contatti umani.
  *
- * Perché un controllo e non solo il diff: `setTopicTelegram` è ancora esportato
- * dal client API — l'endpoint serve altri consumatori — quindi rimettere il
- * pannello costa una `<details>` e una chiamata, e in review sembra un dettaglio
- * di una sezione vicina che sta legittimamente lì accanto.
+ * Perché un controllo e non solo il diff: finché `setTopicTelegram` era ancora
+ * esportata dal client API, rimettere il pannello costava una `<details>` e una
+ * chiamata, e in review sembrava un dettaglio di una sezione vicina che sta
+ * legittimamente lì accanto. Ora che l'appiglio non c'è più, il modo di far
+ * tornare il pannello è ri-scrivere prima la funzione: per questo il controllo
+ * guarda DUE fonti indipendenti — la pagina e il client API — e non solo la
+ * pagina. Una sola delle due non basta a far ricomparire la superficie, ma
+ * ciascuna delle due è il primo passo per farlo.
  *
  * Il "testimone" di non-danno-collaterale era il pannello Proxy (condivideva
  * `.side-form`/`.side-form-row` col form Telegram): rimosso il 10 set 2026 e
@@ -23,54 +33,74 @@
  * diventato quella — se la rimozione di Telegram si portasse via ANCHE la
  * sezione egress/ingress, avrebbe sforato.
  *
- * LIMITE DICHIARATO: è un controllo sul TESTO del file, non sul DOM reso. Vede
+ * LIMITE DICHIARATO: è un controllo sul TESTO dei file, non sul DOM reso. Vede
  * le tracce elencate qui sotto, non un pannello equivalente scritto con altre
  * parole o spostato in un componente nuovo. Sopra questo soffitto serve un test
  * di render (nel repo oggi non c'è un runner di componenti).
  */
-import { readFileSync } from 'node:fs';
+import { leggiSorgente, senzaCommenti } from './lib/sorgente.mjs';
 
 const PAGINA = 'src/routes/topics/[tier]/[name]/+page.svelte';
+const CLIENT = 'src/lib/api/client.ts';
 
-/** Tracce del pannello dismesso: se una torna, torna la sezione in pagina. */
-const VIETATI = [
-	['Telegram</span>', 'il titolo della sezione rimossa'],
-	['setTopicTelegram', 'il collegamento/scollegamento del gruppo dalla pagina'],
-	['tgMount', 'il mount telegram letto dalla sidebar'],
-	['openTelegramForm', 'il bottone che apriva il form di collegamento'],
-	['saveTelegram', 'il salvataggio del gruppo e della mappa uid → persona'],
-	['unbindTelegram', 'lo scollegamento del gruppo'],
-	['tg-', 'gli stili del pannello (.tg-form, .tg-mode, .tg-people, .tg-row)']
-];
+/** Tracce della superficie dismessa, per file. Se una torna, torna il pannello
+ *  (in pagina) o l'appiglio per riscriverlo in dieci righe (nel client). */
+const VIETATI = {
+	[PAGINA]: [
+		['Telegram</span>', 'il titolo della sezione rimossa'],
+		['setTopicTelegram', 'il collegamento/scollegamento del gruppo dalla pagina'],
+		['tgMount', 'il mount telegram letto dalla sidebar'],
+		['openTelegramForm', 'il bottone che apriva il form di collegamento'],
+		['saveTelegram', 'il salvataggio del gruppo e della mappa uid → persona'],
+		['unbindTelegram', 'lo scollegamento del gruppo'],
+		['tg-', 'gli stili del pannello (.tg-form, .tg-mode, .tg-people, .tg-row)']
+	],
+	[CLIENT]: [
+		['setTopicTelegram', 'la chiamata che collegava/scollegava il gruppo'],
+		['TelegramMount', 'il tipo del mount telegram di uno scope'],
+		['telegram_binds', 'i gruppi collegati sul meta del topic']
+	]
+};
 
-/** Ciò che deve restare: la sezione egress/ingress locale, vicina di posto
- *  alla Telegram rimossa. Se sparisse anche lei, la rimozione ha sforato. */
-const RICHIESTI = [
-	['getTopicEgressScope', 'la lettura dell\'egress/ingress locale del topic'],
-	['egress-panel', 'la sezione che ha preso il posto del pannello Proxy']
-];
+/** Ciò che deve restare. In pagina: la sezione egress/ingress locale, vicina di
+ *  posto alla Telegram rimossa. Nel client: il Telegram che serve ancora —
+ *  la connessione del bot — e la lettura dell'egress/ingress del topic. Se
+ *  sparissero anche loro, la rimozione ha sforato. */
+const RICHIESTI = {
+	[PAGINA]: [
+		['getTopicEgressScope', "la lettura dell'egress/ingress locale del topic"],
+		['egress-panel', 'la sezione che ha preso il posto del pannello Proxy']
+	],
+	[CLIENT]: [
+		['getTopicEgressScope', "l'endpoint dell'egress/ingress locale del topic"],
+		['connectTelegram', 'la connessione del bot Telegram, che resta un tool vivo']
+	]
+};
 
 const guasti = [];
-let src;
-try {
-	src = readFileSync(PAGINA, 'utf8');
-} catch {
-	// Un ENOENT qui è un esito: la pagina è stata spostata e il controllo non
-	// guarda più niente. Meglio rosso che verde per assenza.
-	console.error(`pannello Telegram: ${PAGINA} assente — spostato o rinominato`);
-	process.exit(1);
+
+for (const [file, tracce] of Object.entries(VIETATI)) {
+	const src = leggiSorgente(file, guasti, 'superficie del meccanismo A rimossa');
+	if (src === null) continue;
+	// I nomi rimossi compaiono ancora nei commenti che spiegano perché non ci
+	// sono più: si cerca nel codice, non nella prosa (web#181).
+	const codice = senzaCommenti(src);
+	for (const [ago, cosa] of tracce) {
+		if (codice.includes(ago)) guasti.push(`${file}: ricompare «${ago}» — ${cosa}`);
+	}
 }
 
-for (const [ago, cosa] of VIETATI) {
-	if (src.includes(ago)) guasti.push(`ricompare «${ago}» — ${cosa}`);
-}
-for (const [ago, cosa] of RICHIESTI) {
-	if (!src.includes(ago)) guasti.push(`manca «${ago}» — ${cosa}`);
+for (const [file, tracce] of Object.entries(RICHIESTI)) {
+	const src = leggiSorgente(file, guasti, 'ciò che la rimozione non doveva toccare');
+	if (src === null) continue;
+	for (const [ago, cosa] of tracce) {
+		if (!src.includes(ago)) guasti.push(`${file}: manca «${ago}» — ${cosa}`);
+	}
 }
 
 if (guasti.length) {
-	console.error(`sidebar del topic (${PAGINA}):`);
+	console.error('meccanismo A Telegram nella webui:');
 	for (const g of guasti) console.error(`  - ${g}`);
 	process.exit(1);
 }
-console.log('sidebar del topic: nessuna sezione «Telegram», sezione egress/ingress intatta ✓');
+console.log('meccanismo A Telegram: nessuna sezione in pagina, nessun client morto, egress/ingress e bot intatti ✓');
