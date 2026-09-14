@@ -651,8 +651,6 @@ export interface ChannelInfo {
 		tier?: string;
 		status?: string;
 		deadline?: string | null;
-		/** I gruppi Telegram collegati allo scope. */
-		telegram_binds?: TelegramMount[];
 		/** Path (dentro il topic) dell'immagine con cui la stanza si presenta.
 		 *  La imposta solo l'owner; `logo_kind` è il tipo rilevato dai byte al
 		 *  caricamento — il file non ha estensione, quindi chi lo serve non
@@ -2399,37 +2397,14 @@ export async function downloadTopicZip(tier: string, name: string): Promise<void
 	URL.revokeObjectURL(url);
 }
 
-/** Un gruppo Telegram collegato a un topic. Le menzioni delle persone mappate
- *  vengono riportate lì, con il link alla conversazione. */
-export interface TelegramMount {
-	readonly name?: string;
-	readonly config?: {
-		readonly chat_id?: string;
-		/** `notify` = solo il fatto · `excerpt` = anche la riga della menzione. */
-		readonly mode?: 'notify' | 'excerpt';
-		/** Chi è chi. La chiave è l'uid Telegram quando si conosce, altrimenti
-		 *  l'handle: l'uid è stabile, l'handle è quello che una persona conosce
-		 *  di sé. Il valore porta il nome su Clodia e l'handle da scrivere nel
-		 *  messaggio. La forma piatta `chiave → "principal"` è quella di prima
-		 *  del 10 ago 2026 e resta letta. Chi non è qui non viene avvisato. */
-		readonly people?: Record<string, string | { principal: string; username?: string }>;
-	};
-}
-
-/** POST `/api/topics/{tier}/{name}/telegram` — collega, aggiorna o scollega.
- *  Una chiamata sola per le tre cose: nella UI sono un gesto solo, e separarle
- *  farebbe esistere lo stato «collegato ma senza nessuno mappato», cioè il
- *  collegamento che sembra funzionare e non avvisa nessuno. */
-export async function setTopicTelegram(
-	tier: string, name: string,
-	payload: { chat_id?: string; mode?: string;
-	           people?: Record<string, string | { principal: string; username?: string }>;
-	           action?: 'unbind'; mount?: string },
-	opts: RequestOptions = {}
-): Promise<{ ok: boolean; mount?: TelegramMount; unbound?: string }> {
-	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/telegram`,
-		payload, opts);
-}
+/* Il «collegamento» di un gruppo Telegram a uno scope (meccanismo A) non ha più
+ * client qui: il pannello che lo configurava è stato rimosso con
+ * clodia-platform#240 e il codice rimasto — il tipo del mount, il campo dei
+ * gruppi collegati sul meta del topic e la POST su
+ * `/api/topics/{tier}/{name}/telegram` — con #362. Telegram entra ora dalla
+ * porta di tutti, come ingress `tg:` nella whitelist (epic #359); l'endpoint
+ * lato server resta per i gruppi già collegati, ma non lo chiama più questa UI.
+ * La guard scripts/check-no-telegram-panel.mjs tiene il posto vuoto. */
 
 /** POST `/api/topics/{tier}/{name}/logo` — immagine del topic (solo owner).
  *  I byte viaggiano in base64: un logo è piccolo per definizione. */
