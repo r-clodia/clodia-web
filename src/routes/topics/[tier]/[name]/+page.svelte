@@ -42,6 +42,7 @@
 		downloadTopicZip,
 		channelFileUrl,
 		getTopicEgressScope,
+		editTopicEgressScope,
 		setTopicLogo,
 		clearTopicLogo,
 		API_BASE_URL,
@@ -1122,6 +1123,45 @@
 		} catch (e) {
 			egressScope = null;
 			egressScopeErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	// Aggiunta/rimozione a mano (18 set 2026, richiesta di Davide): owner-only
+	// lato server (`_require_scope_owner` + verbo gated `topic.egress_add`/
+	// `ingress_add`/`*_remove`), quindi il form compare solo per `isOwner` —
+	// nasconderlo per gli altri evita un 403 prevedibile, non è la guardia vera.
+	let egressNewDir: 'egress' | 'ingress' = 'egress';
+	let egressNewUri = '';
+	let egressBusy = false;
+	let egressAddErr = '';
+
+	async function addEgressScope() {
+		const uri = egressNewUri.trim();
+		if (!uri || egressBusy) return;
+		egressBusy = true;
+		egressAddErr = '';
+		try {
+			await editTopicEgressScope(tier, name, egressNewDir, 'allow', uri);
+			egressNewUri = '';
+			await loadEgressScope();
+		} catch (e) {
+			egressAddErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			egressBusy = false;
+		}
+	}
+
+	async function removeEgressScope(direction: 'egress' | 'ingress', uri: string) {
+		if (egressBusy) return;
+		egressBusy = true;
+		egressAddErr = '';
+		try {
+			await editTopicEgressScope(tier, name, direction, 'revoke', uri);
+			await loadEgressScope();
+		} catch (e) {
+			egressAddErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			egressBusy = false;
 		}
 	}
 
@@ -2620,7 +2660,16 @@
 							<span class="egress-group-label">Egress ({egressScope.egress.length})</span>
 							{#if egressScope.egress.length}
 								<ul class="mcp-list">
-									{#each egressScope.egress as u}<li><span class="mcp-who">{u}</span></li>{/each}
+									{#each egressScope.egress as u}
+										<li>
+											<span class="mcp-who">{u}</span>
+											{#if isOwner}
+												<button type="button" class="egress-remove" disabled={egressBusy}
+													title="Togli dalle voci locali di questo topic"
+													on:click={() => removeEgressScope('egress', u)}>✕</button>
+											{/if}
+										</li>
+									{/each}
 								</ul>
 							{:else}
 								<p class="muted">Nessuna voce locale.</p>
@@ -2630,12 +2679,37 @@
 							<span class="egress-group-label">Ingress ({egressScope.ingress.length})</span>
 							{#if egressScope.ingress.length}
 								<ul class="mcp-list">
-									{#each egressScope.ingress as u}<li><span class="mcp-who">{u}</span></li>{/each}
+									{#each egressScope.ingress as u}
+										<li>
+											<span class="mcp-who">{u}</span>
+											{#if isOwner}
+												<button type="button" class="egress-remove" disabled={egressBusy}
+													title="Togli dalle voci locali di questo topic"
+													on:click={() => removeEgressScope('ingress', u)}>✕</button>
+											{/if}
+										</li>
+									{/each}
 								</ul>
 							{:else}
 								<p class="muted">Nessuna voce locale.</p>
 							{/if}
 						</div>
+						{#if isOwner}
+							<form class="egress-add-form" on:submit|preventDefault={addEgressScope}>
+								<select bind:value={egressNewDir} disabled={egressBusy}>
+									<option value="egress">Egress</option>
+									<option value="ingress">Ingress</option>
+								</select>
+								<input type="text" placeholder="es. gdrive:folder/1AbC…" bind:value={egressNewUri}
+									disabled={egressBusy} />
+								<button type="submit" class="link-btn" disabled={egressBusy || !egressNewUri.trim()}>
+									{egressBusy ? '…' : '+ aggiungi'}
+								</button>
+							</form>
+							{#if egressAddErr}
+								<p class="cred-hint" role="alert">{egressAddErr}</p>
+							{/if}
+						{/if}
 					{/if}
 					<div class="remote-actions">
 						<a class="link-btn" href="/settings/egress">Impostazioni egress/ingress globali →</a>
@@ -3334,6 +3408,16 @@
 	.mcp-who { font-weight: 600; font-family: var(--mono); }
 	.egress-group { margin: 8px 0; }
 	.egress-group-label { font-size: 11px; font-weight: 600; color: var(--fg-muted); }
+	.egress-remove { background: transparent; border: none; color: var(--fg-muted);
+		cursor: pointer; font-size: 11px; padding: 0 2px; line-height: 1; }
+	.egress-remove:hover:not(:disabled) { color: var(--danger, #c0392b); }
+	.egress-remove:disabled { opacity: .4; cursor: default; }
+	.egress-add-form { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+	.egress-add-form select { font: inherit; font-size: 12px; padding: 3px 4px;
+		border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+	.egress-add-form input { flex: 1 1 140px; min-width: 0; font: inherit; font-size: 12px;
+		padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px;
+		background: var(--bg); color: var(--fg); }
 
 	/* Cosa attraversa il gate: sotto la domanda, prima dei bottoni. */
 	.gate-crosses { display: block; font-size: 11px; opacity: .75; margin-top: 4px; }
