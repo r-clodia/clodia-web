@@ -2432,6 +2432,20 @@ export async function getTopicEgressScope(
 	return apiGet(`/api/observe/whitelist/scope/${encodeURIComponent(tier)}/${encodeURIComponent(name)}`, opts);
 }
 
+/** POST `/api/observe/whitelist/scope/{tier}/{name}/{direction}/{action}` —
+ *  aggiunge/toglie una voce egress/ingress LOCALE a questo topic (18 set
+ *  2026, sidebar del topic). Owner-only + verbo gated lato server
+ *  (`topic.egress_add`/`ingress_add`/`*_remove`, GATE_WALLS): un 403 qui
+ *  significa che il chiamante non ha entrambi i requisiti, non un guasto. */
+export async function editTopicEgressScope(
+	tier: string, name: string, direction: 'egress' | 'ingress', action: 'allow' | 'revoke',
+	uri: string, opts: RequestOptions = {}
+): Promise<{ ok: boolean; added?: boolean; removed?: boolean; uri?: string }> {
+	return apiPost(
+		`/api/observe/whitelist/scope/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/${direction}/${action}`,
+		{ uri }, opts);
+}
+
 /** POST `/api/topics/{tier}/{name}/archive` — imposta status=archived. */
 export async function archiveTopic(tier: string, name: string, opts: RequestOptions = {}): Promise<{ archived: boolean }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/archive`, {}, opts);
