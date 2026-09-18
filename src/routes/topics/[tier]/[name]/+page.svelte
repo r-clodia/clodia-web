@@ -1165,6 +1165,61 @@
 		}
 	}
 
+	// Icone rapide Telegram/Drive (18 set 2026, richiesta di Davide: un
+	// pannello simile a quello Telegram di prima — rimosso il 19 ago perché
+	// gestiva il BIND del canale — ma senza bind, solo whitelist). Un click
+	// apre un dialog con un solo campo; la conferma scrive in ENTRAMBE le
+	// direzioni (egress + ingress), perché per Telegram/Drive si usano quasi
+	// sempre insieme nello stesso topic — chiedere due volte la stessa cosa
+	// sarebbe l'attrito che questo widget vuole togliere.
+	let quickAddKind: 'telegram' | 'gdrive' | null = null;
+	let quickAddValue = '';
+	let quickAddBusy = false;
+	let quickAddErr = '';
+
+	function openQuickAdd(kind: 'telegram' | 'gdrive') {
+		quickAddKind = kind;
+		quickAddValue = '';
+		quickAddErr = '';
+	}
+
+	// Solo Telegram ha bisogno di un prefisso qui: un link Drive incollato
+	// (`https://drive.google.com/drive/folders/...`) lo normalizza già
+	// `egress.canonical()` lato server — duplicarlo qui sarebbe una seconda
+	// copia della stessa regola, e le due divergerebbero al primo formato
+	// nuovo che Drive introduce.
+	function quickAddUri(): string {
+		const v = quickAddValue.trim();
+		if (quickAddKind !== 'telegram') return v;
+		if (v.startsWith('tg:') || v.startsWith('@') || /^-?\d+$/.test(v)) {
+			return v.startsWith('tg:') ? v : `tg:${v}`;
+		}
+		return v;
+	}
+
+	async function confirmQuickAdd() {
+		const uri = quickAddUri();
+		if (!uri || quickAddBusy) return;
+		quickAddBusy = true;
+		quickAddErr = '';
+		try {
+			// Le due direzioni sono indipendenti lato server: se una fallisce
+			// (es. forma non concedibile) l'altra può comunque essere andata a
+			// buon fine — riportiamo l'errore ma senza fingere che nulla sia
+			// stato scritto.
+			await Promise.all([
+				editTopicEgressScope(tier, name, 'egress', 'allow', uri),
+				editTopicEgressScope(tier, name, 'ingress', 'allow', uri)
+			]);
+			quickAddKind = null;
+			await loadEgressScope();
+		} catch (e) {
+			quickAddErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			quickAddBusy = false;
+		}
+	}
+
 	function normalizeTopicStatus(status?: string | null): string {
 		const raw = String(status ?? 'active').trim().toLowerCase().replace(/[\s-]+/g, '_');
 		if (!raw || raw === 'attivo' || raw === 'idle' || raw === 'urgent') return 'active';
@@ -2695,6 +2750,12 @@
 							{/if}
 						</div>
 						{#if isOwner}
+							<div class="egress-quick-row">
+								<button type="button" class="egress-quick-btn" title="Aggiungi un gruppo/chat Telegram"
+									on:click={() => openQuickAdd('telegram')}>📨 Telegram</button>
+								<button type="button" class="egress-quick-btn" title="Aggiungi una cartella Drive"
+									on:click={() => openQuickAdd('gdrive')}>📁 Drive</button>
+							</div>
 							<form class="egress-add-form" on:submit|preventDefault={addEgressScope}>
 								<select bind:value={egressNewDir} disabled={egressBusy}>
 									<option value="egress">Egress</option>
@@ -2758,6 +2819,41 @@
 			<input type="file" accept="image/png,image/jpeg,image/gif,image/webp"
 				on:change={caricaLogo} disabled={logoBusy} hidden />
 		</label>
+	</div>
+</Modal>
+
+<!-- Icona rapida Telegram/Drive (18 set 2026): un campo solo, per uno schema
+     ricavabile dall'input senza dover ricordare la notazione URI. Scrive
+     ENTRAMBE le direzioni (egress + ingress) — la guardia vera resta lato
+     server, questo dialog non fa altro che comporre la stessa chiamata che
+     il form manuale sotto fa già. -->
+<Modal open={quickAddKind !== null} dismissable={!quickAddBusy} maxWidth={380}
+	on:close={() => (quickAddKind = null)}>
+	<h2 slot="title">
+		{quickAddKind === 'telegram' ? '📨 Aggiungi Telegram' : '📁 Aggiungi Drive'}
+	</h2>
+	<p class="meta-note">
+		{#if quickAddKind === 'telegram'}
+			Chat id del gruppo (es. <code>-1001234567890</code>) o handle di una
+			persona (es. <code>@nomeutente</code>). Aggiunta come destinazione
+			ammessa e fonte fidata <b>solo in questo topic</b>.
+		{:else}
+			Incolla il link della cartella Drive (dalla barra del browser).
+			Aggiunta come destinazione ammessa e fonte fidata <b>solo in questo
+			topic</b>.
+		{/if}
+	</p>
+	<input type="text" class="egress-quick-input"
+		placeholder={quickAddKind === 'telegram' ? '-1001234567890 oppure @nomeutente'
+			: 'https://drive.google.com/drive/folders/…'}
+		bind:value={quickAddValue} disabled={quickAddBusy}
+		on:keydown={(e) => e.key === 'Enter' && confirmQuickAdd()} />
+	{#if quickAddErr}<p class="cred-hint" role="alert">{quickAddErr}</p>{/if}
+	<div class="remote-actions" slot="actions">
+		<button type="button" class="link-btn" disabled={quickAddBusy || !quickAddValue.trim()}
+			on:click={confirmQuickAdd}>
+			{quickAddBusy ? '…' : '+ aggiungi'}
+		</button>
 	</div>
 </Modal>
 
@@ -3418,6 +3514,13 @@
 	.egress-add-form input { flex: 1 1 140px; min-width: 0; font: inherit; font-size: 12px;
 		padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px;
 		background: var(--bg); color: var(--fg); }
+	.egress-quick-row { display: flex; gap: 6px; margin-top: 8px; }
+	.egress-quick-btn { font: inherit; font-size: 12px; padding: 4px 10px; cursor: pointer;
+		border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--fg); }
+	.egress-quick-btn:hover { border-color: var(--accent); }
+	.egress-quick-input { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px;
+		padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
+		background: var(--bg); color: var(--fg); margin-top: 8px; }
 
 	/* Cosa attraversa il gate: sotto la domanda, prima dei bottoni. */
 	.gate-crosses { display: block; font-size: 11px; opacity: .75; margin-top: 4px; }
