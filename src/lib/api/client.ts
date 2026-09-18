@@ -276,6 +276,7 @@ import type {
 	InstanceProfile,
 	Pack,
 	PackDrift,
+	PackUpdateAllResult,
 	Plugin,
 	Rule,
 	RuleDetail,
@@ -1932,6 +1933,16 @@ export async function updatePack(
  *  si sente in diritto di ripetere. */
 export async function checkPackDrift(name: string, opts: RequestOptions = {}): Promise<PackDrift> {
 	return apiPost(`/clodia/packs/${encodeURIComponent(name)}/drift`, {}, opts);
+}
+
+/** POST `/clodia/packs/update-all` — Update + setup LOGICO (non un turno
+ *  d'agente) per ogni pack con upstream dichiarato (18 set 2026, richiesta
+ *  di Davide). Un pack che fallisce non blocca gli altri: il report elenca
+ *  ok/errore per ciascuno. */
+export async function updateAllPacks(
+	opts: RequestOptions = {}
+): Promise<{ packs: ReadonlyArray<PackUpdateAllResult>; agents_restarted: number }> {
+	return apiPost('/clodia/packs/update-all', {}, opts);
 }
 
 /** GET `/clodia/rules` — deduplicated rule catalog. */
