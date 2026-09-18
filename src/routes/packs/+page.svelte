@@ -10,10 +10,11 @@
 		deletePack,
 		deletePlugin,
 		updatePack as apiUpdatePack,
+		updateAllPacks as apiUpdateAllPacks,
 		checkPackUpdate as apiCheckPackUpdate,
 		checkPackDrift as apiCheckPackDrift
 	} from '$lib/api/client';
-	import type { Pack, PackDrift, PackDriftAgent, Plugin } from '$lib/api/types';
+	import type { Pack, PackDrift, PackDriftAgent, PackUpdateAllResult, Plugin } from '$lib/api/types';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import PluginNode from '$lib/components/PluginNode.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
@@ -129,6 +130,40 @@
 			toastError(errorMessage(err).message);
 		} finally {
 			updating = null;
+		}
+	}
+
+	// "Aggiorna tutto" (18 set 2026, richiesta di Davide): un click, Update +
+	// setup LOGICO (non un turno d'agente — `pack_ops_logical`, clodia-logic)
+	// per ogni pack con upstream. Non sostituisce `setupPack` sopra: quello
+	// resta per il singolo pack quando il logico ha lasciato gap (es. un
+	// ingest RAG, che richiede un topic e non è automatizzato).
+	let updatingAll = false;
+	let updateAllReport: ReadonlyArray<PackUpdateAllResult> | null = null;
+
+	async function updateAllPacks() {
+		if (updatingAll) return;
+		updatingAll = true;
+		updateAllReport = null;
+		try {
+			const r = await apiUpdateAllPacks();
+			updateAllReport = r.packs;
+			const ok = r.packs.filter((p) => p.updated).length;
+			const conGap = r.packs.filter((p) => p.updated && !p.setup_done).length;
+			const falliti = r.packs.length - ok;
+			const pezzi = [`${ok}/${r.packs.length} aggiornati`];
+			if (conGap) pezzi.push(`${conGap} con gap di setup`);
+			if (falliti) pezzi.push(`${falliti} falliti`);
+			(falliti ? toastError : toastSuccess)(
+				`${pezzi.join(' · ')} · ${r.agents_restarted} agenti riavviati`
+			);
+			checkResults = {};
+			driftResults = {};
+			await load();
+		} catch (err) {
+			toastError(errorMessage(err).message);
+		} finally {
+			updatingAll = false;
 		}
 	}
 
@@ -298,11 +333,43 @@
 	</div>
 	<div class="head-actions">
 		{#if $isAdmin}<button type="button" class="add-btn" on:click={openAdd}>+ Importa</button>{/if}
+		{#if $isAdmin}
+			<button type="button" class="update-all-btn" on:click={updateAllPacks} disabled={updatingAll}
+				title="Update + setup logico per ogni pack con upstream dichiarato">
+				{updatingAll ? 'Aggiorno tutto…' : '⟳ Aggiorna tutto'}
+			</button>
+		{/if}
 		<button type="button" on:click={load} disabled={state.kind === 'loading'}>
 			{state.kind === 'loading' ? 'Loading…' : 'Reload'}
 		</button>
 	</div>
 </header>
+
+{#if updateAllReport}
+	<div class="update-all-report">
+		<div class="update-all-report-head">
+			<span>Esito "Aggiorna tutto"</span>
+			<button type="button" class="ghost" on:click={() => (updateAllReport = null)}>✕</button>
+		</div>
+		<ul class="update-all-report-list">
+			{#each updateAllReport as r (r.name)}
+				<li class:failed={!r.updated} class:has-gaps={r.updated && !r.setup_done}>
+					<span class="pack-name">{r.name}</span>
+					{#if !r.updated}
+						<span class="report-detail">update fallito — {r.error}</span>
+					{:else if r.setup_done}
+						<span class="report-detail">v{r.version} · setup completo</span>
+					{:else}
+						<span class="report-detail">
+							v{r.version} · {r.setup_gaps?.length ?? 0} gap di setup:
+							{(r.setup_gaps ?? []).map((g) => g.detail).join(' · ')}
+						</span>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	</div>
+{/if}
 
 {#if showAdd}
 	<div
@@ -842,6 +909,51 @@
 		border: 1px solid rgba(232, 93, 117, 0.5);
 		color: #e85d75;
 		font-size: 12px;
+	}
+	.update-all-btn {
+		font-weight: 600;
+	}
+	.update-all-report {
+		margin: 0 0 16px;
+		padding: 10px 14px;
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		background: rgba(127, 127, 127, 0.05);
+	}
+	.update-all-report-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		font-weight: 600;
+		font-size: 13px;
+		margin-bottom: 8px;
+	}
+	.update-all-report-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		font-size: 12px;
+	}
+	.update-all-report-list li {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.update-all-report-list .pack-name {
+		font-weight: 600;
+		font-family: var(--mono);
+	}
+	.update-all-report-list .report-detail {
+		color: var(--fg-muted);
+	}
+	.update-all-report-list li.failed .report-detail {
+		color: #e85d75;
+	}
+	.update-all-report-list li.has-gaps .report-detail {
+		color: #d18b1a;
 	}
 	.segmented {
 		display: inline-flex;

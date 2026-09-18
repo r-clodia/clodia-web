@@ -769,6 +769,20 @@ export interface PackDrift {
 	readonly agents?: ReadonlyArray<PackDriftAgent>;
 }
 
+/** Esito per-pack di `POST /clodia/packs/update-all` (18 set 2026): un
+ *  elemento dell'array `packs` nella risposta. `setup_gaps` è ciò che il
+ *  setup LOGICO non ha saputo fare da solo (installazione fallita, risorsa
+ *  RAG da ingerire manualmente, …) — non un errore dell'update in sé. */
+export interface PackUpdateAllResult {
+	readonly name: string;
+	readonly updated: boolean;
+	readonly error?: string;
+	readonly version?: string;
+	readonly setup_done?: boolean;
+	readonly setup_gaps?: ReadonlyArray<{ readonly kind: string; readonly detail: string }>;
+	readonly setup_actions?: ReadonlyArray<string>;
+}
+
 /* ------------------------------------------------------------------------ */
 /*  TOPICS — Clodia topic registry (read-only)                              */
 /* ------------------------------------------------------------------------ */
