@@ -659,6 +659,10 @@ export interface ChannelInfo {
 		logo?: string;
 		logo_kind?: string;
 		schema_version?: number;
+		/** Cartelle condivise Mac↔container agganciate a questo topic (20 set
+		 *  2026): a differenza di Drive un BIND filesystem reale, non uno
+		 *  specchio — appaiono come local/<name>/. */
+		local_folders?: { name: string }[];
 	};
 	summary?: string;
 	tldr?: string;
@@ -2473,4 +2477,17 @@ export async function setTopicStatus(tier: string, name: string, status: string,
 /** POST `/api/topics/{tier}/{name}/deadline` — imposta la deadline (YYYY-MM-DD|null). */
 export async function setTopicDeadline(tier: string, name: string, deadline: string | null, opts: RequestOptions = {}): Promise<{ deadline: string | null }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/deadline`, { deadline }, opts);
+}
+
+/** POST `/api/topics/{tier}/{name}/local-folder` — cartella condivisa
+ *  Mac↔container (20 set 2026): a differenza di Drive è un BIND filesystem
+ *  reale su una radice unica del gateway, non uno specchio. Owner-only +
+ *  verbo gated lato server (GATE_WALLS, simmetrico a drive_folder_add/remove):
+ *  un 403 qui significa che il chiamante non ha entrambi i requisiti. */
+export async function addLocalFolder(tier: string, name: string, mount: string, opts: RequestOptions = {}): Promise<{ ok: boolean; local_folder: { name: string } }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/local-folder`, { action: 'add', mount }, opts);
+}
+
+export async function removeLocalFolder(tier: string, name: string, mount: string, opts: RequestOptions = {}): Promise<{ ok: boolean; removed: string }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/local-folder`, { action: 'remove', mount }, opts);
 }

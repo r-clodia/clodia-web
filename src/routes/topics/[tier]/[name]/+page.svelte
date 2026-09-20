@@ -48,6 +48,8 @@
 		API_BASE_URL,
 		setTopicStatus,
 		setTopicDeadline,
+		addLocalFolder,
+		removeLocalFolder,
 		TOPIC_STATUSES,
 		type ChannelInfo,
 		type ChannelMessage,
@@ -1217,6 +1219,57 @@
 			quickAddErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
 			quickAddBusy = false;
+		}
+	}
+
+	// Cartella condivisa Mac↔container (20 set 2026, seguito della richiesta di
+	// Davide su Telegram/Drive): a differenza del quick-add sopra, qui non si
+	// scrive una whitelist ma si dichiara un BIND filesystem reale — verbo
+	// diverso lato server (topic.local_folder_add/remove), quindi stato e
+	// dialog separati anche qui.
+	let localFolderDialogOpen = false;
+	let localFolderValue = '';
+	let localFolderBusy = false;
+	let localFolderErr = '';
+
+	function openLocalFolderDialog() {
+		localFolderDialogOpen = true;
+		localFolderValue = '';
+		localFolderErr = '';
+	}
+
+	async function confirmAddLocalFolder() {
+		const mount = localFolderValue.trim();
+		if (!mount || localFolderBusy) return;
+		localFolderBusy = true;
+		localFolderErr = '';
+		try {
+			const r = await addLocalFolder(tier, name, mount);
+			localFolderDialogOpen = false;
+			if (info) {
+				const existing = info.meta.local_folders ?? [];
+				info = { ...info, meta: { ...info.meta, local_folders: [...existing, r.local_folder] } };
+			}
+		} catch (e) {
+			localFolderErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			localFolderBusy = false;
+		}
+	}
+
+	async function confirmRemoveLocalFolder(mount: string) {
+		if (localFolderBusy) return;
+		localFolderBusy = true;
+		try {
+			await removeLocalFolder(tier, name, mount);
+			if (info) {
+				const existing = info.meta.local_folders ?? [];
+				info = { ...info, meta: { ...info.meta, local_folders: existing.filter((f) => f.name !== mount) } };
+			}
+		} catch (e) {
+			localFolderErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			localFolderBusy = false;
 		}
 	}
 
@@ -2755,7 +2808,21 @@
 									on:click={() => openQuickAdd('telegram')}>📨 Telegram</button>
 								<button type="button" class="egress-quick-btn" title="Aggiungi una cartella Drive"
 									on:click={() => openQuickAdd('gdrive')}>📁 Drive</button>
+								<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
+									on:click={openLocalFolderDialog}>🗂️ Cartella Mac</button>
 							</div>
+							{#if (info?.meta.local_folders ?? []).length > 0}
+								<ul class="egress-list">
+									{#each info?.meta.local_folders ?? [] as f (f.name)}
+										<li>
+											<code>local/{f.name}/</code>
+											<button type="button" class="egress-remove" disabled={localFolderBusy}
+												title="Sgancia (il contenuto reale resta sul Mac)"
+												on:click={() => confirmRemoveLocalFolder(f.name)}>✕</button>
+										</li>
+									{/each}
+								</ul>
+							{/if}
 							<form class="egress-add-form" on:submit|preventDefault={addEgressScope}>
 								<select bind:value={egressNewDir} disabled={egressBusy}>
 									<option value="egress">Egress</option>
@@ -2853,6 +2920,32 @@
 		<button type="button" class="link-btn" disabled={quickAddBusy || !quickAddValue.trim()}
 			on:click={confirmQuickAdd}>
 			{quickAddBusy ? '…' : '+ aggiungi'}
+		</button>
+	</div>
+</Modal>
+
+<!-- Cartella condivisa Mac↔container (20 set 2026): a differenza del dialog
+     sopra non scrive una whitelist, dichiara un BIND filesystem reale su una
+     radice unica del gateway — il nome scelto qui è insieme il mount
+     (local/<nome>/) e la sottocartella condivisa sul Mac. -->
+<Modal open={localFolderDialogOpen} dismissable={!localFolderBusy} maxWidth={380}
+	on:close={() => (localFolderDialogOpen = false)}>
+	<h2 slot="title">🗂️ Aggancia cartella condivisa</h2>
+	<p class="meta-note">
+		Un nome semplice (es. <code>tomato-amministrazione</code>): diventa sia
+		la sottocartella su <code>ClodiaShared/</code> sul Mac sia il mount
+		<code>local/{localFolderValue.trim() || '&lt;nome&gt;'}/</code> nel topic.
+		Bind reale, non uno specchio: scrivere da un lato si vede
+		immediatamente dall'altro.
+	</p>
+	<input type="text" class="egress-quick-input" placeholder="tomato-amministrazione"
+		bind:value={localFolderValue} disabled={localFolderBusy}
+		on:keydown={(e) => e.key === 'Enter' && confirmAddLocalFolder()} />
+	{#if localFolderErr}<p class="cred-hint" role="alert">{localFolderErr}</p>{/if}
+	<div class="remote-actions" slot="actions">
+		<button type="button" class="link-btn" disabled={localFolderBusy || !localFolderValue.trim()}
+			on:click={confirmAddLocalFolder}>
+			{localFolderBusy ? '…' : '+ aggancia'}
 		</button>
 	</div>
 </Modal>
