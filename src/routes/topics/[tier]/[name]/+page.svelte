@@ -1234,7 +1234,10 @@
 
 	function openLocalFolderDialog() {
 		localFolderDialogOpen = true;
-		localFolderValue = '';
+		// Precompilato col codename del topic (20→23 set 2026): un nome scelto
+		// a mano rendeva ambiguo su ClodiaShared/ quale topic fosse quella
+		// cartella. Resta modificabile per chi vuole davvero un nome diverso.
+		localFolderValue = name;
 		localFolderErr = '';
 	}
 
@@ -2932,8 +2935,10 @@
 	on:close={() => (localFolderDialogOpen = false)}>
 	<h2 slot="title">🗂️ Aggancia cartella condivisa</h2>
 	<p class="meta-note">
-		Un nome semplice (es. <code>tomato-amministrazione</code>): diventa sia
-		la sottocartella su <code>ClodiaShared/</code> sul Mac sia il mount
+		Precompilato col codename del topic — consigliato lasciarlo così: si
+		riconosce a colpo d'occhio su <code>ClodiaShared/</code> di quale topic
+		è quella cartella. Diventa sia la sottocartella su
+		<code>ClodiaShared/</code> sul Mac sia il mount
 		<code>local/{localFolderValue.trim() || '&lt;nome&gt;'}/</code> nel topic.
 		Bind reale, non uno specchio: scrivere da un lato si vede
 		immediatamente dall'altro.
