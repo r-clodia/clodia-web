@@ -2491,3 +2491,25 @@ export async function addLocalFolder(tier: string, name: string, mount: string, 
 export async function removeLocalFolder(tier: string, name: string, mount: string, opts: RequestOptions = {}): Promise<{ ok: boolean; removed: string }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/local-folder`, { action: 'remove', mount }, opts);
 }
+
+/** GET/POST `/api/topics/{tier}/{name}/tg-link` — connetti/disconnetti la
+ *  chat Telegram del topic (23 set 2026): a differenza dell'icona rapida
+ *  Telegram di sola whitelist, qui l'azione fa ANCHE il binding vero
+ *  (l'equivalente di `telegram.listen`/`unlisten`) — senza il quale il
+ *  messaggero non riporta nulla anche con la whitelist già scritta. */
+export interface TelegramLinkStatus {
+	connected: boolean;
+	chat_id: string | null;
+}
+
+export async function getTelegramLink(tier: string, name: string, opts: RequestOptions = {}): Promise<TelegramLinkStatus> {
+	return apiGet(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tg-link`, opts);
+}
+
+export async function connectTelegramLink(tier: string, name: string, chatId: string, opts: RequestOptions = {}): Promise<TelegramLinkStatus> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tg-link`, { action: 'connect', chat_id: chatId }, opts);
+}
+
+export async function disconnectTelegramLink(tier: string, name: string, opts: RequestOptions = {}): Promise<TelegramLinkStatus> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tg-link`, { action: 'disconnect' }, opts);
+}

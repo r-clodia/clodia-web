@@ -50,6 +50,9 @@
 		setTopicDeadline,
 		addLocalFolder,
 		removeLocalFolder,
+		getTelegramLink,
+		connectTelegramLink,
+		disconnectTelegramLink,
 		TOPIC_STATUSES,
 		type ChannelInfo,
 		type ChannelMessage,
@@ -1167,36 +1170,23 @@
 		}
 	}
 
-	// Icone rapide Telegram/Drive (18 set 2026, richiesta di Davide: un
-	// pannello simile a quello Telegram di prima — rimosso il 19 ago perché
-	// gestiva il BIND del canale — ma senza bind, solo whitelist). Un click
-	// apre un dialog con un solo campo; la conferma scrive in ENTRAMBE le
-	// direzioni (egress + ingress), perché per Telegram/Drive si usano quasi
-	// sempre insieme nello stesso topic — chiedere due volte la stessa cosa
-	// sarebbe l'attrito che questo widget vuole togliere.
-	let quickAddKind: 'telegram' | 'gdrive' | null = null;
+	// Icona rapida Drive (18 set 2026, richiesta di Davide): un click apre un
+	// dialog con un solo campo, la conferma scrive in ENTRAMBE le direzioni
+	// (egress + ingress) — solo whitelist, Drive non ha un binding da fare.
+	// Telegram ha una dinamica diversa (vedi sotto): dialog e stato separati.
+	let quickAddKind: 'gdrive' | null = null;
 	let quickAddValue = '';
 	let quickAddBusy = false;
 	let quickAddErr = '';
 
-	function openQuickAdd(kind: 'telegram' | 'gdrive') {
+	function openQuickAdd(kind: 'gdrive') {
 		quickAddKind = kind;
 		quickAddValue = '';
 		quickAddErr = '';
 	}
 
-	// Solo Telegram ha bisogno di un prefisso qui: un link Drive incollato
-	// (`https://drive.google.com/drive/folders/...`) lo normalizza già
-	// `egress.canonical()` lato server — duplicarlo qui sarebbe una seconda
-	// copia della stessa regola, e le due divergerebbero al primo formato
-	// nuovo che Drive introduce.
 	function quickAddUri(): string {
-		const v = quickAddValue.trim();
-		if (quickAddKind !== 'telegram') return v;
-		if (v.startsWith('tg:') || v.startsWith('@') || /^-?\d+$/.test(v)) {
-			return v.startsWith('tg:') ? v : `tg:${v}`;
-		}
-		return v;
+		return quickAddValue.trim();
 	}
 
 	async function confirmQuickAdd() {
@@ -1273,6 +1263,77 @@
 			localFolderErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
 			localFolderBusy = false;
+		}
+	}
+
+	// Telegram: connesso/disconnesso, non solo whitelist (23 set 2026). Prima
+	// l'icona scriveva SOLO la whitelist (come Drive), e il messaggero
+	// continuava a dire «nessuna chat collegata» perché mancava il binding
+	// vero — un secondo passo che nessuna UI faceva. Ora il bottone riflette
+	// lo stato reale e lo stesso click fa whitelist + binding, in entrambe le
+	// direzioni (connetti/disconnetti).
+	let telegramConnected = false;
+	let telegramChatId: string | null = null;
+	let telegramDialogOpen = false;
+	let telegramValue = '';
+	let telegramBusy = false;
+	let telegramErr = '';
+
+	async function loadTelegramLink() {
+		try {
+			const r = await getTelegramLink(tier, name);
+			telegramConnected = r.connected;
+			telegramChatId = r.chat_id;
+		} catch {
+			// silenzioso: lo stato resta quello di default (disconnesso) finché
+			// non si può leggere — coerente con come le altre liste falliscono qui.
+		}
+	}
+
+	function openTelegramDialog() {
+		telegramDialogOpen = true;
+		telegramValue = '';
+		telegramErr = '';
+	}
+
+	async function confirmConnectTelegram() {
+		const v = telegramValue.trim();
+		if (!v || telegramBusy) return;
+		telegramBusy = true;
+		telegramErr = '';
+		try {
+			const r = await connectTelegramLink(tier, name, v);
+			telegramConnected = r.connected;
+			telegramChatId = r.chat_id;
+			telegramDialogOpen = false;
+			await loadEgressScope();
+		} catch (e) {
+			telegramErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			telegramBusy = false;
+		}
+	}
+
+	async function disconnectTelegram() {
+		if (telegramBusy) return;
+		telegramBusy = true;
+		try {
+			const r = await disconnectTelegramLink(tier, name);
+			telegramConnected = r.connected;
+			telegramChatId = r.chat_id;
+			await loadEgressScope();
+		} catch (e) {
+			telegramErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			telegramBusy = false;
+		}
+	}
+
+	function onTelegramButtonClick() {
+		if (telegramConnected) {
+			void disconnectTelegram();
+		} else {
+			openTelegramDialog();
 		}
 	}
 
@@ -1890,6 +1951,7 @@
 		document.addEventListener('visibilitychange', onVisibilityChange);
 		programmaPoll();
 		void refreshGateInfo();
+		void loadTelegramLink();
 		getAgents()
 			.then((as) => {
 				allAgents = as.map((a) => a.name);
@@ -2807,8 +2869,15 @@
 						</div>
 						{#if isOwner}
 							<div class="egress-quick-row">
-								<button type="button" class="egress-quick-btn" title="Aggiungi un gruppo/chat Telegram"
-									on:click={() => openQuickAdd('telegram')}>📨 Telegram</button>
+								<button type="button" class="egress-quick-btn"
+									class:egress-quick-btn-connected={telegramConnected}
+									disabled={telegramBusy}
+									title={telegramConnected
+										? `Connesso alla chat ${telegramChatId} — clic per disconnettere`
+										: 'Collega un gruppo/chat Telegram'}
+									on:click={onTelegramButtonClick}>
+									{telegramBusy ? '…' : telegramConnected ? '✅ Telegram' : '📨 Telegram'}
+								</button>
 								<button type="button" class="egress-quick-btn" title="Aggiungi una cartella Drive"
 									on:click={() => openQuickAdd('gdrive')}>📁 Drive</button>
 								<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
@@ -2892,30 +2961,21 @@
 	</div>
 </Modal>
 
-<!-- Icona rapida Telegram/Drive (18 set 2026): un campo solo, per uno schema
-     ricavabile dall'input senza dover ricordare la notazione URI. Scrive
-     ENTRAMBE le direzioni (egress + ingress) — la guardia vera resta lato
-     server, questo dialog non fa altro che comporre la stessa chiamata che
-     il form manuale sotto fa già. -->
+<!-- Icona rapida Drive (18 set 2026): un campo solo, per uno schema ricavabile
+     dall'input senza dover ricordare la notazione URI. Scrive ENTRAMBE le
+     direzioni (egress + ingress) — la guardia vera resta lato server. Solo
+     whitelist: Drive non ha un binding da fare (a differenza di Telegram,
+     dialog separato sotto). -->
 <Modal open={quickAddKind !== null} dismissable={!quickAddBusy} maxWidth={380}
 	on:close={() => (quickAddKind = null)}>
-	<h2 slot="title">
-		{quickAddKind === 'telegram' ? '📨 Aggiungi Telegram' : '📁 Aggiungi Drive'}
-	</h2>
+	<h2 slot="title">📁 Aggiungi Drive</h2>
 	<p class="meta-note">
-		{#if quickAddKind === 'telegram'}
-			Chat id del gruppo (es. <code>-1001234567890</code>) o handle di una
-			persona (es. <code>@nomeutente</code>). Aggiunta come destinazione
-			ammessa e fonte fidata <b>solo in questo topic</b>.
-		{:else}
-			Incolla il link della cartella Drive (dalla barra del browser).
-			Aggiunta come destinazione ammessa e fonte fidata <b>solo in questo
-			topic</b>.
-		{/if}
+		Incolla il link della cartella Drive (dalla barra del browser).
+		Aggiunta come destinazione ammessa e fonte fidata <b>solo in questo
+		topic</b>.
 	</p>
 	<input type="text" class="egress-quick-input"
-		placeholder={quickAddKind === 'telegram' ? '-1001234567890 oppure @nomeutente'
-			: 'https://drive.google.com/drive/folders/…'}
+		placeholder="https://drive.google.com/drive/folders/…"
 		bind:value={quickAddValue} disabled={quickAddBusy}
 		on:keydown={(e) => e.key === 'Enter' && confirmQuickAdd()} />
 	{#if quickAddErr}<p class="cred-hint" role="alert">{quickAddErr}</p>{/if}
@@ -2923,6 +2983,31 @@
 		<button type="button" class="link-btn" disabled={quickAddBusy || !quickAddValue.trim()}
 			on:click={confirmQuickAdd}>
 			{quickAddBusy ? '…' : '+ aggiungi'}
+		</button>
+	</div>
+</Modal>
+
+<!-- Telegram: connetti in un click (23 set 2026) — whitelist E binding
+     insieme, non due passi scollegati come prima. Il bottone in sidebar
+     mostra lo stato e alterna connetti/disconnetti; questo dialog compare
+     solo per il chat_id quando non è ancora connesso. -->
+<Modal open={telegramDialogOpen} dismissable={!telegramBusy} maxWidth={380}
+	on:close={() => (telegramDialogOpen = false)}>
+	<h2 slot="title">📨 Connetti Telegram</h2>
+	<p class="meta-note">
+		Chat id del gruppo (es. <code>-1001234567890</code>) o handle di una
+		persona (es. <code>@nomeutente</code>). Collega la chat al topic
+		(whitelist <b>e</b> il messaggero inizia davvero a riportarne i
+		messaggi) — non solo una destinazione ammessa.
+	</p>
+	<input type="text" class="egress-quick-input" placeholder="-1001234567890 oppure @nomeutente"
+		bind:value={telegramValue} disabled={telegramBusy}
+		on:keydown={(e) => e.key === 'Enter' && confirmConnectTelegram()} />
+	{#if telegramErr}<p class="cred-hint" role="alert">{telegramErr}</p>{/if}
+	<div class="remote-actions" slot="actions">
+		<button type="button" class="link-btn" disabled={telegramBusy || !telegramValue.trim()}
+			on:click={confirmConnectTelegram}>
+			{telegramBusy ? '…' : '+ connetti'}
 		</button>
 	</div>
 </Modal>
@@ -3616,6 +3701,12 @@
 	.egress-quick-btn { font: inherit; font-size: 12px; padding: 4px 10px; cursor: pointer;
 		border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--fg); }
 	.egress-quick-btn:hover { border-color: var(--accent); }
+	.egress-quick-btn:disabled { opacity: 0.6; cursor: default; }
+	/* Stato "connesso" (23 set 2026): distinguibile a colpo d'occhio, non solo
+	   dal testo del bottone — così l'ambiguità che Davide ha segnalato non
+	   torna al primo sguardo distratto. */
+	.egress-quick-btn-connected { border-color: #2e7d32; color: #2e7d32; }
+	.egress-quick-btn-connected:hover { border-color: #d32f2f; color: #d32f2f; }
 	.egress-quick-input { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px;
 		padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
 		background: var(--bg); color: var(--fg); margin-top: 8px; }
