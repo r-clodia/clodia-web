@@ -586,6 +586,12 @@
 				{#if c.builtin}
 					<span class="builtin-note">interno · pluggable (P4: Drive/Dropbox)</span>
 				{:else if c.mcp}
+					{#if testResult[c.id]}
+						<span class="test-badge" class:ok={testResult[c.id].ok === true} class:ko={testResult[c.id].ok === false} title={testResult[c.id].detail}>
+							{testResult[c.id].ok === true ? '✓' : testResult[c.id].ok === false ? '✕' : '—'}
+						</span>
+					{/if}
+					<button type="button" class="btn ghost" on:click={() => testConn(c.id)} disabled={testing[c.id]}>{testing[c.id] ? '…' : 'Test'}</button>
 					<button type="button" class="btn ghost" on:click={() => removeMcp(c.id)}>Rimuovi</button>
 				{:else if !c.wired}
 					<button type="button" class="btn" disabled>Presto</button>
