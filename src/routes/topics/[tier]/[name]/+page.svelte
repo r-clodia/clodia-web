@@ -2876,10 +2876,25 @@
 										? `Connesso alla chat ${telegramChatId} — clic per disconnettere`
 										: 'Collega un gruppo/chat Telegram'}
 									on:click={onTelegramButtonClick}>
-									{telegramBusy ? '…' : telegramConnected ? '✅ Telegram' : '📨 Telegram'}
+									<svg class="brand-icon" viewBox="0 0 240 240" aria-hidden="true">
+										<circle cx="120" cy="120" r="120" fill="#29b6f6" />
+										<path d="M180.5 72.1 156.9 172c-1.8 8-6.6 10-13.4 6.2l-37-27.3-17.9 17.2c-2 2-3.7 3.7-7.5 3.7l2.7-38 69.4-62.7c3-2.7-.7-4.2-4.6-1.5L60 130.6l-37.2-11.6c-8.1-2.5-8.2-8.1 1.7-12l145.4-56c6.7-2.5 12.6 1.6 10.6 12.1Z"
+											fill="#fff" />
+									</svg>
+									{telegramBusy ? '…' : 'Telegram'}
 								</button>
 								<button type="button" class="egress-quick-btn" title="Aggiungi una cartella Drive"
-									on:click={() => openQuickAdd('gdrive')}>📁 Drive</button>
+									on:click={() => openQuickAdd('gdrive')}>
+									<svg class="brand-icon" viewBox="0 0 87.3 78" aria-hidden="true">
+										<path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" />
+										<path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47" />
+										<path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z" fill="#ea4335" />
+										<path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d" />
+										<path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc" />
+										<path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
+									</svg>
+									Drive
+								</button>
 								<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
 									on:click={openLocalFolderDialog}>🗂️ Cartella Mac</button>
 							</div>
@@ -3699,8 +3714,13 @@
 		background: var(--bg); color: var(--fg); }
 	.egress-quick-row { display: flex; gap: 6px; margin-top: 8px; }
 	.egress-quick-btn { font: inherit; font-size: 12px; padding: 4px 10px; cursor: pointer;
-		border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--fg); }
+		border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--fg);
+		display: inline-flex; align-items: center; gap: 5px; }
 	.egress-quick-btn:hover { border-color: var(--accent); }
+	/* Loghi ufficiali al posto delle emoji generiche (23 set 2026, richiesta di
+	   Davide): dimensione fissa così Telegram (cerchio) e Drive (triangolo)
+	   restano allineati sulla stessa riga di testo del bottone. */
+	.brand-icon { width: 14px; height: 14px; flex-shrink: 0; }
 	.egress-quick-btn:disabled { opacity: 0.6; cursor: default; }
 	/* Stato "connesso" (23 set 2026): distinguibile a colpo d'occhio, non solo
 	   dal testo del bottone — così l'ambiguità che Davide ha segnalato non
