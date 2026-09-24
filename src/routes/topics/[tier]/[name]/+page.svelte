@@ -1692,7 +1692,7 @@
 	}
 
 	async function send() {
-		const body = expandChannelAliases(draft, channelAliases, Object.keys(eligibility)).trim();
+		const body = expandChannelAliases(draft, channelAliases).trim();
 		if (!body || sending) return;
 		sending = true;
 		stopping = false;
