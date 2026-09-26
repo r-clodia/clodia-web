@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { gateLabel } from '$lib/gateLabel';
 	// Popup di approvazione GATE (M-gate): mostra all'utente loggato AUTORIZZATO
 	// le richieste di conferma su verbi *gated* innescate dagli agenti, con
 	// Approva/Nega. Il backend (/api/gate/pending) ritorna [] a chi non è
@@ -91,11 +92,7 @@
 	<div class="gate-wrap" role="alertdialog" aria-label="Richieste gate">
 		{#each requests as q (q.id)}
 			<div class="gate-card">
-				{#if q.verb.startsWith('topic-access:')}
-					<div class="gate-head">🛡️ <b>{q.agent}</b> vuole accedere al topic <code>{q.verb.slice('topic-access:'.length)}</code> (non è partecipante)</div>
-				{:else}
-					<div class="gate-head">🛡️ <b>{q.agent}</b> vuole usare <code>{q.verb}</code></div>
-				{/if}
+				<div class="gate-head">🛡️ <b>{q.agent}</b> {gateLabel(q.verb).azione} <code>{gateLabel(q.verb).oggetto}</code>{#if q.verb.startsWith('topic-access:')} (non è partecipante){/if}</div>
 				{#if q.asker_note}
 					<div class="gate-asker">🔎 {q.asker_note}</div>
 				{/if}
