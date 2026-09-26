@@ -106,3 +106,68 @@ export function gateDestination(verb) {
 	if (!m) return null;
 	return { direzione: m[1], canale: m[2], dest: m[3] };
 }
+
+/**
+ * Le richieste di gate da decidere IN BLOCCO (clodia-platform#396).
+ *
+ * Una voce per **richiesta**, non per card: più card possono portare la stessa
+ * tripla (#232), e approvarne una sblocca il verbo per tutte. La voce ricorda
+ * gli id di messaggio di ciascuna card, così l'esito si scrive su ognuna —
+ * con `recordDecision`, la stessa funzione della card singola.
+ *
+ * Entrano solo le card ancora `da-decidere` (la regola del dubbio resta quella
+ * di `gateCardState`) e solo quelle che chi guarda ha titolo a decidere: un
+ * blocco che contiene richieste destinate al rifiuto insegna a ignorare gli
+ * esiti del blocco.
+ *
+ * @param {StatoGate} stato
+ * @param {Array<{ msg: { id: string, ts?: string }, gate: { id: string, agent: string, instance: string, verb: string } }>} voci
+ * @param {(gate: { id: string }) => boolean} puoDecidere
+ * @returns {Array<{ id: string, agent: string, instance: string, verb: string, msgIds: string[] }>}
+ */
+export function gateBatch(stato, voci, puoDecidere) {
+	const perTripla = new Map();
+	for (const { msg, gate } of voci) {
+		if (!gate || gateCardState(stato, msg, gate) !== 'da-decidere') continue;
+		if (!puoDecidere(gate)) continue;
+		const voce = perTripla.get(gate.id);
+		if (voce) voce.msgIds.push(msg.id);
+		else perTripla.set(gate.id, { id: gate.id, agent: gate.agent, instance: gate.instance,
+		                               verb: gate.verb, msgIds: [msg.id] });
+	}
+	return [...perTripla.values()];
+}
+
+/**
+ * Decide in sequenza le voci SCELTE, e riporta l'esito di ciascuna.
+ *
+ * In sequenza e non in parallelo: ogni approvazione conia una capability e
+ * scrive lo store del gateway, e N scritture concorrenti sullo stesso file sono
+ * esattamente la gara che non si vuole su un'autorizzazione. Un rifiuto su una
+ * voce non ferma le altre — il titolo si verifica per richiesta, e una
+ * richiesta che il backend rifiuta non rende sbagliate quelle accanto.
+ *
+ * Si decide sull'istantanea `voci` passata al momento del click: una richiesta
+ * arrivata dopo non entra in un «approva tutte» premuto prima che esistesse.
+ *
+ * @template V
+ * @param {V[]} voci
+ * @param {Set<string>} scelte     id delle voci da decidere
+ * @param {(voce: V) => Promise<unknown>} decidi
+ * @returns {Promise<{ ok: V[], falliti: Array<{ voce: V, errore: string }> }>}
+ */
+export async function decideBatch(voci, scelte, decidi) {
+	const ok = [];
+	const falliti = [];
+	for (const voce of voci) {
+		// @ts-ignore — le voci hanno `id`
+		if (!scelte.has(voce.id)) continue;
+		try {
+			await decidi(voce);
+			ok.push(voce);
+		} catch (e) {
+			falliti.push({ voce, errore: e instanceof Error ? e.message : String(e) });
+		}
+	}
+	return { ok, falliti };
+}

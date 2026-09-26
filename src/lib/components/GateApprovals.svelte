@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { gateLabel } from '$lib/gateLabel';
+	import { decideBatch } from '$lib/gateCard';
+	import GateBatchBar from './GateBatchBar.svelte';
 	// Popup di approvazione GATE (M-gate): mostra all'utente loggato AUTORIZZATO
 	// le richieste di conferma su verbi *gated* innescate dagli agenti, con
 	// Approva/Nega. Il backend (/api/gate/pending) ritorna [] a chi non è
@@ -84,12 +86,41 @@
 		}
 	}
 
+	/** Gate combinato (clodia-platform#396): stesso endpoint della card singola,
+	 *  voce per voce; un rifiuto non ferma le altre e si dice quale. */
+	let batchBusy = false;
+	async function decideAll(e: CustomEvent<{ approve: boolean; voci: Array<{ id: string; agent: string; instance: string; verb: string }> }>) {
+		batchBusy = true;
+		const { approve, voci } = e.detail;
+		const perId = new Map(requests.map((q) => [q.id, q]));
+		try {
+			const esito = await decideBatch(voci, new Set(voci.map((v) => v.id)), (v) =>
+				apiPost(approve ? '/api/gate/approve' : '/api/gate/deny', {
+					agent: v.agent, instance: v.instance, verb: v.verb,
+					chat: perId.get(v.id)?.chat, remember: 'once'
+				}));
+			if (esito.ok.length) toastSuccess(`Gate ${approve ? 'approvati' : 'negati'}`, `${esito.ok.length} in blocco`);
+			if (esito.falliti.length) {
+				toastError(`${esito.falliti.length} non decisi`,
+					esito.falliti.map((f) => `${f.voce.agent} · ${f.voce.verb}: ${f.errore}`).join(' — '));
+			}
+			await refresh();
+		} finally {
+			batchBusy = false;
+		}
+	}
+
 	onMount(() => { void refresh(); poll = setInterval(refresh, 5000); });
 	onDestroy(() => { if (poll) clearInterval(poll); });
 </script>
 
 {#if requests.length}
 	<div class="gate-wrap" role="alertdialog" aria-label="Richieste gate">
+		{#if requests.length >= 2}
+			<div class="gate-card">
+				<GateBatchBar voci={requests} busy={batchBusy} on:decide={decideAll} />
+			</div>
+		{/if}
 		{#each requests as q (q.id)}
 			<div class="gate-card">
 				<div class="gate-head">🛡️ <b>{q.agent}</b> {gateLabel(q.verb).azione} <code>{gateLabel(q.verb).oggetto}</code>{#if q.verb.startsWith('topic-access:')} (non è partecipante){/if}</div>
