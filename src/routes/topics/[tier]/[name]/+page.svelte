@@ -62,6 +62,7 @@
 	import { openSignedFile } from '$lib/download';
 	import { toastSuccess } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
+	import { gateLabel } from '$lib/gateLabel';
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
 	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
@@ -2347,7 +2348,7 @@
 										     dopo. Il testo del messaggio porta il motivo; qui restano
 										     chi e cosa, che vengono dal marcatore e non dalla coda. -->
 										<span class="jobprop-done">
-											🛡️ <b>{g.agent}</b> · <code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code>
+											🛡️ <b>{g.agent}</b> · <code>{gateLabel(g.verb).oggetto}</code>
 											— {gateDecided[m.id]}
 										</span>
 									{:else if gStato === 'chiusa'}
@@ -2359,7 +2360,7 @@
 										     finiva qui per la durata di un poll: un «già deciso» su
 										     ciò che nessuno aveva deciso. -->
 										<span class="jobprop-done">
-											🛡️ <b>{g.agent}</b> · <code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code>
+											🛡️ <b>{g.agent}</b> · <code>{gateLabel(g.verb).oggetto}</code>
 											— già deciso
 										</span>
 									{:else if canDecideGate(g.id)}
@@ -2373,7 +2374,7 @@
 												<code>{gDest.dest}</code> ({gDest.canale}) — approvi?
 											</span>
 										{:else}
-											<span class="jobprop-q">🛡️ <b>{g.agent}</b> {g.verb.startsWith('topic-access:') ? 'vuole accedere al topic ' : 'vuole usare '}<code>{g.verb.startsWith('topic-access:') ? g.verb.slice('topic-access:'.length) : g.verb}</code> — approvi?</span>
+											<span class="jobprop-q">🛡️ <b>{g.agent}</b> {gateLabel(g.verb).azione} <code>{gateLabel(g.verb).oggetto}</code> — approvi?</span>
 										{/if}
 										<button type="button" class="jobprop-ok" disabled={gateDeciding}
 											on:click={() => decideGate(m.id, g, true)}>{gateDeciding ? '…' : '✓ Approva'}</button>
