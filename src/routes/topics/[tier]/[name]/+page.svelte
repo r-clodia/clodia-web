@@ -68,7 +68,8 @@
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
 	import { fondiConEcho } from '$lib/echoLocale';
 	import { routingReasonLabel, isFallbackReason, coordinatorHint } from '$lib/routingReason';
-	import { gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
+	import { decideBatch, gateBatch, gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
+	import GateBatchBar from '$lib/components/GateBatchBar.svelte';
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import type { TierWarning } from '$lib/api/types';
 
@@ -862,6 +863,39 @@
 			if (mem && mem.remembered === false && mem.error) loadErr = mem.error;
 		} catch (e) {
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			gateDeciding = false;
+		}
+	}
+	/** Gate combinato (clodia-platform#396): le richieste della stanza ancora da
+	 *  decidere e che chi guarda ha titolo a decidere, una voce per richiesta.
+	 *  Compare da due in su — con una sola, la card basta. */
+	$: gateBatchVoci = gateBatch(
+		{ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs },
+		messages.map((m) => ({ msg: m, gate: msgGate(m.text) })).filter((x) => x.gate !== null) as
+			Array<{ msg: { id: string; ts?: string }; gate: { id: string; agent: string; instance: string; verb: string } }>,
+		(g) => canDecideGate(g.id)
+	);
+	async function decideGateBatch(e: CustomEvent<{ approve: boolean; voci: Array<{ id: string; agent: string; instance: string; verb: string }> }>) {
+		if (gateDeciding) return;
+		gateDeciding = true;
+		const { approve, voci } = e.detail;
+		const perId = new Map(gateBatchVoci.map((v) => [v.id, v]));
+		try {
+			const esito = await decideBatch(voci, new Set(voci.map((v) => v.id)), async (v) => {
+				await apiPost(approve ? '/api/gate/approve' : '/api/gate/deny',
+					{ agent: v.agent, instance: v.instance, verb: v.verb, remember: 'once' });
+				// L'esito si scrive su OGNI card della richiesta: la tripla le copre tutte.
+				for (const id of perId.get(v.id)?.msgIds ?? []) {
+					gateDecided = recordDecision(gateDecided, { id }, approve ? 'approvato (in blocco)' : 'negato (in blocco)');
+				}
+			});
+			if (esito.ok.length) toastSuccess(`${esito.ok.length} ${approve ? 'approvate' : 'negate'}`);
+			if (esito.falliti.length) {
+				loadErr = `${esito.falliti.length} non decise: ` +
+					esito.falliti.map((f) => `${f.voce.agent} · ${f.voce.verb}: ${f.errore}`).join(' — ');
+			}
+			await refreshGateInfo();
 		} finally {
 			gateDeciding = false;
 		}
@@ -2556,6 +2590,9 @@
 						</div>
 					{/if}
 				</div>
+			{/if}
+			{#if gateBatchVoci.length >= 2}
+				<GateBatchBar voci={gateBatchVoci} busy={gateDeciding} on:decide={decideGateBatch} />
 			{/if}
 			<div class="composer" class:drag={dragOver}
 				role="group"
