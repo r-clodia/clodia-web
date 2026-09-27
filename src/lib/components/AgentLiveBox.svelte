@@ -23,6 +23,17 @@
 	export let tools: string[] = [];
 	/** Box inizialmente espanso (default: compatto). */
 	export let open: boolean = false;
+	/** Mostra il ⏹ che ferma QUESTO agente (clodia-platform#403). */
+	export let stoppable: boolean = true;
+	/** ⏹ già premuto: il turno sta morendo, il bottone non si ripreme. */
+	export let stopping: boolean = false;
+
+	import { createEventDispatcher } from 'svelte';
+
+	/** `stop` porta l'etichetta dell'agente: chi ascolta non deve dedurre quale
+	 *  box è stato premuto da una variabile condivisa — era esattamente
+	 *  l'ambiguità del bottone unico in chat (clodia-platform#403). */
+	const dispatch = createEventDispatcher<{ stop: string }>();
 
 	const MAX_PEEK = 90;
 
@@ -44,18 +55,34 @@
 </script>
 
 <div class="live-box" class:open>
-	<button
-		type="button"
-		class="live-head"
-		aria-expanded={open}
-		on:click={() => (open = !open)}
-	>
-		<span class="caret" class:open aria-hidden="true">▸</span>
-		<span class="live-agent">{agent}</span>
-		<span class="live-dot" aria-hidden="true">●</span>
-		<span class="live-peek">{peek || 'al lavoro…'}</span>
-		<span class="live-hint">{open ? 'comprimi' : 'espandi'}</span>
-	</button>
+	<!-- Due bottoni FRATELLI, non annidati: il ⏹ deve essere premibile senza
+	     espandere il box, e un <button> dentro un <button> non è HTML valido —
+	     il browser lo ricostruisce e il click interno smette di essere
+	     distinguibile da quello esterno. -->
+	<div class="live-head-row">
+		<button
+			type="button"
+			class="live-head"
+			aria-expanded={open}
+			on:click={() => (open = !open)}
+		>
+			<span class="caret" class:open aria-hidden="true">▸</span>
+			<span class="live-agent">{agent}</span>
+			<span class="live-dot" aria-hidden="true">●</span>
+			<span class="live-peek">{peek || 'al lavoro…'}</span>
+			<span class="live-hint">{open ? 'comprimi' : 'espandi'}</span>
+		</button>
+		{#if stoppable}
+			<button
+				type="button"
+				class="live-stop"
+				disabled={stopping}
+				title={`Ferma il turno di ${agent}`}
+				aria-label={`Ferma il turno di ${agent}`}
+				on:click={() => dispatch('stop', agent)}
+			>⏹</button>
+		{/if}
+	</div>
 	{#if open}
 		<div class="live-body">
 			{#if think}
@@ -85,6 +112,11 @@
 	}
 	.live-box.open {
 		border-style: solid;
+	}
+	.live-head-row {
+		display: flex;
+		align-items: center;
+		min-width: 0;
 	}
 	.live-head {
 		display: flex;
@@ -148,6 +180,30 @@
 		flex: none;
 		font-size: 10px;
 		opacity: 0.7;
+	}
+	/* Discreto finché non lo si cerca: è un'azione distruttiva accanto a una
+	   riga che si clicca in continuazione per espandere. Rosso all'hover, non
+	   di default. */
+	.live-stop {
+		flex: none;
+		margin-right: 6px;
+		padding: 2px 7px;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: var(--fg-muted);
+		font: inherit;
+		font-size: 11px;
+		line-height: 1.4;
+		cursor: pointer;
+	}
+	.live-stop:hover:not(:disabled) {
+		color: var(--danger, #e5484d);
+		border-color: var(--danger, #e5484d);
+	}
+	.live-stop:disabled {
+		opacity: 0.45;
+		cursor: default;
 	}
 	.live-body {
 		padding: 0 10px 10px;
