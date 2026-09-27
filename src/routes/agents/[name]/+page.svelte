@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, getConnectors, grantConnector, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, getAgentVerbs, type ProfileFile, type Connector, type AgentProfile, type AgentVerbs, type AgentVerb, type AgentVerbNode } from '$lib/api/client';
+	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, getAgentVerbs, type ProfileFile, type AgentProfile, type AgentVerbs, type AgentVerb, type AgentVerbNode } from '$lib/api/client';
 	import { session } from '$lib/auth/session';
 	import Modal from '$lib/components/Modal.svelte';
 	import type {
@@ -353,7 +353,6 @@
 		void loadDetail(name);
 		void loadActivity(name);
 		void checkPfp(name);
-		if (isAdmin) void loadConnectors();
 	}
 
 	// --- Impostazioni agent (solo admin): meta + contatti + model/sdk ---
@@ -465,37 +464,17 @@
 		try {
 			const st = await getAdminState();
 			isAdmin = !!$session && st.admins.includes($session.principal);
-			if (isAdmin) void loadConnectors();
 		} catch {
 			isAdmin = false;
 		}
 	})();
 
-	// Connettori email delegabili a questo agent (solo admin).
-	let connectors: Connector[] = [];
-	let connBusy = '';
-	const isSuperAgent = (a: Agent | undefined) => a?.type === 'super';
-	async function loadConnectors() {
-		if (!name) return;
-		try {
-			connectors = await getConnectors(name);
-		} catch {
-			connectors = [];
-		}
-	}
-	async function toggleConnector(account: string, granted: boolean) {
-		if (connBusy) return;
-		connBusy = account;
-		try {
-			await grantConnector(name, account, granted);
-			await loadConnectors();
-			toastSuccess(`${account}: ${granted ? 'abilitato' : 'disabilitato'} per ${name}`);
-		} catch (e) {
-			toastError('Grant fallito', e instanceof ApiError || e instanceof Error ? e.message : String(e));
-		} finally {
-			connBusy = '';
-		}
-	}
+	// La sezione «Connettori (delega per-agent)» non esiste più
+	// (clodia-platform#410): leggeva `/api/connectors`, che l'agent-server
+	// girava a una rotta del gateway mai registrata — 502 a ogni caricamento,
+	// quindi la lista era sempre vuota e ogni spunta falliva. Il modello è
+	// cambiato il 18/09: una casella si autorizza per SCOPE (whitelist
+	// `inbox:`/`outbox:`), dal connettore Mailbox della pagina del canale.
 
 	let settingsOpen = false;
 	let sSaving = false;
@@ -1256,37 +1235,6 @@
 
 			</dl>
 
-			{#if isAdmin}
-				<section class="connectors">
-					<h3>Connettori <span class="hint-inline">(delega per-agent)</span></h3>
-					{#if isProxy}
-						<!-- Un connettore concede tool che ESCONO dallo scope: darne uno a
-						     un proxy ne farebbe la seconda gamba della trifecta, seduta
-						     accanto a contenuto che non ha scritto. Non è "nessuno per
-						     ora": è nessuno. -->
-						<p class="conn-note">Nessuno: un proxy parla nel topic e nient'altro — non gli si delegano connettori.</p>
-					{:else if isSuperAgent(agent)}
-						<p class="conn-note">È un super-agent: ha accesso a <strong>tutti</strong> i connettori.</p>
-					{:else if connectors.length === 0}
-						<p class="conn-note">Nessun connettore nel vault. Connetti email o Trello dalla sezione Integrazioni.</p>
-					{:else}
-						<ul class="conn-list">
-							{#each connectors as c (c.id)}
-								<li class="conn-row">
-									<span class="conn-id">{`✉️ ${c.id}`}</span>
-									<label class="conn-toggle">
-										<input type="checkbox" checked={c.granted} disabled={connBusy === c.id}
-											on:change={(e) => toggleConnector(c.id, (e.target as HTMLInputElement).checked)} />
-										<span>{c.granted ? 'abilitato' : 'non abilitato'}</span>
-									</label>
-								</li>
-							{/each}
-						</ul>
-						<p class="conn-note">Abilitare un connettore concede a <strong>{name}</strong> i relativi tool (email send/receive). Clodia e Ophelia hanno tutto di default.</p>
-					{/if}
-				</section>
-			{/if}
-
 			<details class="raw">
 				<summary>Raw payload</summary>
 				<pre>{JSON.stringify(agent, null, 2)}</pre>
@@ -1629,13 +1577,6 @@
 	.warnlist { list-style: none; margin: 0; padding: 0; display: flex;
 		flex-direction: column; gap: 6px; }
 
-	.connectors { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
-	.connectors h3 { font-size: 13px; margin: 0 0 8px; }
-	.conn-note { font-size: 11.5px; color: var(--fg-muted); margin: 6px 0 0; line-height: 1.4; }
-	.conn-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-	.conn-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card-bg); }
-	.conn-id { font-size: 13px; font-weight: 600; }
-	.conn-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--fg-muted); cursor: pointer; }
 	.head-actions { display: flex; gap: 8px; align-items: center; }
 	.edit-btn { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font: inherit; font-weight: 700; font-size: 12.5px; padding: 6px 12px; border-radius: 7px; cursor: pointer; }
 	.edit-btn:disabled { opacity: .5; cursor: not-allowed; }
