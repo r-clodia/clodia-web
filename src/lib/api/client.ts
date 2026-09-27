@@ -2497,17 +2497,38 @@ export async function removeLocalFolder(tier: string, name: string, mount: strin
  *  Telegram di sola whitelist, qui l'azione fa ANCHE il binding vero
  *  (l'equivalente di `telegram.listen`/`unlisten`) — senza il quale il
  *  messaggero non riporta nulla anche con la whitelist già scritta. */
+export interface TelegramSealState {
+	/** Tier del topic, come lo vede il server. */
+	tier: string;
+	/** Tier massimo che il channel Telegram regge (provider extra-UE, gruppi
+	 *  non E2E). Oggi SEAL-1 — ma il valore lo dice il server, non questo file. */
+	cap: string | null;
+	/** Il cap morde e l'owner non ha ancora preso atto del downgrade: senza la
+	 *  sua conferma esplicita il collegamento viene rifiutato. */
+	requires_ack: boolean;
+	/** La presa d'atto registrata (chi/quando/per quale tier), o null. */
+	ack: { channel: string; tier: string; cap: string; by: string; at: string } | null;
+}
+
 export interface TelegramLinkStatus {
 	connected: boolean;
 	chat_id: string | null;
+	/** clodia-platform#405 — dove sta il cap SEAL su QUESTO topic. Arriva dal
+	 *  server apposta: la regola («telegram cappa a SEAL-1») vive in un posto
+	 *  solo, se no un giorno la UI e il gateway diranno cose diverse e quella
+	 *  che conta non sarà quella che l'owner ha letto. */
+	seal?: TelegramSealState;
 }
 
 export async function getTelegramLink(tier: string, name: string, opts: RequestOptions = {}): Promise<TelegramLinkStatus> {
 	return apiGet(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tg-link`, opts);
 }
 
-export async function connectTelegramLink(tier: string, name: string, chatId: string, opts: RequestOptions = {}): Promise<TelegramLinkStatus> {
-	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tg-link`, { action: 'connect', chat_id: chatId }, opts);
+/** `acceptSealDowngrade` = l'owner prende atto che su un topic sopra il cap i
+ *  messaggi passeranno comunque da Telegram (clodia-platform#405). Resta
+ *  registrata nel meta del topic: è un consenso, non una spunta usa-e-getta. */
+export async function connectTelegramLink(tier: string, name: string, chatId: string, acceptSealDowngrade = false, opts: RequestOptions = {}): Promise<TelegramLinkStatus> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tg-link`, { action: 'connect', chat_id: chatId, accept_seal_downgrade: acceptSealDowngrade }, opts);
 }
 
 export async function disconnectTelegramLink(tier: string, name: string, opts: RequestOptions = {}): Promise<TelegramLinkStatus> {
