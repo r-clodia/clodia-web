@@ -1394,23 +1394,13 @@ export async function selectAgentProvider(
 	return apiPost(`/api/agents/${encodeURIComponent(name)}/provider`, { provider }, opts);
 }
 
-/** Connettore delegabile (account email) con lo stato di grant per un agent. */
-export interface Connector {
-	id: string;
-	type: string;
-	credential: string;
-	granted: boolean;
-	agents: string[];
-}
-/** GET `/api/connectors?agent=` — connettori con grant per l'agent (admin). */
-export async function getConnectors(agent: string, opts: RequestOptions = {}): Promise<Connector[]> {
-	const d = await apiGet<{ connectors: Connector[] }>(`/api/connectors?agent=${encodeURIComponent(agent)}`, opts);
-	return d.connectors ?? [];
-}
-/** POST `/api/connectors/grant` — abilita/disabilita un agent su un connettore. */
-export async function grantConnector(agent: string, account: string, granted: boolean, opts: RequestOptions = {}): Promise<unknown> {
-	return apiPost('/api/connectors/grant', { agent, account, granted }, opts);
-}
+// `Connector`, `getConnectors()` e `grantConnector()` non esistono più
+// (clodia-platform#410). Chiamavano `/api/connectors[/grant]`, che l'agent-server
+// girava a una rotta del gateway mai registrata: 502 a ogni chiamata, quindi la
+// delega per-agent che mostravano non è mai stata applicata da qui. Il modello
+// dietro era comunque superato dal 18/09: una casella si autorizza PER SCOPE
+// (whitelist `inbox:`/`outbox:`, connettore Mailbox del canale, #406), non
+// per agente. Lo stato dei connettori si legge da `getTools()` (`ToolConnector`).
 
 /** Patch admin di meta + canali di contatto + model/sdk. Stringa vuota = azzera. */
 export interface AgentSettingsPatch {
