@@ -2503,3 +2503,38 @@ export async function connectTelegramLink(tier: string, name: string, chatId: st
 export async function disconnectTelegramLink(tier: string, name: string, opts: RequestOptions = {}): Promise<TelegramLinkStatus> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tg-link`, { action: 'disconnect' }, opts);
 }
+
+/** GET/POST `/api/topics/{tier}/{name}/mailbox-link` — connettore «Mailbox»
+ *  del canale (clodia-platform#406): si sceglie una casella GIÀ configurata
+ *  nel sistema e quella diventa in un colpo solo fonte (`inbox:`) e
+ *  destinazione (`outbox:`) di questo topic. Owner-only lato server, in
+ *  lettura e in scrittura. A differenza di Telegram non c'è nessun binding:
+ *  qui si autorizza soltanto — la posta la leggono i verbi email. */
+export interface TopicMailbox {
+	account: string;
+	email: string;
+	/** Alias SMTP senza IMAP: può spedire, non leggerà mai nulla. */
+	send_only: boolean;
+	inbox: boolean;
+	outbox: boolean;
+	/** La voce sta nella lista di QUESTA stanza — l'unica removibile da qui.
+	 *  Falso con `inbox`/`outbox` veri = autorizzata globalmente, da
+	 *  Impostazioni. */
+	local: boolean;
+}
+
+export async function getTopicMailboxes(tier: string, name: string, opts: RequestOptions = {}): Promise<TopicMailbox[]> {
+	const d = await apiGet<{ mailboxes?: TopicMailbox[] }>(
+		`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mailbox-link`, opts);
+	return d.mailboxes ?? [];
+}
+
+export async function setTopicMailbox(
+	tier: string, name: string, action: 'connect' | 'disconnect', account: string,
+	opts: RequestOptions = {}
+): Promise<TopicMailbox[]> {
+	const d = await apiPost<{ mailboxes?: TopicMailbox[] }>(
+		`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mailbox-link`,
+		{ action, account }, opts);
+	return d.mailboxes ?? [];
+}
