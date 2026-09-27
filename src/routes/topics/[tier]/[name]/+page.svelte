@@ -1386,16 +1386,27 @@
 	let mailboxChoice = '';
 	let mailboxBusy = false;
 	let mailboxErr = '';
+	/** Errore di CARICAMENTO dell'elenco: distinto da «nessuna casella». Un 403 o
+	 *  un gateway giù non devono diventare «Nessuna casella configurata», che
+	 *  manda a cercare nelle Integrazioni un problema che non c'è. */
+	let mailboxLoadErr = '';
 
 	$: mailboxCollegate = mailboxes.filter((m) => m.inbox || m.outbox);
 	$: mailboxDisponibili = mailboxes.filter((m) => !(m.inbox && m.outbox));
 
 	async function loadMailboxes() {
+		// La rotta è solo per gli admin: per chi non lo è non la si chiede
+		// nemmeno, e il connettore non compare.
+		if (!$isAdmin) {
+			mailboxes = [];
+			return;
+		}
 		try {
 			mailboxes = await getTopicMailboxes(tier, name);
-		} catch {
-			// Silenzioso come per Telegram: la rotta è owner-only, e per un
-			// partecipante il 403 è la risposta giusta, non un guasto da mostrare.
+			mailboxLoadErr = '';
+		} catch (e) {
+			mailboxes = [];
+			mailboxLoadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		}
 	}
 
@@ -2998,15 +3009,21 @@
 								</button>
 								<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
 									on:click={openLocalFolderDialog}>🗂️ Cartella Mac</button>
-								<button type="button" class="egress-quick-btn"
-									class:egress-quick-btn-connected={mailboxCollegate.length > 0}
-									disabled={mailboxBusy || mailboxes.length === 0}
-									title={mailboxes.length === 0
-										? 'Nessuna casella configurata nel sistema (Impostazioni → Integrazioni)'
-										: 'Autorizza una casella di sistema come fonte e destinazione di questo topic'}
-									on:click={openMailboxDialog}>✉️ Mailbox</button>
+								{#if $isAdmin}
+									<!-- Solo un admin (decisione di Davide, 27 set 2026): una casella
+									     di sistema è posta che non è dell'owner del topic. -->
+									<button type="button" class="egress-quick-btn"
+										class:egress-quick-btn-connected={mailboxCollegate.length > 0}
+										disabled={mailboxBusy || mailboxes.length === 0}
+										title={mailboxLoadErr
+											? `Caselle non disponibili: ${mailboxLoadErr}`
+											: mailboxes.length === 0
+												? 'Nessuna casella configurata nel sistema (Impostazioni → Integrazioni)'
+												: 'Autorizza una casella di sistema come fonte e destinazione di questo topic'}
+										on:click={openMailboxDialog}>✉️ Mailbox</button>
+								{/if}
 							</div>
-							{#if mailboxCollegate.length > 0}
+							{#if $isAdmin && mailboxCollegate.length > 0}
 								<ul class="egress-list">
 									{#each mailboxCollegate as m (m.account)}
 										<li>
@@ -3025,8 +3042,8 @@
 									{/each}
 								</ul>
 							{/if}
-							{#if mailboxErr}
-								<p class="cred-hint" role="alert">{mailboxErr}</p>
+							{#if $isAdmin && (mailboxErr || mailboxLoadErr)}
+								<p class="cred-hint" role="alert">{mailboxErr || mailboxLoadErr}</p>
 							{/if}
 							{#if (info?.meta.local_folders ?? []).length > 0}
 								<ul class="egress-list">
