@@ -67,6 +67,30 @@ export function gateCardState(stato, msg, gate) {
 }
 
 /**
+ * La card va mostrata? (clodia-platform#408)
+ *
+ * La pagina rendeva le card **solo sull'ultimo messaggio** della timeline: un
+ * gate in attesa spariva appena qualcuno scriveva qualcos'altro nella stanza,
+ * e restava sospeso finché non scadeva — con il gateway che aspetta e l'agente
+ * che va in timeout. È il caso reale citato nella issue.
+ *
+ * La regola è la stessa che governa i bottoni: finché c'è qualcosa da
+ * decidere, o un esito preso qui che merita di restare leggibile dove è stato
+ * preso, la card sta a schermo. Sparisce solo quando è `chiusa` — decisa
+ * altrove o scaduta — perché lì non c'è né azione né racconto: ripeterla su
+ * ogni messaggio vecchio riempirebbe la conversazione di «già deciso». Sul
+ * messaggio in fondo resta comunque, così l'esito appena arrivato non scompare
+ * sotto le dita.
+ *
+ * @param {'decisa'|'chiusa'|'da-decidere'} stato
+ * @param {boolean} ultima  è la card dell'ultimo messaggio mostrato?
+ * @returns {boolean}
+ */
+export function gateCardVisibile(stato, ultima) {
+	return stato !== 'chiusa' || ultima === true;
+}
+
+/**
  * Registra l'esito di una decisione, e lo attribuisce alla **card** su cui è
  * stata presa.
  *
