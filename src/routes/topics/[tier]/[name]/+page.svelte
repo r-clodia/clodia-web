@@ -67,6 +67,7 @@
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import { gateLabel } from '$lib/gateLabel';
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
+	import { liveBoxEntries } from '$lib/liveBox';
 	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
 	import { fondiConEcho } from '$lib/echoLocale';
@@ -603,7 +604,18 @@
 		if (resto === cur.reply) return;
 		liveAgents = { ...liveAgents, [chiave]: { ...cur, reply: resto } };
 	}
-	$: liveEntries = Object.entries(liveAgents).filter(([, l]) => l.think || l.reply || l.tools.length);
+	/** Quali box stanno a schermo. Il calcolo sta in `$lib/liveBox` e ha i suoi
+	 *  casi eseguibili: la regola è «finché il backend dichiara il turno, il box
+	 *  resta» — non «finché ci sono byte nei buffer» (clodia-platform#417).
+	 *
+	 *  Qui c'era il filtro sui buffer, e faceva sparire il box di ragionamento a
+	 *  metà turno: ogni volta che i tre buffer si trovavano vuoti insieme — il
+	 *  blocco appena persistito e il successivo non ancora cominciato, o la
+	 *  stanza riaperta dopo che gli eventi SSE erano già passati — l'agente
+	 *  usciva dalla lista e il suo box veniva SMONTATO, per ricomparire al delta
+	 *  dopo. A spegnerlo resta la sola cintura di `refreshInfo`, che è l'unica a
+	 *  sapere che il turno è finito davvero. */
+	$: liveEntries = liveBoxEntries(liveAgents, workingResponders, seedName);
 	$: liveReplies = liveEntries.filter(([, l]) => l.reply);
 	$: hasLive = liveEntries.length > 0;
 	function visibleMessages(items: ChannelMessage[]): ChannelMessage[] {
