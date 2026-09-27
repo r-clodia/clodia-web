@@ -76,6 +76,7 @@
 	import GateBatchBar from '$lib/components/GateBatchBar.svelte';
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import type { TierWarning } from '$lib/api/types';
+	import type { TelegramSealState } from '$lib/api/client';
 
 	$: params = $page.params as Record<string, string>;
 	$: tier = params.tier ?? '';
@@ -1328,12 +1329,21 @@
 	let telegramValue = '';
 	let telegramBusy = false;
 	let telegramErr = '';
+	// clodia-platform#405: su un topic sopra il cap del channel (Telegram regge
+	// fino a SEAL-1: provider extra-UE, gruppi non E2E) il collegamento non è
+	// più un rifiuto secco — è una domanda all'owner. Chi il tier lo assegna è
+	// chi il rischio lo porta, e deve poter dire di sì per iscritto. Il «se
+	// chiedere» lo decide il server (`seal.requires_ack`): la regola sta in un
+	// posto solo, qui si mostra soltanto.
+	let telegramSeal: TelegramSealState | null = null;
+	let telegramAck = false;
 
 	async function loadTelegramLink() {
 		try {
 			const r = await getTelegramLink(tier, name);
 			telegramConnected = r.connected;
 			telegramChatId = r.chat_id;
+			telegramSeal = r.seal ?? null;
 		} catch {
 			// silenzioso: lo stato resta quello di default (disconnesso) finché
 			// non si può leggere — coerente con come le altre liste falliscono qui.
@@ -1344,17 +1354,23 @@
 		telegramDialogOpen = true;
 		telegramValue = '';
 		telegramErr = '';
+		// La presa d'atto riparte da zero a ogni apertura: è il consenso a
+		// QUESTO collegamento, non una preferenza dell'utente.
+		telegramAck = false;
+		void loadTelegramLink();
 	}
 
 	async function confirmConnectTelegram() {
 		const v = telegramValue.trim();
 		if (!v || telegramBusy) return;
+		if (telegramSeal?.requires_ack && !telegramAck) return;
 		telegramBusy = true;
 		telegramErr = '';
 		try {
-			const r = await connectTelegramLink(tier, name, v);
+			const r = await connectTelegramLink(tier, name, v, telegramAck);
 			telegramConnected = r.connected;
 			telegramChatId = r.chat_id;
+			telegramSeal = r.seal ?? telegramSeal;
 			telegramDialogOpen = false;
 			await loadEgressScope();
 		} catch (e) {
@@ -1371,6 +1387,9 @@
 			const r = await disconnectTelegramLink(tier, name);
 			telegramConnected = r.connected;
 			telegramChatId = r.chat_id;
+			// Scollegando, il server revoca anche la presa d'atto: il prossimo
+			// collegamento torna a chiedere invece di ereditare un sì vecchio.
+			telegramSeal = r.seal ?? telegramSeal;
 			await loadEgressScope();
 		} catch (e) {
 			telegramErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
@@ -3177,9 +3196,31 @@
 	<input type="text" class="egress-quick-input" placeholder="-1001234567890 oppure @nomeutente"
 		bind:value={telegramValue} disabled={telegramBusy}
 		on:keydown={(e) => e.key === 'Enter' && confirmConnectTelegram()} />
+	{#if telegramSeal?.requires_ack}
+		<!-- clodia-platform#405: il cap non è più un muro, è una domanda — ma la
+		     domanda dev'essere quella vera («i messaggi di una stanza {telegramSeal
+		     .tier} passeranno da un provider {telegramSeal.cap}»), non un «sei
+		     sicuro?». Resta registrata nel topic con chi e quando. -->
+		<label class="seal-ack">
+			<input type="checkbox" bind:checked={telegramAck} disabled={telegramBusy} />
+			<span>
+				Questo canale è <b>{telegramSeal.tier}</b>, Telegram regge fino a
+				<b>{telegramSeal.cap}</b> (server fuori UE, gruppi non cifrati
+				end-to-end). Collegandolo, i messaggi di questa stanza passeranno di
+				lì: prendo atto del downgrade. La scelta resta scritta nel topic.
+			</span>
+		</label>
+	{:else if telegramSeal?.ack}
+		<p class="meta-note">
+			Downgrade del canale già accettato da <b>{telegramSeal.ack.by}</b>
+			({telegramSeal.ack.tier} → {telegramSeal.ack.cap}). Si revoca
+			scollegando.
+		</p>
+	{/if}
 	{#if telegramErr}<p class="cred-hint" role="alert">{telegramErr}</p>{/if}
 	<div class="remote-actions" slot="actions">
-		<button type="button" class="link-btn" disabled={telegramBusy || !telegramValue.trim()}
+		<button type="button" class="link-btn"
+			disabled={telegramBusy || !telegramValue.trim() || (telegramSeal?.requires_ack && !telegramAck)}
 			on:click={confirmConnectTelegram}>
 			{telegramBusy ? '…' : '+ connetti'}
 		</button>
@@ -3921,6 +3962,14 @@
 	.egress-quick-input { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px;
 		padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
 		background: var(--bg); color: var(--fg); margin-top: 8px; }
+
+	/* Presa d'atto sul cap SEAL del channel (clodia-platform#405): riquadro
+	   d'avviso, non una riga qualsiasi — è l'unica cosa che separa una stanza
+	   riservata da un provider che non la regge. */
+	.seal-ack { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px;
+		font-size: 12px; line-height: 1.45; padding: 8px 10px; border-radius: 8px;
+		border: 1px solid var(--warn, #b7791f); background: var(--warn-bg, rgba(183,121,31,.08)); }
+	.seal-ack input { margin-top: 2px; flex: none; }
 
 	/* Cosa attraversa il gate: sotto la domanda, prima dei bottoni. */
 	.gate-crosses { display: block; font-size: 11px; opacity: .75; margin-top: 4px; }
