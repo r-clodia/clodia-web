@@ -53,10 +53,13 @@
 		getTelegramLink,
 		connectTelegramLink,
 		disconnectTelegramLink,
+		getTopicMailboxes,
+		setTopicMailbox,
 		TOPIC_STATUSES,
 		type ChannelInfo,
 		type ChannelMessage,
 		type ChannelFile,
+		type TopicMailbox,
 	} from '$lib/api/client';
 	import { getTopicAgentsMd, saveTopicAgentsMd, type TopicAgentsMd } from '$lib/api/client';
 	import { openSignedFile } from '$lib/download';
@@ -1372,6 +1375,76 @@
 		}
 	}
 
+	// Mailbox (26 set 2026, clodia-platform#406): il quarto connettore. Qui non
+	// si incolla niente — le caselle sono quelle già configurate nel sistema, e
+	// se ne SCEGLIE una: un campo libero avrebbe fatto scrivere a mano un
+	// indirizzo che poi non corrisponde a nessuna credenziale, autorizzando una
+	// casella che non esiste. Come Drive (e a differenza di Telegram) è sola
+	// autorizzazione: nessun binding da fare, la posta la leggono i verbi email.
+	let mailboxes: TopicMailbox[] = [];
+	let mailboxDialogOpen = false;
+	let mailboxChoice = '';
+	let mailboxBusy = false;
+	let mailboxErr = '';
+	/** Errore di CARICAMENTO dell'elenco: distinto da «nessuna casella». Un 403 o
+	 *  un gateway giù non devono diventare «Nessuna casella configurata», che
+	 *  manda a cercare nelle Integrazioni un problema che non c'è. */
+	let mailboxLoadErr = '';
+
+	$: mailboxCollegate = mailboxes.filter((m) => m.inbox || m.outbox);
+	$: mailboxDisponibili = mailboxes.filter((m) => !(m.inbox && m.outbox));
+
+	async function loadMailboxes() {
+		// La rotta è solo per gli admin: per chi non lo è non la si chiede
+		// nemmeno, e il connettore non compare.
+		if (!$isAdmin) {
+			mailboxes = [];
+			return;
+		}
+		try {
+			mailboxes = await getTopicMailboxes(tier, name);
+			mailboxLoadErr = '';
+		} catch (e) {
+			mailboxes = [];
+			mailboxLoadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	function openMailboxDialog() {
+		mailboxErr = '';
+		mailboxChoice = mailboxDisponibili[0]?.account ?? '';
+		mailboxDialogOpen = true;
+	}
+
+	async function confirmConnectMailbox() {
+		if (!mailboxChoice || mailboxBusy) return;
+		mailboxBusy = true;
+		mailboxErr = '';
+		try {
+			mailboxes = await setTopicMailbox(tier, name, 'connect', mailboxChoice);
+			mailboxDialogOpen = false;
+			await loadEgressScope();
+		} catch (e) {
+			mailboxErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			mailboxBusy = false;
+		}
+	}
+
+	async function disconnectMailbox(account: string) {
+		if (mailboxBusy) return;
+		mailboxBusy = true;
+		mailboxErr = '';
+		try {
+			mailboxes = await setTopicMailbox(tier, name, 'disconnect', account);
+			await loadEgressScope();
+		} catch (e) {
+			mailboxErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			mailboxBusy = false;
+		}
+	}
+
 	function normalizeTopicStatus(status?: string | null): string {
 		const raw = String(status ?? 'active').trim().toLowerCase().replace(/[\s-]+/g, '_');
 		if (!raw || raw === 'attivo' || raw === 'idle' || raw === 'urgent') return 'active';
@@ -1987,6 +2060,7 @@
 		programmaPoll();
 		void refreshGateInfo();
 		void loadTelegramLink();
+		void loadMailboxes();
 		getAgents()
 			.then((as) => {
 				allAgents = as.map((a) => a.name);
@@ -2935,7 +3009,42 @@
 								</button>
 								<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
 									on:click={openLocalFolderDialog}>🗂️ Cartella Mac</button>
+								{#if $isAdmin}
+									<!-- Solo un admin (decisione di Davide, 27 set 2026): una casella
+									     di sistema è posta che non è dell'owner del topic. -->
+									<button type="button" class="egress-quick-btn"
+										class:egress-quick-btn-connected={mailboxCollegate.length > 0}
+										disabled={mailboxBusy || mailboxes.length === 0}
+										title={mailboxLoadErr
+											? `Caselle non disponibili: ${mailboxLoadErr}`
+											: mailboxes.length === 0
+												? 'Nessuna casella configurata nel sistema (Impostazioni → Integrazioni)'
+												: 'Autorizza una casella di sistema come fonte e destinazione di questo topic'}
+										on:click={openMailboxDialog}>✉️ Mailbox</button>
+								{/if}
 							</div>
+							{#if $isAdmin && mailboxCollegate.length > 0}
+								<ul class="egress-list">
+									{#each mailboxCollegate as m (m.account)}
+										<li>
+											<code>{m.email}</code>
+											{#if m.send_only}<span class="muted"> · solo invio</span>{/if}
+											{#if !m.local}
+												<!-- Autorizzata dalla lista GLOBALE: da qui non si toglie,
+												     e un ✕ che non cambia nulla sarebbe peggio di nessun ✕. -->
+												<span class="muted"> · globale</span>
+											{:else}
+												<button type="button" class="egress-remove" disabled={mailboxBusy}
+													title="Scollega da questo topic (la casella resta configurata nel sistema)"
+													on:click={() => disconnectMailbox(m.account)}>✕</button>
+											{/if}
+										</li>
+									{/each}
+								</ul>
+							{/if}
+							{#if $isAdmin && (mailboxErr || mailboxLoadErr)}
+								<p class="cred-hint" role="alert">{mailboxErr || mailboxLoadErr}</p>
+							{/if}
 							{#if (info?.meta.local_folders ?? []).length > 0}
 								<ul class="egress-list">
 									{#each info?.meta.local_folders ?? [] as f (f.name)}
@@ -3061,6 +3170,38 @@
 		<button type="button" class="link-btn" disabled={telegramBusy || !telegramValue.trim()}
 			on:click={confirmConnectTelegram}>
 			{telegramBusy ? '…' : '+ connetti'}
+		</button>
+	</div>
+</Modal>
+
+<!-- Mailbox (26 set 2026, clodia-platform#406): nessun campo libero, una scelta
+     fra le caselle già configurate nel sistema — scriverne una a mano
+     autorizzerebbe un indirizzo dietro cui non c'è nessuna credenziale.
+     Collegarla la rende insieme fonte e destinazione, e solo di questo topic. -->
+<Modal open={mailboxDialogOpen} dismissable={!mailboxBusy} maxWidth={420}
+	on:close={() => (mailboxDialogOpen = false)}>
+	<h2 slot="title">✉️ Collega una casella</h2>
+	<p class="meta-note">
+		Le caselle sono quelle configurate nel sistema (Impostazioni →
+		Integrazioni): qui se ne autorizza una per <b>questo topic</b>, e diventa
+		insieme fonte fidata in ingresso e casella con cui rispondere. Nessun
+		messaggio viene scaricato da solo: la posta la leggono i verbi email degli
+		agenti, che senza questa autorizzazione vengono rifiutati.
+	</p>
+	{#if mailboxDisponibili.length === 0}
+		<p class="muted">Tutte le caselle di sistema sono già collegate a questo topic.</p>
+	{:else}
+		<select class="egress-quick-input" bind:value={mailboxChoice} disabled={mailboxBusy}>
+			{#each mailboxDisponibili as m (m.account)}
+				<option value={m.account}>{m.email}{m.send_only ? ' (solo invio)' : ''}</option>
+			{/each}
+		</select>
+	{/if}
+	{#if mailboxErr}<p class="cred-hint" role="alert">{mailboxErr}</p>{/if}
+	<div class="remote-actions" slot="actions">
+		<button type="button" class="link-btn" disabled={mailboxBusy || !mailboxChoice}
+			on:click={confirmConnectMailbox}>
+			{mailboxBusy ? '…' : '+ collega'}
 		</button>
 	</div>
 </Modal>
