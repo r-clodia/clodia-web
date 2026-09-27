@@ -72,7 +72,8 @@
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
 	import { fondiConEcho } from '$lib/echoLocale';
 	import { routingReasonLabel, isFallbackReason, coordinatorHint } from '$lib/routingReason';
-	import { decideBatch, gateBatch, gateCardState, gateDestination, recordDecision } from '$lib/gateCard';
+	import { decideBatch, gateBatch, gateCardState, gateCardVisibile, gateDestination, recordDecision } from '$lib/gateCard';
+	import { CHOICES_RE, leggiChoices, pillsAttive } from '$lib/pillPersistenti';
 	import GateBatchBar from '$lib/components/GateBatchBar.svelte';
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import type { TierWarning } from '$lib/api/types';
@@ -693,13 +694,14 @@
 	// Pills di scelta: un agente può includere nel testo un marcatore invisibile
 	//   singola:  <!-- choices=a,b,c -->        → click su una pill → invia subito
 	//   multipla: <!-- choices-multi=a,b,c -->  → pill toggle + pill "✓ Conferma" (=enter)
-	const _CH_RE = /<!--\s*choices(-multi)?\s*=(.*?)-->/i;
-	function msgChoices(text: string): { multi: boolean; items: string[] } | null {
-		const m = (text || '').match(_CH_RE);
-		if (!m) return null;
-		const items = m[2].split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
-		return items.length ? { multi: !!m[1], items } : null;
-	}
+	// Lettura del marcatore e «quali pill sono ancora vive» stanno in
+	// `$lib/pillPersistenti`: la seconda è la regola della issue#407 e ha il suo
+	// controllo eseguibile.
+	/** Scelte già risolte con un click IN QUESTA PAGINA. Dopo un ricarico la
+	 *  memoria non c'è più, e a chiudere la domanda resta la risposta stessa,
+	 *  che è nella conversazione (vedi `pillsAttive`). */
+	let choiceRisolte = new Set<string>();
+	$: pillsVive = pillsAttive(shownMessages, choiceRisolte);
 	// Marker ROUTER: il backend ha trovato più agenti entro il margine e chiede
 	// all'umano chi deve prendere il turno. Il click NON invia una chat normale:
 	// risolve il routing e salva l'esempio supervisionato.
@@ -924,7 +926,7 @@
 	// how the two routing markers were found.
 	function stripChoices(text: string): string {
 		return (text || '')
-			.replace(_CH_RE, '')
+			.replace(CHOICES_RE, '')
 			.replace(_INV_RE, '')
 			.replace(_JOB_RE, '')
 			.replace(_GATE_RE, '')
@@ -1016,21 +1018,31 @@
 	// della conversazione resta leggibile.
 	async function pickChoice(c: string, m: ChannelMessage) {
 		if (sending) return;
+		choiceRisolte = new Set(choiceRisolte).add(m.id);
 		replyingTo = replySnippet(m);
 		draft = `@${m.author} ${c}`;
 		await send();
 	}
-	// selezione multipla (vale per l'ultimo messaggio con choices-multi)
-	let multiSel = new Set<string>();
-	function toggleMulti(c: string) {
-		multiSel.has(c) ? multiSel.delete(c) : multiSel.add(c);
-		multiSel = new Set(multiSel); // reattività
+	// Selezione multipla, PER MESSAGGIO: più domande possono restare aperte
+	// insieme (issue#407), e un insieme solo mescolerebbe le spunte di una con
+	// quelle dell'altra — oltre a perderle tutte al primo messaggio in arrivo,
+	// che è com'era fatto prima.
+	let multiSel: Record<string, Set<string>> = {};
+	function selDi(id: string): Set<string> {
+		return multiSel[id] ?? new Set<string>();
+	}
+	function toggleMulti(c: string, m: ChannelMessage) {
+		const s = new Set(selDi(m.id));
+		s.has(c) ? s.delete(c) : s.add(c);
+		multiSel = { ...multiSel, [m.id]: s }; // reattività
 	}
 	async function confirmMulti(m: ChannelMessage) {
-		if (!multiSel.size || sending) return;
+		const s = selDi(m.id);
+		if (!s.size || sending) return;
+		choiceRisolte = new Set(choiceRisolte).add(m.id);
 		replyingTo = replySnippet(m);
-		draft = `@${m.author} ${Array.from(multiSel).join(', ')}`;
-		multiSel = new Set();
+		draft = `@${m.author} ${Array.from(s).join(', ')}`;
+		multiSel = { ...multiSel, [m.id]: new Set<string>() };
 		await send();
 	}
 
@@ -1768,11 +1780,11 @@
 			const last = messages[messages.length - 1];
 			for (const a of newAiAuthors(messages, previousLastId)) setTyping(a, false);
 			if (last?.kind === 'ai') setTyping(last.author, false);
-			// nuovo ultimo messaggio → azzera la selezione multipla delle pills
-			if (last && last.id !== _lastMsgId) {
-				_lastMsgId = last.id;
-				multiSel = new Set();
-			}
+			// Qui c'era l'azzeramento della selezione multipla a ogni nuovo ultimo
+			// messaggio: metà della issue#407 stava in questa riga. Le spunte
+			// vivono ora per messaggio e le toglie solo chi le ha messe, o
+			// l'invio.
+			if (last && last.id !== _lastMsgId) _lastMsgId = last.id;
 			// Una bolla si è persistita: la copia provvisoria va via, il turno NO.
 			//
 			// Qui c'era `resetLive(a)`, che cancellava tutto il live — testo,
@@ -2353,6 +2365,14 @@
 					     topic e lascerebbe a cercare il messaggio: la meta ma non il
 					     punto, che su un telefono è quasi lo stesso che niente. -->
 					{@const cont = continuity[i] ?? { prev: false, next: false }}
+					<!-- Gate: stato e visibilità si calcolano qui, una volta per messaggio,
+					     perché `{@const}` vuole un blocco per padre e la card vive in fondo
+					     alla bolla. La regola sta in $lib/gateCard, non qui. -->
+					{@const gate = msgGate(m.text)}
+					{@const gStato = gate
+						? gateCardState({ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs }, m, gate)
+						: 'chiusa'}
+					{@const gateVisibile = gate !== null && gateCardVisibile(gStato, i === shownMessages.length - 1)}
 					<!-- `cont-prev`/`cont-next`: le saldature che rimettono in UNA bolla i
 					     blocchi di uno stesso turno, che il backend pubblica come messaggi
 					     distinti da clodia-platform#243. Ogni blocco tiene le sue
@@ -2396,24 +2416,34 @@
 							<blockquote class="quote">{splitQuote(m.text).quote}</blockquote>
 						{/if}
 						<div class="text md">{@html renderMarkdown(linkifyFiles(stripChoices(splitQuote(m.text).body)))}</div>
-						{#if i === shownMessages.length - 1}
-							{@const ch = msgChoices(m.text)}
+						<!-- Le pill restano su OGNI domanda ancora aperta, non solo
+						     sull'ultimo messaggio: chi decide quando sparire è
+						     `pillsAttive` ($lib/pillPersistenti, issue#407) — click,
+						     risposta già data, o una nuova domanda dello stesso agente. -->
+						{#if pillsVive.has(m.id)}
+							{@const ch = leggiChoices(m.text)}
 							{#if ch}
 								<div class="pills">
 									{#each ch.items as c}
 										{#if ch.multi}
-											<button type="button" class="pill" class:on={multiSel.has(c)}
-												on:click={() => toggleMulti(c)}>{c}</button>
+											<button type="button" class="pill" class:on={selDi(m.id).has(c)}
+												on:click={() => toggleMulti(c, m)}>{c}</button>
 										{:else}
 											<button type="button" class="pill" on:click={() => pickChoice(c, m)}>{c}</button>
 										{/if}
 									{/each}
 									{#if ch.multi}
-										<button type="button" class="pill pill-confirm" disabled={multiSel.size === 0}
+										<button type="button" class="pill pill-confirm" disabled={selDi(m.id).size === 0}
 											on:click={() => confirmMulti(m)}>✓ Conferma</button>
 									{/if}
 								</div>
 							{/if}
+						{/if}
+						<!-- Instradamento, invito e proposta di job restano sull'ultimo
+						     messaggio: risolvono una richiesta SINGOLA e pendente lato
+						     backend (`resolveRoutingChoice` non porta l'id del messaggio),
+						     quindi una card vecchia deciderebbe la richiesta di adesso. -->
+						{#if i === shownMessages.length - 1}
 							{@const routeChoices = msgRoutingChoices(m.text)}
 							{#if routeChoices}
 								<div class="pills route-pills">
@@ -2470,92 +2500,91 @@
 									{/if}
 								</div>
 							{/if}
-							{@const g = msgGate(m.text)}
-							{#if g !== null}
-								{@const gStato = gateCardState(
-									{ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs },
-									m,
-									g
-								)}
-								{@const gDest = gateDestination(g.verb)}
-								<div class="jobprop">
-									{#if gStato === 'decisa'}
-										<!-- L'esito NON cancella la domanda: la richiesta resta
-										     leggibile accanto alla risposta. Un «approvato» da solo
-										     racconta che qualcuno ha premuto un bottone, non cosa ha
-										     concesso — ed è precisamente ciò che serve rileggere mesi
-										     dopo. Il testo del messaggio porta il motivo; qui restano
-										     chi e cosa, che vengono dal marcatore e non dalla coda. -->
-										<span class="jobprop-done">
-											🛡️ <b>{g.agent}</b> · <code>{gateLabel(g.verb).oggetto}</code>
-											— {gateDecided[m.id]}
+						{/if}
+						<!-- La card di gate NON vive solo sull'ultimo messaggio: una richiesta
+						     in attesa deve restare decidibile mentre la conversazione va avanti,
+						     o resta sospesa finché scade — il caso reale della issue#408.
+						     Quando sparire lo dice `gateCardVisibile`, non la posizione. -->
+						{#if gateVisibile && gate}
+							{@const g = gate}
+							{@const gDest = gateDestination(g.verb)}
+							<div class="jobprop">
+								{#if gStato === 'decisa'}
+									<!-- L'esito NON cancella la domanda: la richiesta resta
+									     leggibile accanto alla risposta. Un «approvato» da solo
+									     racconta che qualcuno ha premuto un bottone, non cosa ha
+									     concesso — ed è precisamente ciò che serve rileggere mesi
+									     dopo. Il testo del messaggio porta il motivo; qui restano
+									     chi e cosa, che vengono dal marcatore e non dalla coda. -->
+									<span class="jobprop-done">
+										🛡️ <b>{g.agent}</b> · <code>{gateLabel(g.verb).oggetto}</code>
+										— {gateDecided[m.id]}
+									</span>
+								{:else if gStato === 'chiusa'}
+									<!-- Già deciso, ma non da questa pagina (o prima di un
+									     ricarico): la richiesta non è più in coda, e la coda è
+									     stata letta DOPO che questo messaggio è arrivato. Si dice,
+									     invece di riproporre bottoni che il backend rifiuterebbe.
+									     Senza quel confronto di tempi, una richiesta appena nata
+									     finiva qui per la durata di un poll: un «già deciso» su
+									     ciò che nessuno aveva deciso. -->
+									<span class="jobprop-done">
+										🛡️ <b>{g.agent}</b> · <code>{gateLabel(g.verb).oggetto}</code>
+										— già deciso
+									</span>
+								{:else if canDecideGate(g.id)}
+									{#if gDest}
+										<!-- La DESTINAZIONE, non solo il verbo: `egress:email:mailto:hr@x.io`
+										     stampato tutto attaccato in un `<code>` dice a chi decide che
+										     si tratta di «egress», non verso cosa sta aprendo — ed è
+										     l'unica cosa che serve sapere per decidere. -->
+										<span class="jobprop-q">
+											🛡️ <b>{g.agent}</b> vuole {gDest.direzione === 'egress' ? 'raggiungere' : 'ricevere da'}
+											<code>{gDest.dest}</code> ({gDest.canale}) — approvi?
 										</span>
-									{:else if gStato === 'chiusa'}
-										<!-- Già deciso, ma non da questa pagina (o prima di un
-										     ricarico): la richiesta non è più in coda, e la coda è
-										     stata letta DOPO che questo messaggio è arrivato. Si dice,
-										     invece di riproporre bottoni che il backend rifiuterebbe.
-										     Senza quel confronto di tempi, una richiesta appena nata
-										     finiva qui per la durata di un poll: un «già deciso» su
-										     ciò che nessuno aveva deciso. -->
-										<span class="jobprop-done">
-											🛡️ <b>{g.agent}</b> · <code>{gateLabel(g.verb).oggetto}</code>
-											— già deciso
-										</span>
-									{:else if canDecideGate(g.id)}
-										{#if gDest}
-											<!-- La DESTINAZIONE, non solo il verbo: `egress:email:mailto:hr@x.io`
-											     stampato tutto attaccato in un `<code>` dice a chi decide che
-											     si tratta di «egress», non verso cosa sta aprendo — ed è
-											     l'unica cosa che serve sapere per decidere. -->
-											<span class="jobprop-q">
-												🛡️ <b>{g.agent}</b> vuole {gDest.direzione === 'egress' ? 'raggiungere' : 'ricevere da'}
-												<code>{gDest.dest}</code> ({gDest.canale}) — approvi?
-											</span>
-										{:else}
-											<span class="jobprop-q">🛡️ <b>{g.agent}</b> {gateLabel(g.verb).azione} <code>{gateLabel(g.verb).oggetto}</code> — approvi?</span>
-										{/if}
-										<button type="button" class="jobprop-ok" disabled={gateDeciding}
-											on:click={() => decideGate(m.id, g, true)}>{gateDeciding ? '…' : '✓ Approva'}</button>
-										{#if isDestinationGate(g.verb)}
-											<!-- Solo per i gate su una DESTINAZIONE: «sempre» ha senso
-											     su un indirizzo, non su un'azione. E le due portate hanno
-											     titolari diversi — la stanza è dell'owner, l'istanza è
-											     dell'admin — quindi il secondo bottone compare solo a chi
-											     può usarlo: offrirlo a chi verrà rifiutato è insegnare a
-											     ignorare i bottoni. -->
-											<button type="button" class="jobprop-ok" disabled={gateDeciding}
-												title="Aggiunge questa destinazione alla whitelist di questa stanza: non verrà più chiesto qui"
-												on:click={() => decideGate(m.id, g, true, 'topic')}>✓ Sempre qui</button>
-											{#if $isAdmin}
-												<button type="button" class="jobprop-ok" disabled={gateDeciding}
-													title="Aggiunge questa destinazione alla whitelist dell'INTERA istanza, tutte le stanze comprese"
-													on:click={() => decideGate(m.id, g, true, 'global')}>✓ Ovunque</button>
-											{/if}
-										{/if}
-										<button type="button" class="jobprop-no" disabled={gateDeciding}
-											on:click={() => decideGate(m.id, g, false)}>Nega</button>
 									{:else}
-										<span class="invite-note">
-											{#if gateInfo[g.id]?.decided_by === 'admin'}
-												lo sblocca un admin della piattaforma
-											{:else if gateInfo[g.id]?.decider_name}
-												lo sblocca <b>{gateInfo[g.id].decider_name}</b>, owner di questo topic
-											{:else}
-												solo l'owner può approvare
-											{/if}
-										</span>
+										<span class="jobprop-q">🛡️ <b>{g.agent}</b> {gateLabel(g.verb).azione} <code>{gateLabel(g.verb).oggetto}</code> — approvi?</span>
 									{/if}
-									{#if gateInfo[g.id]?.asker_note}
-										<span class="gate-crosses">🔎 {gateInfo[g.id].asker_note}</span>
+									<button type="button" class="jobprop-ok" disabled={gateDeciding}
+										on:click={() => decideGate(m.id, g, true)}>{gateDeciding ? '…' : '✓ Approva'}</button>
+									{#if isDestinationGate(g.verb)}
+										<!-- Solo per i gate su una DESTINAZIONE: «sempre» ha senso
+										     su un indirizzo, non su un'azione. E le due portate hanno
+										     titolari diversi — la stanza è dell'owner, l'istanza è
+										     dell'admin — quindi il secondo bottone compare solo a chi
+										     può usarlo: offrirlo a chi verrà rifiutato è insegnare a
+										     ignorare i bottoni. -->
+										<button type="button" class="jobprop-ok" disabled={gateDeciding}
+											title="Aggiunge questa destinazione alla whitelist di questa stanza: non verrà più chiesto qui"
+											on:click={() => decideGate(m.id, g, true, 'topic')}>✓ Sempre qui</button>
+										{#if $isAdmin}
+											<button type="button" class="jobprop-ok" disabled={gateDeciding}
+												title="Aggiunge questa destinazione alla whitelist dell'INTERA istanza, tutte le stanze comprese"
+												on:click={() => decideGate(m.id, g, true, 'global')}>✓ Ovunque</button>
+										{/if}
 									{/if}
-									{#if gateInfo[g.id]?.crosses}
-										<!-- Cosa si attraversa: senza, la richiesta è solo il nome
-										     di una funzione, e chi decide non sa cosa sta decidendo. -->
-										<span class="gate-crosses">↦ attraversa {gateInfo[g.id].crosses}</span>
-									{/if}
-								</div>
-							{/if}
+									<button type="button" class="jobprop-no" disabled={gateDeciding}
+										on:click={() => decideGate(m.id, g, false)}>Nega</button>
+								{:else}
+									<span class="invite-note">
+										{#if gateInfo[g.id]?.decided_by === 'admin'}
+											lo sblocca un admin della piattaforma
+										{:else if gateInfo[g.id]?.decider_name}
+											lo sblocca <b>{gateInfo[g.id].decider_name}</b>, owner di questo topic
+										{:else}
+											solo l'owner può approvare
+										{/if}
+									</span>
+								{/if}
+								{#if gateInfo[g.id]?.asker_note}
+									<span class="gate-crosses">🔎 {gateInfo[g.id].asker_note}</span>
+								{/if}
+								{#if gateInfo[g.id]?.crosses}
+									<!-- Cosa si attraversa: senza, la richiesta è solo il nome
+									     di una funzione, e chi decide non sa cosa sta decidendo. -->
+									<span class="gate-crosses">↦ attraversa {gateInfo[g.id].crosses}</span>
+								{/if}
+							</div>
 						{/if}
 						{#if m.attachments?.length}
 							<div class="atts">
