@@ -42,6 +42,7 @@
 		downloadTopicZip,
 		channelFileUrl,
 		getTopicEgressScope,
+		type UriLabelInfo,
 		editTopicEgressScope,
 		setTopicLogo,
 		clearTopicLogo,
@@ -75,6 +76,7 @@
 	import { decideBatch, gateBatch, gateCardState, gateCardVisibile, gateDestination, recordDecision } from '$lib/gateCard';
 	import { CHOICES_RE, leggiChoices, pillsAttive } from '$lib/pillPersistenti';
 	import GateBatchBar from '$lib/components/GateBatchBar.svelte';
+	import UriLabel from '$lib/components/UriLabel.svelte';
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import type { TierWarning } from '$lib/api/types';
 	import type { TelegramSealState } from '$lib/api/client';
@@ -1181,7 +1183,7 @@
 	// Sola lettura: le voci che valgono SOLO in questo topic (oltre a quelle
 	// globali, che restano nelle impostazioni). Sostituisce il pannello Proxy
 	// (emissione/revoca client MCP), rimosso il 10 set 2026.
-	let egressScope: { egress: string[]; ingress: string[] } | null = null;
+	let egressScope: { egress: string[]; ingress: string[]; labels?: Record<string, UriLabelInfo> } | null = null;
 	let egressScopeErr = '';
 
 	async function loadEgressScope() {
@@ -3007,7 +3009,7 @@
 								<ul class="mcp-list">
 									{#each egressScope.egress as u}
 										<li>
-											<span class="mcp-who">{u}</span>
+											<span class="mcp-who"><UriLabel uri={u} labels={egressScope.labels} /></span>
 											{#if isOwner}
 												<button type="button" class="egress-remove" disabled={egressBusy}
 													title="Togli dalle voci locali di questo topic"
@@ -3026,7 +3028,7 @@
 								<ul class="mcp-list">
 									{#each egressScope.ingress as u}
 										<li>
-											<span class="mcp-who">{u}</span>
+											<span class="mcp-who"><UriLabel uri={u} labels={egressScope.labels} /></span>
 											{#if isOwner}
 												<button type="button" class="egress-remove" disabled={egressBusy}
 													title="Togli dalle voci locali di questo topic"
