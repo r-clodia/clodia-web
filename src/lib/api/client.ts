@@ -722,7 +722,11 @@ export interface Observation {
 export async function getObservations(since = 0, opts: RequestOptions = {}): Promise<{ observing: boolean; observations: Observation[] }> {
 	return apiGet(`/api/observe/recent?since=${since}`, opts);
 }
-export async function getEgressWhitelist(opts: RequestOptions = {}): Promise<{ mode: string; egress_allow: string[]; source_allow: string[]; egress_schemes?: string[]; source_schemes?: string[] }> {
+/** Etichetta leggibile di una voce di whitelist (clodia-platform#424): oggi
+ *  solo per `gdrive:folder/<id>` — link sempre, nome quando Drive risponde. */
+export type UriLabelInfo = { url: string; name: string | null };
+
+export async function getEgressWhitelist(opts: RequestOptions = {}): Promise<{ mode: string; egress_allow: string[]; source_allow: string[]; egress_schemes?: string[]; source_schemes?: string[]; labels?: Record<string, UriLabelInfo> }> {
 	return apiGet('/api/observe/whitelist', opts);
 }
 
@@ -2433,7 +2437,7 @@ export async function clearTopicLogo(
  *  in `getEgressWhitelist()` / `/settings/egress`. */
 export async function getTopicEgressScope(
 	tier: string, name: string, opts: RequestOptions = {}
-): Promise<{ egress: string[]; ingress: string[] }> {
+): Promise<{ egress: string[]; ingress: string[]; labels?: Record<string, UriLabelInfo> }> {
 	return apiGet(`/api/observe/whitelist/scope/${encodeURIComponent(tier)}/${encodeURIComponent(name)}`, opts);
 }
 
