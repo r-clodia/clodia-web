@@ -35,12 +35,14 @@
 	 * rifiuto arriva da lì e si mostra così com'è.
 	 */
 	import { onMount } from 'svelte';
-	import { getEgressWhitelist, editEgressWhitelist } from '$lib/api/client';
+	import { getEgressWhitelist, editEgressWhitelist, type UriLabelInfo } from '$lib/api/client';
+	import UriLabel from '$lib/components/UriLabel.svelte';
 	import { isAdmin } from '$lib/stores/capabilities';
 
 	let mode = 'unknown';
 	let egressAllow: string[] = [];
 	let sourceAllow: string[] = [];
+	let labels: Record<string, UriLabelInfo> = {};
 	let loading = true;
 	let err = '';
 
@@ -105,6 +107,7 @@
 		mode = r.mode ?? 'unknown';
 		egressAllow = r.egress_allow ?? [];
 		sourceAllow = r.source_allow ?? [];
+		labels = r.labels ?? {};
 	}
 
 	async function aggiungi() {
@@ -152,6 +155,7 @@
 			mode = r.mode ?? 'unknown';
 			egressAllow = r.egress_allow ?? [];
 			sourceAllow = r.source_allow ?? [];
+			labels = r.labels ?? {};
 		} catch (e) {
 			err = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -241,7 +245,7 @@
 			<ul class="uri">
 				{#each visibili as u}
 					<li>
-						<span class="sc">{schemaDi(u)}</span><code>{u}</code>
+						<span class="sc">{schemaDi(u)}</span><code><UriLabel uri={u} {labels} /></code>
 						{#if $isAdmin}
 							{#if daConfermare === u}
 								<button class="link tolgo" disabled={inCorso} on:click={() => rimuovi(u)}>

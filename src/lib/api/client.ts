@@ -722,7 +722,11 @@ export interface Observation {
 export async function getObservations(since = 0, opts: RequestOptions = {}): Promise<{ observing: boolean; observations: Observation[] }> {
 	return apiGet(`/api/observe/recent?since=${since}`, opts);
 }
-export async function getEgressWhitelist(opts: RequestOptions = {}): Promise<{ mode: string; egress_allow: string[]; source_allow: string[]; egress_schemes?: string[]; source_schemes?: string[] }> {
+/** Etichetta leggibile di una voce di whitelist (clodia-platform#424): oggi
+ *  solo per `gdrive:folder/<id>` — link sempre, nome quando Drive risponde. */
+export type UriLabelInfo = { url: string; name: string | null };
+
+export async function getEgressWhitelist(opts: RequestOptions = {}): Promise<{ mode: string; egress_allow: string[]; source_allow: string[]; egress_schemes?: string[]; source_schemes?: string[]; labels?: Record<string, UriLabelInfo> }> {
 	return apiGet('/api/observe/whitelist', opts);
 }
 
@@ -2441,7 +2445,7 @@ export async function clearTopicLogo(
  *  in `getEgressWhitelist()` / `/settings/egress`. */
 export async function getTopicEgressScope(
 	tier: string, name: string, opts: RequestOptions = {}
-): Promise<{ egress: string[]; ingress: string[] }> {
+): Promise<{ egress: string[]; ingress: string[]; labels?: Record<string, UriLabelInfo> }> {
 	return apiGet(`/api/observe/whitelist/scope/${encodeURIComponent(tier)}/${encodeURIComponent(name)}`, opts);
 }
 
@@ -2566,4 +2570,24 @@ export async function setTopicMailbox(
 		`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mailbox-link`,
 		{ action, account }, opts);
 	return d.mailboxes ?? [];
+}
+
+/** Riclassificazione del livello SEAL di un topic (clodia-platform#426). */
+export type TierImpact = {
+	from: string; to: string; direction: 'up' | 'down' | 'unknown';
+	lose_access: { name: string; type: string }[];
+	gain_access: { name: string; type: string }[];
+};
+
+export async function previewTopicTier(
+	tier: string, name: string, to: string, opts: RequestOptions = {}
+): Promise<TierImpact> {
+	return apiGet(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tier-preview?to=${encodeURIComponent(to)}`, opts);
+}
+
+export async function setTopicTier(
+	tier: string, name: string, to: string, reason: string, opts: RequestOptions = {}
+): Promise<{ from: string; to: string; name: string }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tier`,
+		{ tier: to, reason, accept_responsibility: true }, opts);
 }
