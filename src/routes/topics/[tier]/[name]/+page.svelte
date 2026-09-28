@@ -270,6 +270,10 @@
 	let channelAliases: Record<string, string> = {};
 	let sending = false;
 	let stopping = false;
+	/** Etichette dei box il cui ⏹ è già stato premuto e non ha ancora risposto:
+	 *  il bottone si disabilita da solo, così due click non mandano due
+	 *  interruzioni per lo stesso turno (clodia-platform#403). */
+	let stoppingAgents: string[] = [];
 	let resetting = false;
 	let newParticipant = '';
 	let stream: HTMLElement;
@@ -453,7 +457,7 @@
 			routingCorrected = routingOverruled; // lo scavalcamento registra anche la correzione
 			// Il turno interrotto non finirà mai: i suoi box live resterebbero
 			// accesi a schermo come quelli di un turno vivo (stessa cintura di
-			// `stopTurn`).
+			// `stopAgent`).
 			typing = [];
 			resetLive();
 			await refreshMessages();
@@ -1893,16 +1897,37 @@
 		}
 	}
 
-	async function stopTurn() {
+	/** Ferma il turno di UN agente: è il ⏹ che sta nel suo box di ragionamento
+	 *  (clodia-platform#403).
+	 *
+	 *  Il bottone era uno solo, in fondo al composer, e chiedeva «ferma tutto»:
+	 *  con quattro agenti al lavoro non c'era modo di zittirne uno, e premerlo
+	 *  buttava via anche il lavoro degli altri tre. Qui il gesto nasce dentro un
+	 *  box, quindi porta con sé l'etichetta di quel box — che è lo SPAWN quando
+	 *  il backend ne ha dichiarato uno (`worker-221`, ferma quell'istanza) e il
+	 *  SEED quando il box è nato da `active_responders` (`worker`, ferma tutte
+	 *  le sue istanze). Le due forme le distingue il server, che è l'unico a
+	 *  conoscere le sessioni vive.
+	 *
+	 *  `resetLive(label)` toglie SOLO questo box: `resetLive()` intero spegneva
+	 *  anche i box di chi sta ancora lavorando, e al poll successivo sarebbero
+	 *  rinati — un lampeggio su turni che nessuno ha chiesto di fermare. */
+	async function stopAgent(label: string) {
+		if (!label || stoppingAgents.includes(label)) return;
+		stoppingAgents = [...stoppingAgents, label];
+		// `stopping` resta: se l'utente ferma un agente mentre la POST del suo
+		// messaggio è ancora in volo, quella fallisce ed è un esito voluto, non
+		// un errore da mostrare (vedi `send`).
 		stopping = true;
 		try {
-			await interruptChannel(tier, name);
+			await interruptChannel(tier, name, [label]);
 		} catch {
 			/* ignora: l'importante è riprendere il controllo dell'input */
 		}
 		sending = false;
-		typing = [];
-		resetLive();
+		typing = typing.filter((a) => seedName(a) !== seedName(label));
+		resetLive(label);
+		stoppingAgents = stoppingAgents.filter((a) => a !== label);
 		await refreshMessages();
 	}
 
@@ -2658,8 +2683,13 @@
 				{/if}
 				<!-- Un box per agente (issue#105): ragionamento e tool in sequenza nello
 				     stesso riquadro, compatto di default, con expand/compact per i dettagli. -->
+				<!-- Il ⏹ sta QUI, nel box dell'agente, e non più nel composer
+				     (#403): l'interruzione riguarda un turno preciso, e un bottone
+				     solo in fondo alla chat non sa dire quale. -->
 				{#each liveEntries as [agent, live] (agent)}
-					<AgentLiveBox {agent} think={live.think} tools={live.tools} />
+					<AgentLiveBox {agent} think={live.think} tools={live.tools}
+						stopping={stoppingAgents.includes(agent)}
+						on:stop={(e) => stopAgent(e.detail)} />
 				{/each}
 			{/if}
 			{#if lastRouting}
@@ -2778,11 +2808,10 @@
 					on:click={updateMention}
 					on:paste={onPasteFiles}
 					on:keydown={onCompactComposerKeydown}></textarea>
-				{#if hasLive || typing.length}
-					<button type="button" class="stop-btn" on:click={stopTurn} title="Interrompi le risposte in corso">
-						■ Stop
-					</button>
-				{/if}
+				<!-- Qui c'era il bottone «■ Stop» del canale. È andato nel box di
+				     ragionamento di ogni agente attivo (#403): fermare «le risposte
+				     in corso» non diceva quale turno morisse, e con più agenti al
+				     lavoro distruggeva quelli che nessuno aveva chiesto di fermare. -->
 				<button type="button" on:click={send} disabled={!draft.trim() || sending}>
 					{sending ? 'Invio…' : 'Invia'}
 				</button>
@@ -3634,8 +3663,6 @@
 	.composer textarea { flex: 1 1 auto; min-width: 0; background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 8px; resize: none; }
 	.composer button { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font-weight: 700; padding: 0 16px; border-radius: 8px; cursor: pointer; }
 	.composer button:disabled { opacity: .5; cursor: not-allowed; }
-	.composer button.stop-btn { background: var(--danger); border-color: var(--danger); color: #fff; }
-	.composer button.stop-btn:hover { filter: brightness(1.08); }
 	.clip { background: transparent !important; border: 1px solid var(--border) !important; color: var(--fg) !important; font-size: 16px; padding: 0 12px !important; height: 38px; }
 	.expand-input { background: transparent !important; border: 1px solid var(--border) !important; color: var(--fg-muted) !important; font-size: 15px; padding: 0 11px !important; height: 38px; min-width: 38px; }
 	.expand-input:hover { border-color: var(--accent) !important; color: var(--accent) !important; background: rgba(255,107,61,.08) !important; }

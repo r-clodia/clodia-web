@@ -891,13 +891,21 @@ export async function resetChannelContext(
 ): Promise<{ reset: boolean; sessions_deleted?: string[] }> {
 	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/reset-context`, {}, opts);
 }
-/** Interrompe il turno in corso del responder del canale (bottone Stop). */
+/** Interrompe i turni in corso di questo canale.
+ *
+ *  `agents` dice CHI fermare (clodia-platform#403): è il ⏹ che sta nel box di
+ *  ragionamento di un agente, quindi ferma quell'agente. Ogni voce è un seed
+ *  (`worker`: tutte le sue istanze) o uno spawn (`worker-221`: quella sola).
+ *  Omesso ⇒ tutta la stanza, che resta il significato di una richiesta senza
+ *  bersaglio. */
 export async function interruptChannel(
 	tier: string,
 	name: string,
+	agents?: readonly string[],
 	opts: RequestOptions = {}
 ): Promise<{ interrupted: string[] }> {
-	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/interrupt`, {}, opts);
+	const body = agents && agents.length ? { agents: [...agents] } : {};
+	return apiPost(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/interrupt`, body, opts);
 }
 
 /** Delega permanente (async·A): sblocca i gate che coprono lo scope. */
