@@ -2563,3 +2563,23 @@ export async function setTopicMailbox(
 		{ action, account }, opts);
 	return d.mailboxes ?? [];
 }
+
+/** Riclassificazione del livello SEAL di un topic (clodia-platform#426). */
+export type TierImpact = {
+	from: string; to: string; direction: 'up' | 'down' | 'unknown';
+	lose_access: { name: string; type: string }[];
+	gain_access: { name: string; type: string }[];
+};
+
+export async function previewTopicTier(
+	tier: string, name: string, to: string, opts: RequestOptions = {}
+): Promise<TierImpact> {
+	return apiGet(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tier-preview?to=${encodeURIComponent(to)}`, opts);
+}
+
+export async function setTopicTier(
+	tier: string, name: string, to: string, reason: string, opts: RequestOptions = {}
+): Promise<{ from: string; to: string; name: string }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tier`,
+		{ tier: to, reason, accept_responsibility: true }, opts);
+}

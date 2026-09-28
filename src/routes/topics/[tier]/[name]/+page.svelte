@@ -77,6 +77,7 @@
 	import { CHOICES_RE, leggiChoices, pillsAttive } from '$lib/pillPersistenti';
 	import GateBatchBar from '$lib/components/GateBatchBar.svelte';
 	import UriLabel from '$lib/components/UriLabel.svelte';
+	import RetierDialog from '$lib/components/RetierDialog.svelte';
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import type { TierWarning } from '$lib/api/types';
 	import type { TelegramSealState } from '$lib/api/client';
@@ -1065,6 +1066,7 @@
 
 	$: me = $session?.principal ?? null;
 	$: isOwner = !!me && info?.meta?.owner === me;
+	let retierOpen = false;
 	const topicStatusOptions = TOPIC_STATUSES;
 	let metaBusy = false;
 	let metaDeadlineDraft = '';
@@ -2246,7 +2248,13 @@
 					size={22} rev={logoRev} />
 			{/if}
 			<h1>#{info?.meta?.title || name}</h1>
-			<span class="tier">{info?.tier || tier}</span>
+			{#if isOwner || $isAdmin}
+				<!-- Riclassificazione (clodia-platform#426): owner o admin. -->
+				<button type="button" class="tier tier-btn" title="Riclassifica il livello SEAL del topic"
+					on:click={() => (retierOpen = true)}>{info?.tier || tier} ✎</button>
+			{:else}
+				<span class="tier">{info?.tier || tier}</span>
+			{/if}
 			<TrifectaBadge profile={info?.trifecta} taint={info?.taint}
 				canReset={isOwner}
 				onReset={doResetTrifecta} />
@@ -2323,6 +2331,12 @@
 	</header>
 
 	{#if loadErr}<div class="err">{loadErr}</div>{/if}
+
+	{#if retierOpen}
+		<RetierDialog tier={info?.tier || tier} {name}
+			on:close={() => (retierOpen = false)}
+			on:done={(e) => { retierOpen = false; window.location.assign(`/topics/${encodeURIComponent(e.detail.to)}/${encodeURIComponent(name)}`); }} />
+	{/if}
 
 	{#if tierWarning}
 		<div class="tier-warn-overlay" role="dialog" aria-modal="true">
@@ -3403,6 +3417,7 @@
 		background: transparent; color: var(--fg-muted); cursor: pointer;
 	}
 	.zip-all:disabled { opacity: 0.6; cursor: default; }
+	.tier-btn { cursor: pointer; font: inherit; }
 	.tier-warn-overlay { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); padding: 16px; }
 	.tier-warn { background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid var(--warn, #e0a800); border-radius: 12px; max-width: 460px; width: 100%; padding: 18px 20px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
 	.tw-head { display: flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 8px; }
