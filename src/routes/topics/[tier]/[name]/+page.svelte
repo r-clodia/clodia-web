@@ -803,7 +803,9 @@
 	// dentro una stanza, dove decide un admin. A un owner non-admin la card
 	// offriva un bottone che il backend poi rifiuta.
 	type GateInfo = { crosses?: string; decided_by?: string; decider_name?: string;
-	                  scope?: string; asker_role?: string; asker_note?: string };
+	                  scope?: string; asker_role?: string; asker_note?: string;
+	                  /** Fields the approver may correct before approving (#448). */
+	                  editable?: Record<string, unknown> };
 	let gateInfo: Record<string, GateInfo> = {};
 	/** Gate ancora APERTI. Serve a distinguere «da decidere» da «già deciso»:
 	 *  senza, dopo un ricarico un gate risolto tornava a mostrare i bottoni,
@@ -828,7 +830,8 @@
 				aperti.add(k);
 				m[k] = { crosses: q.crosses, decided_by: q.decided_by,
 				         decider_name: q.decider_name, scope: q.scope,
-				         asker_role: q.asker_role, asker_note: q.asker_note };
+				         asker_role: q.asker_role, asker_note: q.asker_note,
+				         editable: q.editable };
 			}
 			gateInfo = m;
 			gateAperti = aperti;
@@ -868,18 +871,41 @@
 	 *  agente/verbo — sette round di gate a vuoto il 17 ago 2026
 	 *  (clodia-platform#232). Una card, una richiesta. */
 	let gateDecided: Record<string, string> = {};
+	/** Approve with corrections (clodia-platform#448): the draft of the fields
+	 *  being corrected, per gate. Only CHANGED fields are sent: the gateway
+	 *  re-judges the corrected call, and an unchanged field is not a correction. */
+	let gateEditing: Record<string, boolean> = {};
+	let gateDraft: Record<string, Record<string, string>> = {};
+	function startGateEdit(id: string) {
+		const src = gateInfo[id]?.editable ?? {};
+		gateDraft[id] = Object.fromEntries(Object.entries(src).map(([k, v]) =>
+			[k, Array.isArray(v) ? v.join(', ') : v == null ? '' : String(v)]));
+		gateEditing[id] = true;
+	}
+	function gateCorrections(id: string): Record<string, unknown> | undefined {
+		const src = gateInfo[id]?.editable ?? {};
+		const out: Record<string, unknown> = {};
+		for (const [k, v] of Object.entries(gateDraft[id] ?? {})) {
+			const orig = src[k];
+			const was = Array.isArray(orig) ? orig.join(', ') : orig == null ? '' : String(orig);
+			if (v !== was) out[k] = Array.isArray(orig) ? v.split(',').map((x) => x.trim()).filter(Boolean) : v;
+		}
+		return Object.keys(out).length ? out : undefined;
+	}
 	async function decideGate(
 		msgId: string,
 		g: { id: string; agent: string; instance: string; verb: string },
 		approve: boolean,
-		remember: 'once' | 'topic' | 'global' = 'once'
+		remember: 'once' | 'topic' | 'global' = 'once',
+		corrections?: Record<string, unknown>
 	) {
 		if (gateDeciding) return;
 		gateDeciding = true;
 		try {
 			const r = await apiPost<{ memory?: { remembered?: boolean; error?: string } }>(
 				approve ? '/api/gate/approve' : '/api/gate/deny',
-				{ agent: g.agent, instance: g.instance, verb: g.verb, remember });
+				{ agent: g.agent, instance: g.instance, verb: g.verb, remember,
+				  ...(approve && corrections ? { arguments: corrections } : {}) });
 			// Se il ricordo non è riuscito, l'approvazione resta valida ma vale
 			// solo per stavolta: dirlo, altrimenti la stessa domanda torna domani
 			// e sembra che il gate sia rotto.
@@ -888,6 +914,7 @@
 				gateDecided,
 				{ id: msgId },
 				!approve ? 'negato'
+					: corrections ? 'approvato con modifiche'
 					: remember === 'once' ? 'approvato'
 					: mem && mem.remembered === false ? 'approvato (solo per stavolta)'
 					: remember === 'topic' ? 'approvato e ricordato qui'
@@ -2602,6 +2629,31 @@
 									{/if}
 									<button type="button" class="jobprop-ok" disabled={gateDeciding}
 										on:click={() => decideGate(m.id, g, true)}>{gateDeciding ? '…' : '✓ Approva'}</button>
+									{#if !isDestinationGate(g.verb) && gateInfo[g.id]?.editable}
+										<!-- Approve WITH CORRECTIONS (clodia-platform#448): only on a verb
+										     gate. On a destination gate the destination IS the question,
+										     and editing it would answer a different one. -->
+										{#if gateEditing[g.id]}
+											<span class="gate-edit" data-testid="gate-edit">
+												{#each Object.keys(gateDraft[g.id] ?? {}) as campo (campo)}
+													<label>{campo}
+														{#if campo === 'body' || campo === 'text'}
+															<textarea rows="4" bind:value={gateDraft[g.id][campo]}></textarea>
+														{:else}
+															<input type="text" bind:value={gateDraft[g.id][campo]} />
+														{/if}
+													</label>
+												{/each}
+												<button type="button" class="jobprop-ok" disabled={gateDeciding || !gateCorrections(g.id)}
+													title="Esegue l'azione con i campi corretti; le regole di destinazione valutano la versione corretta"
+													on:click={() => decideGate(m.id, g, true, 'once', gateCorrections(g.id))}>✓ Approva con modifiche</button>
+												<button type="button" class="jobprop-no" on:click={() => (gateEditing[g.id] = false)}>Annulla</button>
+											</span>
+										{:else}
+											<button type="button" class="jobprop-ok" disabled={gateDeciding}
+												on:click={() => startGateEdit(g.id)}>✎ Correggi</button>
+										{/if}
+									{/if}
 									{#if isDestinationGate(g.verb)}
 										<!-- Solo per i gate su una DESTINAZIONE: «sempre» ha senso
 										     su un indirizzo, non su un'azione. E le due portate hanno
@@ -4066,4 +4118,7 @@
 
 	/* Ruolo nello scope: si legge e basta, per tutti (#292). */
 	.role-fixed { font-size: .7rem; opacity: .55; padding: 0 .3rem; }
+	.gate-edit { display: flex; flex-direction: column; gap: 0.3rem; width: 100%; margin: 0.3rem 0; }
+	.gate-edit label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.15rem; }
+	.gate-edit textarea, .gate-edit input { width: 100%; font: inherit; }
 </style>
