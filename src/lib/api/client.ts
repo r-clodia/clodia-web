@@ -2591,3 +2591,50 @@ export async function setTopicTier(
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tier`,
 		{ tier: to, reason, accept_responsibility: true }, opts);
 }
+
+/* ── Audit trail (clodia-platform#447) ────────────────────────────────────── */
+
+/** Health of the gateway's audit trail, as the admin sees it. */
+export interface AuditStatus {
+	ok: boolean;
+	events?: number;
+	head_hash?: string | null;
+	isolated?: boolean;
+	key_id?: string;
+	last_checkpoint?: { seq: number; timestamp: string } | null;
+	unanchored_events?: number;
+	exporters?: Array<{ type: string; target: string }>;
+	off_system?: boolean;
+	failures?: number;
+	last_error?: string | null;
+	fail_closed?: boolean;
+	error?: string;
+}
+
+/** GET `/api/admin/audit/status` — admin only. */
+export async function getAuditStatus(opts: RequestOptions = {}): Promise<AuditStatus> {
+	return apiGet<AuditStatus>('/api/admin/audit/status', opts);
+}
+
+/**
+ * POST `/api/admin/audit/export` — downloads the signed bundle. It goes through
+ * `fetch` with the Authorization header (a plain `<a href>` would arrive
+ * anonymous), and the export is recorded on the trail in the admin's name.
+ */
+export async function downloadAuditExport(body: {
+	since?: string; until?: string; purpose?: string;
+}): Promise<void> {
+	const res = await fetch(joinUrl('/api/admin/audit/export'), {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', ...authHeaders() },
+		body: JSON.stringify(body)
+	});
+	if (!res.ok) throw await parseError(res);
+	const blob = await res.blob();
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement('a');
+	a.href = url;
+	a.download = `clodia-audit-${new Date().toISOString().slice(0, 10)}.tgz`;
+	a.click();
+	URL.revokeObjectURL(url);
+}
