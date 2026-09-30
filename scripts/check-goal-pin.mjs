@@ -112,6 +112,20 @@ if (src !== null) {
 	if (!/togliObiettivo\s*\(/.test(codice)) {
 		guasti.push(`${PAGINA}: non c'è più modo di togliere il pin, e l'unpin è ciò che ferma la strategia`);
 	}
+	// Le due decisioni dell'owner devono avere un bottone. Sono gli unici due
+	// stati in cui il lavoro è FERMO ad aspettarlo: senza un posto dove
+	// cliccare, il sì va dato scrivendolo in chat e resta lì per giorni.
+	for (const [stato, cosa] of [
+		['strategy-review', "l'approvazione della strategia"],
+		['claimed-done', "l'accettazione dell'esito"]
+	]) {
+		if (!codice.includes(`goal.state === '${stato}'`)) {
+			guasti.push(
+				`${PAGINA}: la fascia non ha un ramo per lo stato \`${stato}\`, quindi ${cosa} ` +
+					`non ha un bottone — ed è uno dei due stati in cui il lavoro aspetta l'owner`
+			);
+		}
+	}
 }
 
 // ── Il client non firma il pin al posto del server ─────────────────────────

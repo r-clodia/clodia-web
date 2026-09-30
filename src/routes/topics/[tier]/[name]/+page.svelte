@@ -2523,6 +2523,15 @@
 						</div>
 						{#if isOwner}
 							<div class="goal-actions">
+								<!-- L'approvazione della strategia è il punto in cui il lavoro
+								     parte davvero: finché manca, l'orchestratore ha l'ordine di
+								     NON eseguire. Un sì che si può dare solo scrivendolo in chat
+								     è un sì che resta lì per giorni. -->
+								{#if goal.state === 'strategy-review'}
+									<button type="button" class="goal-act primary" disabled={goalBusy}
+										title="Dai il via libera: l'orchestratore esegue il piano"
+										on:click={() => decidiObiettivo('in-progress')}>✓ Approva strategia</button>
+								{/if}
 								{#if goal.state === 'claimed-done'}
 									<button type="button" class="goal-act primary" disabled={goalBusy}
 										on:click={() => decidiObiettivo('done')}>✓ Raggiunto</button>
