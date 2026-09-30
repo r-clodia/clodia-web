@@ -3630,7 +3630,10 @@
 	.text.md :global(code) { background: rgba(255,255,255,0.08); padding: 0 4px; border-radius: 3px; font-size: 0.9em; }
 	.text.md :global(pre) { background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 6px; overflow-x: auto; margin: 0.4em 0; }
 	.text.md :global(pre code) { background: none; padding: 0; }
-	.text.md :global(a) { color: #6fb6ff; text-decoration: underline; }
+	/* `overflow-wrap: anywhere` perché ora i link nascono anche dagli URL scritti
+	   nudi (clodia-platform#452), e un indirizzo lungo è un token unico che senza
+	   questo allarga la bolla oltre la colonna invece di andare a capo. */
+	.text.md :global(a) { color: #6fb6ff; text-decoration: underline; overflow-wrap: anywhere; }
 	.text.md :global(strong) { color: var(--fg); font-weight: 700; }
 	.text.md :global(h1), .text.md :global(h2), .text.md :global(h3) { font-size: 1.05em; margin: 0.3em 0; }
 	.text.md :global(blockquote) { border-left: 3px solid var(--border); margin: 0.4em 0; padding-left: 8px; color: var(--fg-muted); }
