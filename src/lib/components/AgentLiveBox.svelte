@@ -19,8 +19,13 @@
 	export let agent: string;
 	/** Testo di ragionamento accumulato nel turno corrente. */
 	export let think: string = '';
-	/** Chiamate ai tool nell'ordine in cui sono avvenute (già formattate). */
-	export let tools: string[] = [];
+	/** Chiamate ai tool nell'ordine in cui sono avvenute, già formattate in coppia
+	 *  (clodia-platform#453): `breve` è la riga — nome senza i prefissi di
+	 *  trasporto e primi due argomenti posizionali — `esteso` è il payload
+	 *  integrale, che resta leggibile all'hover. Le due forme arrivano insieme
+	 *  dalla pagina: ricavare qui l'originale da una riga già accorciata non si
+	 *  potrebbe fare. */
+	export let tools: PassoTool[] = [];
 	/** Box inizialmente espanso (default: compatto). */
 	export let open: boolean = false;
 	/** Mostra il ⏹ che ferma QUESTO agente (clodia-platform#403). */
@@ -29,6 +34,7 @@
 	export let stopping: boolean = false;
 
 	import { createEventDispatcher } from 'svelte';
+	import type { PassoTool } from '$lib/toolLabel';
 
 	/** `stop` porta l'etichetta dell'agente: chi ascolta non deve dedurre quale
 	 *  box è stato premuto da una variabile condivisa — era esattamente
@@ -49,7 +55,7 @@
 	// Anteprima: l'attività più recente. Il tool ha la precedenza sul
 	// ragionamento — se l'agente sta chiamando qualcosa, è quello che l'utente
 	// vuole vedere senza espandere.
-	$: lastTool = tools.length ? tools[tools.length - 1] : '';
+	$: lastTool = tools.length ? tools[tools.length - 1].breve : '';
 	$: peek = clip(lastTool || thinkTail(think));
 	$: hasDetail = !!think || tools.length > 0;
 </script>
@@ -90,9 +96,11 @@
 			{/if}
 			{#if tools.length}
 				<ol class="live-steps" aria-label={`Tool usati da ${agent}`}>
-					{#each tools as t, i (`${i}-${t}`)}
-						<!-- `title`: la riga è troncata, il payload intero resta leggibile all'hover. -->
-						<li class:current={i === tools.length - 1} title={t}>{t}</li>
+					{#each tools as t, i (`${i}-${t.esteso}`)}
+						<!-- `title`: la riga è un ESTRATTO (nome senza prefissi, due
+						     argomenti posizionali), il payload intero resta leggibile
+						     all'hover — è la seconda metà della #453. -->
+						<li class:current={i === tools.length - 1} title={t.esteso}>{t.breve}</li>
 					{/each}
 				</ol>
 			{/if}

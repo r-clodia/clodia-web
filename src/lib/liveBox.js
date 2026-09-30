@@ -51,10 +51,16 @@
 const VUOTO = Object.freeze({
 	think: '',
 	reply: '',
-	tools: /** @type {string[]} */ (/** @type {unknown} */ (Object.freeze([])))
+	tools: /** @type {PassoTool[]} */ (/** @type {unknown} */ (Object.freeze([])))
 });
 
-/** @param {{think?: string, reply?: string, tools?: string[]}} l */
+/** I passi dei tool sono coppie {breve, esteso} (#453). Qui non se ne guarda il
+ *  contenuto — solo quanti sono — ma il tipo deve restare quello vero, se no
+ *  svelte-check non vede più che la pagina e il componente parlano la stessa
+ *  lingua.
+ *  @typedef {import('./toolLabel.js').PassoTool} PassoTool */
+
+/** @param {{think?: string, reply?: string, tools?: PassoTool[]}} l */
 function haContenuto(l) {
 	return !!(l && (l.think || l.reply || (l.tools && l.tools.length)));
 }
@@ -82,10 +88,10 @@ function haContenuto(l) {
  * sposterà sotto il nome preciso — un rimontaggio, ma di un box che non aveva
  * ancora niente dentro, e l'alternativa è nessun box affatto.
  *
- * @param {Record<string, {think: string, reply: string, tools: string[]}>} live  mappa live, per SPAWN
+ * @param {Record<string, {think: string, reply: string, tools: PassoTool[]}>} live  mappa live, per SPAWN
  * @param {readonly string[]} attivi     `active_responders` del backend (SEED)
  * @param {(n: string) => string} seedOf riduzione nome → seed
- * @returns {Array<[string, {think: string, reply: string, tools: string[]}]>}
+ * @returns {Array<[string, {think: string, reply: string, tools: PassoTool[]}]>}
  */
 export function liveBoxEntries(live, attivi, seedOf) {
 	/** @type {string[]} */
@@ -101,5 +107,5 @@ export function liveBoxEntries(live, attivi, seedOf) {
 	for (const s of seedAttivi) {
 		if (!coperti.has(s)) voci.push([s, VUOTO]);
 	}
-	return /** @type {Array<[string, {think: string, reply: string, tools: string[]}]>} */ (voci);
+	return /** @type {Array<[string, {think: string, reply: string, tools: PassoTool[]}]>} */ (voci);
 }

@@ -69,6 +69,7 @@
 	import { gateLabel } from '$lib/gateLabel';
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
 	import { liveBoxEntries } from '$lib/liveBox';
+	import { etichettaTool, type PassoTool } from '$lib/toolLabel';
 	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
 	import { fondiConEcho } from '$lib/echoLocale';
@@ -491,7 +492,11 @@
 	// chat_id = `chan:{tier}:{name}:{agent}`. Li accumuliamo in un pannello
 	// "Ragionamento" comprimibile (di default chiuso): sui task lunghi mostra
 	// che l'agente sta effettivamente lavorando, invece di sembrare bloccato.
-	type LiveAgentState = { think: string; reply: string; tools: string[] };
+	// I passi sono COPPIE {breve, esteso} (#453): la riga mostra la forma
+	// succinta, il tooltip quella integrale. Tenerle insieme dal punto in cui
+	// nascono evita che il componente debba ri-analizzare una stringa già
+	// formattata per ricavarne l'originale.
+	type LiveAgentState = { think: string; reply: string; tools: PassoTool[] };
 	let liveAgents: Record<string, LiveAgentState> = {};
 	// Un box per agente (issue#105): ragionamento e tool stanno nello stesso
 	// riquadro e l'apertura è per-box, dentro AgentLiveBox. Prima `thinkOpen`
@@ -537,9 +542,12 @@
 	// spariva. Ora si accodano, con un tetto per non far crescere il DOM sui turni
 	// lunghi; il duplicato consecutivo (stesso tool, stesso summary) non si ripete.
 	const MAX_STEPS = 25;
-	function pushStep(agent: string, step: string): string[] {
+	function pushStep(agent: string, step: PassoTool): PassoTool[] {
 		const prev = liveFor(agent).tools;
-		if (prev[prev.length - 1] === step) return prev;
+		// Il duplicato si riconosce sulla forma ESTESA: due chiamate diverse
+		// possono avere la stessa riga breve (i primi due argomenti coincidono e
+		// il resto no), e collassarle nasconderebbe lavoro davvero fatto.
+		if (prev[prev.length - 1]?.esteso === step.esteso) return prev;
 		return [...prev, step].slice(-MAX_STEPS);
 	}
 	/** Autori-agente dei messaggi arrivati DOPO `sinceId` (compresi i non-ultimi).
@@ -2217,15 +2225,21 @@
 					updateLive(liveAgent, { reply: current.reply + String(p.delta ?? '') });
 				}
 			} else if (ev.type === 'tool_use') {
-				const tool = String(p.tool ?? '');
-				const inp = p.input_summary ? `: ${String(p.input_summary)}` : '';
-				updateLive(liveAgent, { tools: pushStep(liveAgent, `🔧 ${tool}${inp}`) });
+				// Riga succinta + payload intero all'hover (#453): il nome senza i
+				// prefissi di trasporto e i primi due argomenti posizionali.
+				const e = etichettaTool(String(p.tool ?? ''), String(p.input_summary ?? ''));
+				updateLive(liveAgent, {
+					tools: pushStep(liveAgent, { breve: `🔧 ${e.breve}`, esteso: `🔧 ${e.esteso}` })
+				});
 			} else if (ev.type === 'task_progress') {
 				// progresso di un SUBAGENT (tool Task): senza questo la chat sembra
 				// ferma mentre il subagent lavora (es. un download).
 				const tool = p.last_tool_name ? ` · ${String(p.last_tool_name)}` : '';
 				const desc = p.description ? `: ${String(p.description)}` : '';
-				updateLive(liveAgent, { tools: pushStep(liveAgent, `🤖 subagent${tool}${desc}`.slice(0, 120)) });
+				const riga = `🤖 subagent${tool}${desc}`;
+				updateLive(liveAgent, {
+					tools: pushStep(liveAgent, { breve: riga.slice(0, 120), esteso: riga })
+				});
 			}
 		});
 	});
