@@ -841,6 +841,33 @@ export interface Topic {
 	readonly next_deadline?: string | null;
 	/** Backend di storage che contiene il topic (Topic System v2): es. "local-fs". */
 	readonly storage?: string;
+	/** Obiettivo del canale, quando l'owner ne ha fissato uno. */
+	readonly goal?: TopicGoal | null;
+}
+
+/** OBIETTIVO di un canale (clodia-platform#457): un messaggio dell'utente
+ *  promosso a requisito vincolante. Vive nel meta — allo stesso rango di
+ *  summary e tldr — e non fra i messaggi, perché deve restare leggibile quando
+ *  la conversazione è andata avanti.
+ *
+ *  Il ciclo di vita in `state`: `pinned` (fissato, strategia da scrivere) →
+ *  `strategy-review` (strategia in attesa del sì dell'owner) → `in-progress`
+ *  (in esecuzione) → `claimed-done` (l'orchestratore lo dichiara raggiunto e
+ *  chiede la verifica) → `done` (l'owner accetta l'esito). Gli agenti possono
+ *  arrivare al massimo a `claimed-done`: `done` e l'unpin sono dell'owner. */
+export interface TopicGoal {
+	readonly text: string;
+	/** Messaggio da cui nasce l'obiettivo: il `text` ne è una copia troncata,
+	 *  l'originale integrale sta lì. */
+	readonly message_id?: string | null;
+	readonly state: 'pinned' | 'strategy-review' | 'in-progress' | 'claimed-done' | 'done';
+	/** Chi l'ha fissato: lo scrive il server col principal verificato. */
+	readonly pinned_by?: string;
+	readonly pinned_at?: string;
+	/** Documento di strategia nei file del topic, quando l'orchestratore l'ha
+	 *  scritto (es. `local/goals/strategia.md`). */
+	readonly strategy_path?: string | null;
+	readonly updated_at?: string;
 }
 
 /**

@@ -295,6 +295,7 @@ import type {
 	JobUpdate,
 	JobsListResponse,
 	Topic,
+	TopicGoal,
 	TopicsListResponse,
 	TopicTree
 } from './types';
@@ -663,6 +664,10 @@ export interface ChannelInfo {
 		 *  2026): a differenza di Drive un BIND filesystem reale, non uno
 		 *  specchio — appaiono come local/<name>/. */
 		local_folders?: { name: string }[];
+		/** Obiettivo del canale (clodia-platform#457): assente finché l'owner
+		 *  non ne fissa uno. Sta nel meta e non fra i messaggi perché è un
+		 *  requisito che deve restare leggibile quando la chat è andata avanti. */
+		goal?: TopicGoal | null;
 	};
 	summary?: string;
 	tldr?: string;
@@ -2479,6 +2484,21 @@ export async function setTopicStatus(tier: string, name: string, status: string,
 /** POST `/api/topics/{tier}/{name}/deadline` — imposta la deadline (YYYY-MM-DD|null). */
 export async function setTopicDeadline(tier: string, name: string, deadline: string | null, opts: RequestOptions = {}): Promise<{ deadline: string | null }> {
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/deadline`, { deadline }, opts);
+}
+
+/** POST `/api/topics/{tier}/{name}/goal` — fissa il messaggio come OBIETTIVO
+ *  del canale, oppure lo toglie (`goal: null`). Owner-only lato server.
+ *
+ *  `pinned_by` NON si manda: lo scrive il server col principal che ha appena
+ *  verificato come owner. Un campo che dice chi ha deciso e che il client
+ *  riempie da sé non è una firma. */
+export async function setTopicGoal(
+	tier: string,
+	name: string,
+	goal: { text: string; message_id?: string; state?: string; strategy_path?: string } | null,
+	opts: RequestOptions = {}
+): Promise<{ goal: TopicGoal | null; unpinned?: boolean }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/goal`, { goal }, opts);
 }
 
 /** POST `/api/topics/{tier}/{name}/local-folder` — cartella condivisa
