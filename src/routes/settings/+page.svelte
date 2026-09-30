@@ -1,6 +1,8 @@
 <script lang="ts">
 	import DelegationsPanel from '$lib/components/DelegationsPanel.svelte';
 	import EgressWhitelistPanel from '$lib/components/EgressWhitelistPanel.svelte';
+	import AuditTrailPanel from '$lib/components/AuditTrailPanel.svelte';
+	import { isAdmin } from '$lib/stores/capabilities';
 	import { onMount } from 'svelte';
 	import QRCode from 'qrcode';
 	import {
@@ -235,6 +237,11 @@
 <section class="card">
 	<EgressWhitelistPanel />
 </section>
+
+{#if $isAdmin}
+	<!-- Audit trail (clodia-platform#447): admin only, like the export it offers. -->
+	<AuditTrailPanel />
+{/if}
 
 <section class="card aliases">
 	<div class="card-h">
