@@ -27,6 +27,8 @@
  *
  *     node scripts/check-url-cliccabile.mjs
  */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { leggiSorgente, senzaCommenti } from './lib/sorgente.mjs';
 import { autolink } from '../src/lib/autolink.js';
 
@@ -137,6 +139,30 @@ const casi = [
 				: `mancano target/rel come sugli altri link del renderer: ${out}`
 	],
 	[
+		'emphasis opener before the URL: the matching closer stays out of the link',
+		'**https://x.dev/p**',
+		(out) =>
+			href(out) === 'https://x.dev/p' && out.startsWith('**') && out.endsWith('**')
+				? null
+				: `the closing ** must be trimmed and stay in the text: ${out}`
+	],
+	[
+		'underscores inside the URL: kept, nothing opened them',
+		'https://x.dev/_a_',
+		(out) =>
+			href(out) === 'https://x.dev/_a_'
+				? null
+				: `href expected https://x.dev/_a_, got ${JSON.stringify(href(out))}`
+	],
+	[
+		'a candidate never swallows markup',
+		'https://x.dev/p</strong>',
+		(out) =>
+			href(out) === 'https://x.dev/p'
+				? null
+				: `the candidate ran into a tag: ${JSON.stringify(href(out))}`
+	],
+	[
 		'testo senza indirizzi: invariato',
 		'Nessun link qui. Solo www e http, scritti a parole.',
 		(out) =>
@@ -174,7 +200,7 @@ if (md) {
 				`lascia gli URL nudi esattamente com'erano (clodia-platform#452)`
 		);
 	}
-	const iAutolink = src.indexOf('autolink(s)');
+	const iAutolink = src.search(/\bautolink\(s\b/);
 	// Il code span viene messo da parte PRIMA e ripristinato DOPO: un path o un
 	// URL citato fra backtick deve restare testo dentro <code>, non diventare un
 	// link. L'ordine è l'unica cosa che lo garantisce.
@@ -196,9 +222,88 @@ if (md) {
 	}
 }
 
+// --- End to end: the REAL renderInline, emphasis included --------------------
+// autolink alone cannot prove the order of the steps: `**https://x.dev/p**` was
+// correct in isolation and broken in the renderer, because bold/italic ran
+// first and the candidate swallowed the freshly inserted `</strong>`. So the
+// TypeScript module is transpiled with esbuild (already in the toolchain via
+// Vite) and executed as it ships.
+/** @type {Array<[string, string, string]>} */
+const casiRender = [
+	[
+		'bold URL',
+		'**https://x.dev/p**',
+		'<strong><a href="https://x.dev/p" target="_blank" rel="noopener noreferrer">https://x.dev/p</a></strong>'
+	],
+	[
+		'italic URL',
+		'*https://x.dev/p*',
+		'<em><a href="https://x.dev/p" target="_blank" rel="noopener noreferrer">https://x.dev/p</a></em>'
+	],
+	[
+		'__bold__ URL',
+		'__https://x.dev/p__',
+		'<strong><a href="https://x.dev/p" target="_blank" rel="noopener noreferrer">https://x.dev/p</a></strong>'
+	],
+	[
+		'bold URL followed by sentence punctuation',
+		'**https://x.dev/p**.',
+		'<strong><a href="https://x.dev/p" target="_blank" rel="noopener noreferrer">https://x.dev/p</a></strong>.'
+	],
+	[
+		'URL with underscores: no <em> inside href or text',
+		'https://x.dev/_a_',
+		'<a href="https://x.dev/_a_" target="_blank" rel="noopener noreferrer">https://x.dev/_a_</a>'
+	],
+	[
+		'markdown link: href protected from emphasis, text keeps its bold',
+		'[**b**](https://x.dev/_a_)',
+		'<a href="https://x.dev/_a_" target="_blank" rel="noopener noreferrer"><strong>b</strong></a>'
+	],
+	['URL in a code span stays code', '`https://x.dev/_a_`', '<code>https://x.dev/_a_</code>'],
+	[
+		'existing link untouched, bare one linked once',
+		'[https://x.dev](https://x.dev) e https://y.dev',
+		'<a href="https://x.dev" target="_blank" rel="noopener noreferrer">https://x.dev</a> e <a href="https://y.dev" target="_blank" rel="noopener noreferrer">https://y.dev</a>'
+	],
+	['plain emphasis unchanged', '**bold** e _it_', '<strong>bold</strong> e <em>it</em>'],
+	['raw HTML stays escaped', '<b>https://x.dev</b>', '&lt;b&gt;<a href="https://x.dev" target="_blank" rel="noopener noreferrer">https://x.dev</a>&lt;/b&gt;'],
+	['forged placeholder resolves to nothing', '\u0001L0\u0001 ciao', 'L0 ciao']
+];
+
+let renderInline = null;
+try {
+	const { transformSync } = await import('esbuild');
+	const radice = fileURLToPath(new URL('..', import.meta.url));
+	const autolinkUrl = pathToFileURL(`${radice}src/lib/autolink.js`).href;
+	const ts = readFileSync(`${radice}${MD}`, 'utf8').replace(
+		/from\s*['"]\.\/autolink(\.js)?['"]/,
+		`from '${autolinkUrl}'`
+	);
+	const js = transformSync(ts, { loader: 'ts', format: 'esm' }).code;
+	({ renderInline } = await import(`data:text/javascript,${encodeURIComponent(js)}`));
+} catch (e) {
+	guasti.push(`${MD}: cannot load renderInline for the end-to-end cases: ${e && e.message}`);
+}
+let passatiRender = 0;
+if (typeof renderInline === 'function') {
+	for (const [nome, input, atteso] of casiRender) {
+		const out = renderInline(input);
+		if (out === atteso) {
+			passatiRender++;
+			console.log(`ok   renderInline: ${nome}`);
+		} else {
+			guasti.push(`renderInline «${nome}»: expected ${atteso}\n      got      ${out}`);
+		}
+	}
+}
+
 if (guasti.length) {
 	console.error('URL cliccabili:');
 	for (const g of guasti) console.error(`  - ${g}`);
 	process.exit(1);
 }
-console.log(`URL cliccabili: ${passati}/${casi.length} casi, innesto nel renderer verificato ✓`);
+console.log(
+	`URL cliccabili: ${passati}/${casi.length} casi autolink, ` +
+		`${passatiRender}/${casiRender.length} casi renderInline, innesto nel renderer verificato ✓`
+);

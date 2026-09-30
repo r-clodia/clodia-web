@@ -43,15 +43,25 @@ const DELIMITATORE = /&(?:lt|gt|quot|#39);/;
 const CODA = '.,;:!?';
 
 /**
- * Candidati: dallo schema (o dal `www.`) fino al primo spazio.
+ * Candidates: from the scheme (or `www.`) up to the first whitespace or `<`.
  *
- * Il lookbehind esclude i candidati attaccati a testo o a un indirizzo email
- * (`tizio@www.esempio.it`) e le forme incollate a un percorso. La potatura del
- * resto la fa `ripulisci`: allargare qui il pattern per escludere la
- * punteggiatura finale sarebbe più fragile, perché i caratteri da togliere
- * dipendono da cosa c'è *prima* (le parentesi bilanciate).
+ * The lookbehind rejects candidates glued to text or to an email address
+ * (`tizio@www.esempio.it`) and forms stuck to a path. It lists letters and
+ * digits explicitly instead of using `\w` because `\w` includes `_`, and a URL
+ * wrapped in `_…_` / `__…__` emphasis must still be found.
+ *
+ * Stopping at `<` is defence in depth: `renderInline` runs this BEFORE the
+ * emphasis step, so the only tags present are the `<a>` blocks that `autolink`
+ * already skips — but a candidate must never swallow markup it did not write.
+ *
+ * Trimming the rest is `ripulisci`'s job: widening this pattern to exclude
+ * trailing punctuation would be more fragile, because what must be removed
+ * depends on what comes *before* (balanced parentheses, emphasis markers).
  */
-const CANDIDATO = /(?<![\w@/.-])(?:https?:\/\/|www\.)[^\s]+/gi;
+const CANDIDATO = /(?<![A-Za-z0-9@/.-])(?:https?:\/\/|www\.)[^\s<]+/gi;
+
+/** Emphasis markers that may wrap a URL: `**url**`, `*url*`, `__url__`, `_url_`. */
+const ENFASI = /[*_]+$/;
 
 /** @param {string} s @param {string} c */
 function conta(s, c) {
@@ -68,10 +78,16 @@ function conta(s, c) {
  * giusto. Si toglie solo la chiusa che non ha un'aperta nel match — il caso
  * «(vedi https://x.dev/p)».
  *
+ * Emphasis markers are trimmed only as many as OPEN right before the URL
+ * (`apertura`): `**https://x.dev/p**` loses the trailing `**`, while
+ * `https://x.dev/_a_` keeps its underscores because nothing opened them.
+ *
  * @param {string} grezzo
+ * @param {string} [apertura] emphasis run (`*`/`_`) immediately before the match
  * @returns {string}
  */
-function ripulisci(grezzo) {
+function ripulisci(grezzo, apertura = '') {
+	let enfasi = apertura;
 	const taglio = DELIMITATORE.exec(grezzo);
 	let u = taglio ? grezzo.slice(0, taglio.index) : grezzo;
 	for (;;) {
@@ -83,6 +99,12 @@ function ripulisci(grezzo) {
 		}
 		const ultimo = u.slice(-1);
 		if (!ultimo) break;
+		// Closing emphasis marker matching the innermost opener still unmatched.
+		if (enfasi && ultimo === enfasi.slice(-1)) {
+			u = u.slice(0, -1);
+			enfasi = enfasi.slice(0, -1);
+			continue;
+		}
 		if (CODA.includes(ultimo)) {
 			u = u.slice(0, -1);
 			continue;
@@ -120,14 +142,19 @@ function ancora(u) {
 	return `<a href="${href}" target="_blank" rel="noopener noreferrer">${u}</a>`;
 }
 
-/** @param {string} testo @returns {string} */
-function collega(testo) {
-	return testo.replace(CANDIDATO, (m) => {
-		const u = ripulisci(m);
+/**
+ * @param {string} testo
+ * @param {(html: string) => string} proteggi
+ * @returns {string}
+ */
+function collega(testo, proteggi) {
+	return testo.replace(CANDIDATO, (m, pos) => {
+		const apertura = (ENFASI.exec(testo.slice(0, pos)) || [''])[0];
+		const u = ripulisci(m, apertura);
 		if (!u || !vale(u)) return m;
 		// La coda potata torna nel testo: è punteggiatura della frase, non deve
 		// sparire solo perché stava attaccata a un indirizzo.
-		return ancora(u) + m.slice(u.length);
+		return proteggi(ancora(u)) + m.slice(u.length);
 	});
 }
 
@@ -142,12 +169,19 @@ function collega(testo) {
  * che rende il link inservibile. È lo stesso motivo per cui `linkifyFiles`
  * spezza sui code span prima di sostituire.
  *
+ * `proteggi` receives every anchor this function writes and returns what goes
+ * into the string instead. `renderInline` passes a function that stashes the
+ * anchor behind a placeholder, so the emphasis step that runs afterwards
+ * cannot rewrite the URL (`https://x.dev/_a_` would otherwise get an `<em>`
+ * inside both `href` and the link text). The default leaves the anchor as is.
+ *
  * @param {string} html frammento già passato da `escapeHtml`
+ * @param {(html: string) => string} [proteggi]
  * @returns {string}
  */
-export function autolink(html) {
+export function autolink(html, proteggi = (a) => a) {
 	return String(html ?? '')
 		.split(/(<a\b[^>]*>[\s\S]*?<\/a>)/i)
-		.map((seg, i) => (i % 2 === 0 ? collega(seg) : seg))
+		.map((seg, i) => (i % 2 === 0 ? collega(seg, proteggi) : seg))
 		.join('');
 }
