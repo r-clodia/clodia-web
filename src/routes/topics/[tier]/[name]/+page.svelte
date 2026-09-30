@@ -49,6 +49,7 @@
 		API_BASE_URL,
 		setTopicStatus,
 		setTopicDeadline,
+		setTopicGoal,
 		addLocalFolder,
 		removeLocalFolder,
 		getTelegramLink,
@@ -80,6 +81,7 @@
 	import UriLabel from '$lib/components/UriLabel.svelte';
 	import RetierDialog from '$lib/components/RetierDialog.svelte';
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
+	import { puoDiventareObiettivo, eObiettivoFissato, statoObiettivo, attendeOwner } from '$lib/goal';
 	import type { TierWarning } from '$lib/api/types';
 	import type { TelegramSealState } from '$lib/api/client';
 
@@ -1569,6 +1571,69 @@
 		}
 	}
 
+	// ── Obiettivo del canale (clodia-platform#457) ────────────────────────────
+	//
+	// Il goal vive nel META, non fra i messaggi: resta leggibile quando la
+	// conversazione è andata avanti, ed è lì che lo legge chi orchestra. La
+	// pagina non lo ricalcola mai dal testo delle bolle — `$lib/goal` decide, la
+	// pagina disegna.
+	$: goal = info?.meta?.goal ?? null;
+	$: goalStato = statoObiettivo(goal);
+	$: goalAttendeOwner = attendeOwner(goal);
+	let goalBusy = false;
+
+	async function fissaObiettivo(m: { id?: string; text?: string }) {
+		if (!puoDiventareObiettivo(m, { isOwner }) || goalBusy) return;
+		goalBusy = true;
+		try {
+			// `pinned_by` NON si manda: lo scrive il server col principal che ha
+			// verificato essere l'owner.
+			const r = await setTopicGoal(tier, name, {
+				text: String(m.text ?? ''),
+				message_id: String(m.id ?? '')
+			});
+			if (info) info = { ...info, meta: { ...info.meta, goal: r.goal } };
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			goalBusy = false;
+		}
+	}
+
+	/** Il verdetto dell'owner su un obiettivo che l'orchestratore dichiara
+	 *  raggiunto: `done` accetta, `in-progress` rimanda indietro il lavoro.
+	 *  Nessuno dei due è un verbo nuovo — è lo stesso pin con un altro stato. */
+	async function decidiObiettivo(state: 'done' | 'in-progress') {
+		if (!isOwner || goalBusy || !goal) return;
+		goalBusy = true;
+		try {
+			const r = await setTopicGoal(tier, name, {
+				text: goal.text,
+				message_id: goal.message_id ?? undefined,
+				state,
+				strategy_path: goal.strategy_path ?? undefined
+			});
+			if (info) info = { ...info, meta: { ...info.meta, goal: r.goal } };
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			goalBusy = false;
+		}
+	}
+
+	async function togliObiettivo() {
+		if (!isOwner || goalBusy || !goal) return;
+		goalBusy = true;
+		try {
+			const r = await setTopicGoal(tier, name, null);
+			if (info) info = { ...info, meta: { ...info.meta, goal: r.goal } };
+		} catch (e) {
+			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			goalBusy = false;
+		}
+	}
+
 	// Seed multi-spawn (issue#94): la CHIAVE presente = il seed materializza N
 	// istanze; `max` è il cap dichiarato (`max_spawns`) per il tooltip "fino a
 	// quante" (issue#210). Voce-oggetto e non booleano perché il valore va letto
@@ -2440,6 +2505,47 @@
 	<div class="body">
 		<main class="stream-wrap">
 			<div class="timeline">
+				<!-- L'obiettivo resta SOPRA la conversazione, non dentro: un requisito
+				     che scorre via coi messaggi smette di essere un requisito. Quando
+				     la mossa è dell'owner la fascia si evidenzia — un goal fermo in
+				     attesa di un sì che nessuno sa di dover dare è il modo in cui
+				     questa funzione fallisce in silenzio (#457). -->
+				{#if goalStato && goal}
+					<div class="goal-bar" class:attesa={goalAttendeOwner}>
+						<span class="goal-icon" aria-hidden="true">🎯</span>
+						<div class="goal-body">
+							<div class="goal-text">{goal.text}</div>
+							<div class="goal-meta">
+								<b>{goalStato.testo}</b> — {goalStato.nota}
+								{#if goal.pinned_by}· fissato da {goal.pinned_by}{/if}
+								{#if goal.strategy_path}· strategia: <code>{goal.strategy_path}</code>{/if}
+							</div>
+						</div>
+						{#if isOwner}
+							<div class="goal-actions">
+								<!-- L'approvazione della strategia è il punto in cui il lavoro
+								     parte davvero: finché manca, l'orchestratore ha l'ordine di
+								     NON eseguire. Un sì che si può dare solo scrivendolo in chat
+								     è un sì che resta lì per giorni. -->
+								{#if goal.state === 'strategy-review'}
+									<button type="button" class="goal-act primary" disabled={goalBusy}
+										title="Dai il via libera: l'orchestratore esegue il piano"
+										on:click={() => decidiObiettivo('in-progress')}>✓ Approva strategia</button>
+								{/if}
+								{#if goal.state === 'claimed-done'}
+									<button type="button" class="goal-act primary" disabled={goalBusy}
+										on:click={() => decidiObiettivo('done')}>✓ Raggiunto</button>
+									<button type="button" class="goal-act" disabled={goalBusy}
+										title="Rimanda il lavoro agli agenti: l'esito non va bene"
+										on:click={() => decidiObiettivo('in-progress')}>↺ Correggi</button>
+								{/if}
+								<button type="button" class="goal-act" disabled={goalBusy}
+									title="Toglie il pin: l'esecuzione della strategia si ferma"
+									on:click={togliObiettivo}>Togli</button>
+							</div>
+						{/if}
+					</div>
+				{/if}
 				<div class="stream" bind:this={stream} on:scroll={updateScrollPosition} on:click={handleStreamClick} role="presentation">
 					{#each shownMessages as m, i (m.id)}
 					<!-- `id="m-<id>"` è l'ancora che i link esterni citano — oggi la
@@ -2492,6 +2598,19 @@
 							{#if m.kind !== 'system'}
 								<button type="button" class="reply-btn" title={`Rispondi a ${m.author}`}
 									on:click={() => replyTo(m)}>↩</button>
+							{/if}
+							<!-- Fissare una richiesta come OBIETTIVO del canale (#457): il
+							     bottone sta sulla bolla perché è lì che la richiesta esiste,
+							     e chi la promuove la sta guardando. Chi può, lo decide
+							     $lib/goal — non una condizione riscritta qui. -->
+							{#if puoDiventareObiettivo(m, { isOwner })}
+								{@const fissato = eObiettivoFissato(m, goal)}
+								<button type="button" class="goal-btn" class:on={fissato} disabled={goalBusy}
+									title={fissato
+										? "È l'obiettivo del canale — clicca per toglierlo e fermare l'esecuzione"
+										: 'Fissa come obiettivo del canale'}
+									aria-pressed={fissato}
+									on:click={() => (fissato ? togliObiettivo() : fissaObiettivo(m))}>🎯</button>
 							{/if}
 						</div>
 						{#if splitQuote(m.text).quote}
@@ -3623,6 +3742,29 @@
 	.copy-btn { margin-left: auto; }
 	.msg:hover .reply-btn, .msg:hover .copy-btn, .copy-btn.copied { opacity: 1; }
 	.reply-btn:hover, .copy-btn:hover { background: rgba(255,107,61,.12); color: var(--accent); }
+	/* 🎯 fissa come obiettivo: compare all'hover come ↩ e 📋, ma se il messaggio
+	   È l'obiettivo resta SEMPRE visibile — riconoscere la bolla che regge il
+	   lavoro del canale non deve dipendere dal passarci sopra col mouse. */
+	.goal-btn { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 5px; opacity: 0; transition: opacity .12s ease, background .12s ease; }
+	.msg:hover .goal-btn, .goal-btn.on { opacity: 1; }
+	.goal-btn:hover { background: rgba(255,107,61,.12); }
+	.goal-btn.on { filter: none; }
+	.goal-btn:disabled { cursor: default; opacity: .5; }
+	/* Fascia dell'obiettivo, in cima allo stream. */
+	.goal-bar { display: flex; align-items: flex-start; gap: 10px; margin: 6px 8px 2px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--accent) 7%, var(--card-bg)); }
+	/* Aspetta l'owner: si distingue, perché è l'unico stato in cui il lavoro è
+	   fermo per una decisione che deve prendere chi guarda. */
+	.goal-bar.attesa { border-color: color-mix(in srgb, #f59e0b 65%, var(--border)); background: color-mix(in srgb, #f59e0b 10%, var(--card-bg)); }
+	.goal-icon { font-size: 15px; line-height: 1.35; }
+	.goal-body { flex: 1; min-width: 0; }
+	.goal-text { font-size: 13px; line-height: 1.4; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+	.goal-meta { margin-top: 3px; font-size: 11px; color: var(--fg-muted); }
+	.goal-meta code { font-size: 10px; }
+	.goal-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+	.goal-act { font: inherit; font-size: 11px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--fg); cursor: pointer; white-space: nowrap; }
+	.goal-act:hover { border-color: var(--accent); color: var(--accent); }
+	.goal-act.primary { border-color: color-mix(in srgb, #22c55e 60%, var(--border)); color: #22c55e; }
+	.goal-act:disabled { opacity: .5; cursor: default; }
 	/* blocco Routing (quale agente risponde e perché) */
 	.routing { margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-subtle, rgba(127,127,127,.06)); font-size: 12px; }
 	.routing.fallback { border-color: color-mix(in srgb, #f59e0b 65%, var(--border)); background: color-mix(in srgb, #f59e0b 7%, var(--card-bg)); }
