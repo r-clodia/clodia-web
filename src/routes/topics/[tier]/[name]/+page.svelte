@@ -34,9 +34,7 @@
 		apiGet,
 		apiPost,
 		getChannelEligibility,
-		recordRoutingFeedback,
 		resolveRoutingChoice,
-		overruleRouting,
 		getChannelFiles,
 		uploadChannelFile,
 		downloadTopicZip,
@@ -74,7 +72,6 @@
 	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
 	import { fondiConEcho } from '$lib/echoLocale';
-	import { routingReasonLabel, isFallbackReason, coordinatorHint } from '$lib/routingReason';
 	import { decideBatch, gateBatch, gateCardState, gateCardVisibile, gateDestination, recordDecision } from '$lib/gateCard';
 	import { CHOICES_RE, leggiChoices, pillsAttive } from '$lib/pillPersistenti';
 	import GateBatchBar from '$lib/components/GateBatchBar.svelte';
@@ -386,108 +383,15 @@
 			? ''
 			: `${activeWorking.join(' e ')} ${activeWorking.length === 1 ? 'sta scrivendo' : 'stanno scrivendo'}…`;
 
-	// --- Routing: quale agente risponde e perché (evento routing_decision) ---
-	type RoutingCand = { name: string; score: number; super?: boolean };
-	type RoutingTrace = {
-		chosen: string;
-		chosen_agents?: string[];
-		reason: string;
-		mode: string;
-		threshold?: number;
-		margin?: number;
-		candidates?: RoutingCand[];
-		eligible?: string[];
-	};
-	let lastRouting: RoutingTrace | null = null;
-	let routingOpen = false;
-	let routingCorrected: string | null = null;
-	let routingConfirmed = false;
-	$: chosenAgents = lastRouting
-		? (lastRouting.chosen_agents?.length ? lastRouting.chosen_agents : [lastRouting.chosen])
-		: [];
-	$: multiRouting = chosenAgents.length > 1;
-	// agenti selezionabili per la correzione: gli idonei del topic diversi dallo scelto
-	$: correctOptions = lastRouting
-		? (lastRouting.eligible?.length
-				? lastRouting.eligible
-				: (lastRouting.candidates ?? []).map((c) => c.name)
-			).filter((n) => !chosenAgents.includes(n))
-		: [];
-	async function correctRoute(agent: string) {
-		if (!lastRouting || multiRouting || !agent || routingCorrected || routingConfirmed) return;
-		routingCorrected = agent; // ottimistico
-		try {
-			await recordRoutingFeedback(tier, name, {
-				kind: 'correction',
-				correct_agent: agent,
-				chosen: lastRouting.chosen
-			});
-		} catch {
-			routingCorrected = null; // ripristina su errore
-		}
-	}
-	// clodia-platform#187 · La correzione qui sopra insegna per la volta dopo.
-	// Questa AGISCE ADESSO: ferma il turno dell'agente scelto dal router e lo
-	// consegna a quello nominato. Sono due chip distinti perché costano cose
-	// diverse — imparare è gratis, ri-instradare consuma un turno — e nascondere
-	// il secondo dentro il primo farebbe partire un agente a chi voleva solo
-	// correggere una statistica.
-	let routingOverruled: string | null = null;
-	let routingOverruleBusy = false;
-	let routingOverruleErr = '';
-	// Ripiego locale se il server non manda `detail`: i tre esiti in cui l'atto
-	// declina restano leggibili senza dipendere dal testo del backend.
-	const overruleOutcome: Record<string, string> = {
-		'not-authorized': 'solo chi ha scritto il messaggio — o l’owner del topic — può passare il turno',
-		'same-agent': 'il router aveva già scelto questo agente',
-		'not-routable': 'questo agente non può rispondere in questo canale'
-	};
-	async function overruleRoute(agent: string) {
-		if (!lastRouting || multiRouting || !agent || routingOverruleBusy || routingOverruled) return;
-		routingOverruleBusy = true;
-		routingOverruleErr = '';
-		try {
-			const res = await overruleRouting(tier, name, agent, lastRouting.chosen);
-			// clodia-platform#253 · L'atto può declinare dentro una risposta
-			// riuscita: il server distingue «non ho imparato» da «non ho agito»,
-			// e trattare un `acted: false` come successo mostrerebbe «turno
-			// passato» a fronte di un turno che nessuno ha passato.
-			if (res.acted === false) {
-				routingOverruleErr = res.detail || overruleOutcome[res.outcome ?? ''] || 'turno non passato';
-				return;
-			}
-			routingOverruled = res.responder ?? agent;
-			routingCorrected = routingOverruled; // lo scavalcamento registra anche la correzione
-			// Il turno interrotto non finirà mai: i suoi box live resterebbero
-			// accesi a schermo come quelli di un turno vivo (stessa cintura di
-			// `stopAgent`).
-			typing = [];
-			resetLive();
-			await refreshMessages();
-		} catch (e) {
-			routingOverruleErr = e instanceof ApiError ? e.message : 'scavalcamento non riuscito';
-		} finally {
-			routingOverruleBusy = false;
-		}
-	}
-	async function confirmRoute() {
-		if (!lastRouting || multiRouting || routingCorrected || routingConfirmed) return;
-		routingConfirmed = true; // ottimistico
-		try {
-			await recordRoutingFeedback(tier, name, {
-				kind: 'confirm',
-				chosen: lastRouting.chosen
-			});
-		} catch {
-			routingConfirmed = false;
-		}
-	}
-	// Etichette e «è un ripiego?» stanno in `$lib/routingReason`, non qui:
-	// questa pagina se lo chiedeva in TRE punti confrontando la reason con
-	// `'fallback-rank'`, e la #357 dell'altro repo ha smesso di emettere quella
-	// stringa — tre comportamenti spenti in silenzio (clodia-platform#293).
-	// Il modulo ha il suo controllo eseguibile, che gira sulle reason vere del
-	// router: `scripts/check-routing-fallback-reasons.mjs`.
+	// La barra 🧭 del routing non c'è più (clodia-platform#468): da quando
+	// l'instradamento passa solo dall'orchestratore o da una menzione diretta,
+	// non restava niente da correggere — il pannello mostrava un punteggio che
+	// nessuno usava e occupava il posto sotto la chat. Al suo posto sta la
+	// didascalia dell'obiettivo. Le rotte del backend restano (decisione
+	// dell'owner) e il client le espone ancora: qui sparisce la superficie.
+	// Cosa si perde davvero, ed è dichiarato: il chip «passa il turno adesso a
+	// X». Fermare un turno in corso resta possibile col ⏹ nel box live, che
+	// però interrompe soltanto — non consegna il turno a un altro agente.
 
 	// --- Ragionamento / attività live del turno del risponditore -----------
 	// Il backend emette thinking_chunk / message_chunk / tool_use sul bus, con
@@ -1793,7 +1697,6 @@
 		messages = [];
 		files = [];
 		typing = []; // reset indicatore al cambio canale
-		lastRouting = null;
 		workingResponders = [];
 		_idleLastPoll = []; // la cintura non deve ereditare le assenze di un altro canale
 		resetLive(); // blocchi live (thinking/tools/reply) del canale precedente
@@ -2275,15 +2178,6 @@
 				void refreshMessages();
 				return;
 			}
-			if (ev.type === 'routing_decision') {
-				if (p.tier !== tier || p.name !== name) return;
-				lastRouting = p as unknown as RoutingTrace;
-				routingCorrected = null; // nuova decisione → riapri la correzione
-				routingOverruled = null; // e riapri lo scavalcamento: è un altro turno
-				routingOverruleErr = '';
-				routingConfirmed = false;
-				return;
-			}
 			// Etichetta dello spawn per questo chat_id: arriva all'inizio del turno,
 			// prima di qualunque chunk, così i box live nascono già col numero
 			// giusto invece di essere rinominati a metà.
@@ -2505,47 +2399,6 @@
 	<div class="body">
 		<main class="stream-wrap">
 			<div class="timeline">
-				<!-- L'obiettivo resta SOPRA la conversazione, non dentro: un requisito
-				     che scorre via coi messaggi smette di essere un requisito. Quando
-				     la mossa è dell'owner la fascia si evidenzia — un goal fermo in
-				     attesa di un sì che nessuno sa di dover dare è il modo in cui
-				     questa funzione fallisce in silenzio (#457). -->
-				{#if goalStato && goal}
-					<div class="goal-bar" class:attesa={goalAttendeOwner}>
-						<span class="goal-icon" aria-hidden="true">🎯</span>
-						<div class="goal-body">
-							<div class="goal-text">{goal.text}</div>
-							<div class="goal-meta">
-								<b>{goalStato.testo}</b> — {goalStato.nota}
-								{#if goal.pinned_by}· fissato da {goal.pinned_by}{/if}
-								{#if goal.strategy_path}· strategia: <code>{goal.strategy_path}</code>{/if}
-							</div>
-						</div>
-						{#if isOwner}
-							<div class="goal-actions">
-								<!-- L'approvazione della strategia è il punto in cui il lavoro
-								     parte davvero: finché manca, l'orchestratore ha l'ordine di
-								     NON eseguire. Un sì che si può dare solo scrivendolo in chat
-								     è un sì che resta lì per giorni. -->
-								{#if goal.state === 'strategy-review'}
-									<button type="button" class="goal-act primary" disabled={goalBusy}
-										title="Dai il via libera: l'orchestratore esegue il piano"
-										on:click={() => decidiObiettivo('in-progress')}>✓ Approva strategia</button>
-								{/if}
-								{#if goal.state === 'claimed-done'}
-									<button type="button" class="goal-act primary" disabled={goalBusy}
-										on:click={() => decidiObiettivo('done')}>✓ Raggiunto</button>
-									<button type="button" class="goal-act" disabled={goalBusy}
-										title="Rimanda il lavoro agli agenti: l'esito non va bene"
-										on:click={() => decidiObiettivo('in-progress')}>↺ Correggi</button>
-								{/if}
-								<button type="button" class="goal-act" disabled={goalBusy}
-									title="Toglie il pin: l'esecuzione della strategia si ferma"
-									on:click={togliObiettivo}>Togli</button>
-							</div>
-						{/if}
-					</div>
-				{/if}
 				<div class="stream" bind:this={stream} on:scroll={updateScrollPosition} on:click={handleStreamClick} role="presentation">
 					{#each shownMessages as m, i (m.id)}
 					<!-- `id="m-<id>"` è l'ancora che i link esterni citano — oggi la
@@ -2877,82 +2730,39 @@
 						on:stop={(e) => stopAgent(e.detail)} />
 				{/each}
 			{/if}
-			{#if lastRouting}
-				<div class="routing" class:open={routingOpen} class:fallback={isFallbackReason(lastRouting.reason)}>
-					<button type="button" class="routing-head" on:click={() => (routingOpen = !routingOpen)}
-						aria-expanded={routingOpen}>
-						<span class="caret" class:open={routingOpen}>▸</span>
-						<span class="routing-title">🧭 Routing → <b>{lastRouting.chosen}</b></span>
-						<span class="routing-why">{routingReasonLabel(lastRouting.reason)}</span>
-						<span class="routing-hint">{routingOpen ? 'comprimi' : multiRouting ? 'dettagli' : 'correggi'}</span>
-					</button>
-					{#if routingOpen}
-						<div class="routing-body">
-							{#if isFallbackReason(lastRouting.reason) && !routingCorrected && !routingConfirmed}
-								<p class="routing-feedback-prompt">
-									Nessuno specialista ha superato la soglia. Indica chi avrebbe dovuto rispondere:
-									il router userà la correzione per messaggi simili.
-								</p>
-							{/if}
-							<!-- Un ripiego per rango è anche un difetto di configurazione dello
-							     scope, e si aggiusta là, non correggendo il routing (#293). -->
-							{#if coordinatorHint(lastRouting.reason)}
-								<p class="routing-config-hint">{coordinatorHint(lastRouting.reason)}</p>
-							{/if}
-							{#if lastRouting.candidates && lastRouting.candidates.length}
-								<div class="routing-meta">
-									Punteggi di pertinenza (soglia {lastRouting.threshold ?? '—'}, margine {lastRouting.margin ?? '—'}):
-								</div>
-								<ul class="routing-scores">
-									{#each lastRouting.candidates as c}
-										<li class:winner={chosenAgents.includes(c.name)}>
-											<span class="rs-name">{c.name}{#if c.super}<span class="rs-tag">super</span>{/if}</span>
-											<span class="rs-bar"><span class="rs-fill" style="width:{Math.min(100, Math.round(c.score * 100))}%"></span></span>
-											<span class="rs-val">{c.score.toFixed(3)}</span>
-										</li>
-									{/each}
-								</ul>
-							{:else}
-								<div class="routing-meta">Nessun punteggio disponibile (tag esplicito o embedder non raggiungibile).</div>
-							{/if}
-							{#if multiRouting}
-								<div class="routing-meta">Richiesta distribuita tra {chosenAgents.join(', ')}.</div>
-							{:else}
-								<div class="routing-correct">
-								{#if routingConfirmed}
-									<span class="rc-done">✓ scelta confermata: <b>{lastRouting.chosen}</b></span>
-								{:else if routingCorrected}
-									<span class="rc-done">✓ imparato: i messaggi simili andranno a <b>{routingCorrected}</b></span>
-								{:else}
-									<button type="button" class="rc-chip rc-confirm" on:click={confirmRoute}>
-										✓ Scelta corretta
-									</button>
-								{/if}
-								{#if !routingConfirmed && !routingCorrected && correctOptions.length}
-									<span class="rc-label">Avresti usato:</span>
-									{#each correctOptions as a}
-										<button type="button" class="rc-chip" on:click={() => correctRoute(a)}>{a}</button>
-									{/each}
-								{/if}
-								</div>
-								{#if routingOverruled}
-									<div class="routing-correct">
-										<span class="rc-done">✓ turno passato a <b>{routingOverruled}</b>: la scelta del router è stata fermata</span>
-									</div>
-								{:else if (hasLive || typing.length) && correctOptions.length}
-									<div class="routing-correct">
-										<span class="rc-label">Sta rispondendo l'agente sbagliato? Passa il turno adesso a:</span>
-										{#each correctOptions as a}
-											<button type="button" class="rc-chip rc-overrule" disabled={routingOverruleBusy}
-												on:click={() => overruleRoute(a)}>{a}</button>
-										{/each}
-									</div>
-								{/if}
-								{#if routingOverruleErr}
-									<div class="routing-meta">{routingOverruleErr}</div>
-								{/if}
-							{/if}
-						</div>
+			<!-- L'obiettivo, in una riga, SOTTO la chat e sopra il composer: è il
+			     posto in cui stava la barra del routing (#468). La fascia di prima
+			     apriva la conversazione e rubava lo spazio ai messaggi; qui resta
+			     visibile mentre si scrive, che è il momento in cui serve ricordarsi
+			     cosa si era chiesto. Il testo intero sta nel `title`, perché la
+			     didascalia deve restare alta una riga anche su una richiesta lunga.
+			     Quando la mossa è dell'owner si evidenzia: un obiettivo fermo su un
+			     sì che nessuno sa di dover dare è il modo in cui questa funzione
+			     fallisce in silenzio (#457). -->
+			{#if goalStato && goal}
+				<div class="goal-cap" class:attesa={goalAttendeOwner}>
+					<span class="goal-cap-icon" aria-hidden="true">🎯</span>
+					<span class="goal-cap-text" title={goal.text}>{goal.text}</span>
+					<span class="goal-cap-stato" title={goalStato.nota}>{goalStato.testo}</span>
+					{#if isOwner}
+						<!-- L'approvazione della strategia è il punto in cui il lavoro parte
+						     davvero: finché manca, l'orchestratore ha l'ordine di NON eseguire.
+						     Un sì che si può dare solo scrivendolo in chat resta lì per giorni. -->
+						{#if goal.state === 'strategy-review'}
+							<button type="button" class="goal-act primary" disabled={goalBusy}
+								title="Dai il via libera: l'orchestratore esegue il piano"
+								on:click={() => decidiObiettivo('in-progress')}>✓ Approva</button>
+						{/if}
+						{#if goal.state === 'claimed-done'}
+							<button type="button" class="goal-act primary" disabled={goalBusy}
+								on:click={() => decidiObiettivo('done')}>✓ Raggiunto</button>
+							<button type="button" class="goal-act" disabled={goalBusy}
+								title="Rimanda il lavoro agli agenti: l'esito non va bene"
+								on:click={() => decidiObiettivo('in-progress')}>↺ Correggi</button>
+						{/if}
+						<button type="button" class="goal-act" disabled={goalBusy}
+							title="Toglie il pin: l'esecuzione della strategia si ferma"
+							on:click={togliObiettivo}>Togli</button>
 					{/if}
 				</div>
 			{/if}
@@ -3750,55 +3560,20 @@
 	.goal-btn:hover { background: rgba(255,107,61,.12); }
 	.goal-btn.on { filter: none; }
 	.goal-btn:disabled { cursor: default; opacity: .5; }
-	/* Fascia dell'obiettivo, in cima allo stream. */
-	.goal-bar { display: flex; align-items: flex-start; gap: 10px; margin: 6px 8px 2px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--accent) 7%, var(--card-bg)); }
+	/* Didascalia dell'obiettivo: una riga sola, sotto la chat (#468). La
+	   larghezza la detta il testo, che si tronca — i bottoni non devono mai
+	   finire a capo, altrimenti la didascalia diventa la fascia di prima. */
+	.goal-cap { display: flex; align-items: center; gap: 8px; margin: 4px 8px; padding: 4px 10px; border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); border-radius: 999px; background: color-mix(in srgb, var(--accent) 7%, var(--card-bg)); font-size: 12px; }
 	/* Aspetta l'owner: si distingue, perché è l'unico stato in cui il lavoro è
 	   fermo per una decisione che deve prendere chi guarda. */
-	.goal-bar.attesa { border-color: color-mix(in srgb, #f59e0b 65%, var(--border)); background: color-mix(in srgb, #f59e0b 10%, var(--card-bg)); }
-	.goal-icon { font-size: 15px; line-height: 1.35; }
-	.goal-body { flex: 1; min-width: 0; }
-	.goal-text { font-size: 13px; line-height: 1.4; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
-	.goal-meta { margin-top: 3px; font-size: 11px; color: var(--fg-muted); }
-	.goal-meta code { font-size: 10px; }
-	.goal-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-	.goal-act { font: inherit; font-size: 11px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--fg); cursor: pointer; white-space: nowrap; }
+	.goal-cap.attesa { border-color: color-mix(in srgb, #f59e0b 65%, var(--border)); background: color-mix(in srgb, #f59e0b 10%, var(--card-bg)); }
+	.goal-cap-icon { font-size: 13px; line-height: 1; }
+	.goal-cap-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+	.goal-cap-stato { color: var(--fg-muted); white-space: nowrap; }
+	.goal-act { font: inherit; font-size: 11px; padding: 2px 9px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--fg); cursor: pointer; white-space: nowrap; }
 	.goal-act:hover { border-color: var(--accent); color: var(--accent); }
 	.goal-act.primary { border-color: color-mix(in srgb, #22c55e 60%, var(--border)); color: #22c55e; }
 	.goal-act:disabled { opacity: .5; cursor: default; }
-	/* blocco Routing (quale agente risponde e perché) */
-	.routing { margin: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-subtle, rgba(127,127,127,.06)); font-size: 12px; }
-	.routing.fallback { border-color: color-mix(in srgb, #f59e0b 65%, var(--border)); background: color-mix(in srgb, #f59e0b 7%, var(--card-bg)); }
-	.routing-feedback-prompt { margin: 0 0 8px; padding: 7px 9px; border-radius: 6px; background: color-mix(in srgb, #f59e0b 12%, transparent); color: var(--fg); line-height: 1.4; }
-	/* Suggerimento di configurazione, non un allarme: tono più basso del prompt
-	   che chiede una correzione (#293). */
-	.routing-config-hint { margin: 0 0 8px; font-size: 11px; color: var(--fg-muted); line-height: 1.4; }
-	.routing-correct { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-	.rc-label { font-size: 11px; color: var(--fg-muted); }
-	.rc-chip { font: inherit; font-size: 11px; padding: 3px 9px; border: 1px solid var(--border); border-radius: 999px; background: transparent; color: var(--fg); cursor: pointer; }
-	.rc-chip:hover { border-color: var(--accent); color: var(--accent); }
-	.rc-confirm { border-color: color-mix(in srgb, #22c55e 60%, var(--border)); color: #22c55e; }
-	/* Lo scavalcamento interrompe un turno: si distingue dal chip che insegna,
-	   perché il costo delle due azioni è diverso. */
-	.rc-overrule { border-color: color-mix(in srgb, #f59e0b 60%, var(--border)); color: #f59e0b; }
-	.rc-overrule:disabled { opacity: .5; cursor: default; }
-	.rc-done { font-size: 11px; color: #4ade80; }
-	.routing-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; background: none; border: 0; cursor: pointer; color: var(--fg); text-align: left; }
-	.routing-head .caret { transition: transform .15s; color: var(--fg-muted); }
-	.routing-head .caret.open { transform: rotate(90deg); }
-	.routing-title { font-weight: 500; }
-	.routing-why { color: var(--fg-muted); flex: 1; font-style: italic; }
-	.routing-hint { margin-left: auto; color: var(--fg-muted); font-size: 11px; opacity: .7; }
-	.routing-body { padding: 4px 12px 10px 12px; }
-	.routing-meta { color: var(--fg-muted); margin-bottom: 6px; }
-	.routing-scores { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-	.routing-scores li { display: grid; grid-template-columns: 120px 1fr 48px; align-items: center; gap: 8px; }
-	.routing-scores li.winner .rs-name { font-weight: 600; color: var(--accent); }
-	.rs-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.rs-tag { margin-left: 4px; font-size: 9px; text-transform: uppercase; opacity: .6; }
-	.rs-bar { height: 6px; border-radius: 3px; background: rgba(127,127,127,.18); overflow: hidden; }
-	.rs-fill { display: block; height: 100%; background: var(--accent); opacity: .55; }
-	.routing-scores li.winner .rs-fill { opacity: 1; }
-	.rs-val { text-align: right; font-variant-numeric: tabular-nums; color: var(--fg-muted); }
 
 	/* "sta scrivendo…" */
 	.typing { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12px; color: var(--fg-muted); font-style: italic; }

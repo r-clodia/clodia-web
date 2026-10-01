@@ -8,7 +8,7 @@
  *      risposta di Clodia le farebbe eseguire il proprio riassunto — o su
  *      quelle di un non-owner, e allora un partecipante può appendere al
  *      canale un lavoro che impegna gli agenti finché resta lì;
- *   2. la fascia dell'obiettivo si mette a leggere il TESTO delle bolle invece
+ *   2. la didascalia dell'obiettivo si mette a leggere il TESTO delle bolle invece
  *      del meta: allora il requisito scorre via con la conversazione, che è
  *      esattamente la cosa che il pin doveva impedire.
  *
@@ -71,13 +71,13 @@ if (goal) {
 	}
 
 	if (typeof statoObiettivo === 'function' && typeof attendeOwner === 'function') {
-		if (statoObiettivo(null) !== null) guasti.push('nessun obiettivo → nessuna fascia');
+		if (statoObiettivo(null) !== null) guasti.push('nessun obiettivo → nessuna didascalia');
 		if (statoObiettivo({ text: '  ' }) !== null) guasti.push('un goal senza testo non è un obiettivo');
 		const sconosciuto = statoObiettivo({ text: 'x', state: 'boh' });
 		if (!sconosciuto || sconosciuto.stato !== 'pinned') {
-			guasti.push('uno stato sconosciuto deve degradare a `pinned`, non far sparire la fascia');
+			guasti.push('uno stato sconosciuto deve degradare a `pinned`, non far sparire la didascalia');
 		}
-		// L'invariante detta a voce alta: la fascia si evidenzia ESATTAMENTE
+		// L'invariante detta a voce alta: la didascalia si evidenzia ESATTAMENTE
 		// quando la mossa è dell'owner. Un goal fermo su un sì che nessuno sa di
 		// dover dare è il modo in cui questa funzione fallisce in silenzio.
 		const attesa = { 'strategy-review': true, 'claimed-done': true, pinned: false, 'in-progress': false, done: false };
@@ -121,7 +121,7 @@ if (src !== null) {
 	]) {
 		if (!codice.includes(`goal.state === '${stato}'`)) {
 			guasti.push(
-				`${PAGINA}: la fascia non ha un ramo per lo stato \`${stato}\`, quindi ${cosa} ` +
+				`${PAGINA}: la didascalia non ha un ramo per lo stato \`${stato}\`, quindi ${cosa} ` +
 					`non ha un bottone — ed è uno dei due stati in cui il lavoro aspetta l'owner`
 			);
 		}

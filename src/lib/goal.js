@@ -7,8 +7,8 @@
  *
  * La regola sta qui — in JS puro, eseguibile da una guard — e non dentro la
  * pagina, perché è la stessa decisione presa in tre posti diversi: il bottone
- * nella bolla, l'evidenza sul messaggio già fissato, la fascia in cima allo
- * stream. Ricalcolata a mano in ognuno, diverge al primo ritocco.
+ * nella bolla, l'evidenza sul messaggio già fissato, la didascalia sotto la chat
+ * (#468). Ricalcolata a mano in ognuno, diverge al primo ritocco.
  */
 
 /** Stati del ciclo di vita, nell'ordine in cui si attraversano. */
@@ -71,7 +71,7 @@ const ETICHETTE = Object.freeze({
 });
 
 /**
- * Riga di stato per la fascia dell'obiettivo.
+ * Riga di stato per la didascalia dell'obiettivo.
  *
  * @param {{state?: string, text?: string}|null|undefined} goal
  * @returns {{stato: string, testo: string, attesa: string, nota: string}|null}
@@ -85,7 +85,7 @@ export function statoObiettivo(goal) {
 /**
  * L'obiettivo aspetta una decisione dell'owner?
  *
- * Serve a decidere se la fascia va evidenziata: un requisito che aspetta da
+ * Serve a decidere se la didascalia va evidenziata: un requisito che aspetta da
  * giorni un sì che nessuno sa di dover dare è il modo in cui questa feature
  * fallisce in silenzio.
  *
