@@ -49,3 +49,35 @@ export function bolleConRagionamento(messaggi, idsSalvati) {
 	}
 	return out;
 }
+
+/**
+ * State of the stored reasoning of one bubble, as kept by the page.
+ *
+ * `undefined` = never requested, `null` = request in flight,
+ * `{ error }` = the request failed, `{ text, truncated }` = loaded.
+ * A failed fetch must NOT look like a fetch in progress: otherwise the box
+ * says "loading…" forever and nothing ever asks again.
+ *
+ * @param {unknown} entry
+ * @returns {'idle' | 'loading' | 'error' | 'ready'}
+ */
+export function statoRagionamento(entry) {
+	if (entry === undefined) return 'idle';
+	if (entry === null) return 'loading';
+	const e = /** @type {any} */ (entry);
+	if (typeof e === 'object' && typeof e.error === 'string') return 'error';
+	if (typeof e === 'object' && typeof e.text === 'string') return 'ready';
+	return 'error';
+}
+
+/**
+ * Whether opening (or retrying) this bubble must fetch the text: when it was
+ * never requested or the last request failed. Never while a request is in
+ * flight, never once loaded.
+ * @param {unknown} entry
+ * @returns {boolean}
+ */
+export function ragionamentoDaRichiedere(entry) {
+	const s = statoRagionamento(entry);
+	return s === 'idle' || s === 'error';
+}

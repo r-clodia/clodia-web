@@ -70,7 +70,12 @@
 	import { gateLabel } from '$lib/gateLabel';
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
 	import { liveBoxEntries } from '$lib/liveBox';
-	import { bolleConRagionamento, indiceRagionamento } from '$lib/reasoning';
+	import {
+		bolleConRagionamento,
+		indiceRagionamento,
+		ragionamentoDaRichiedere,
+		statoRagionamento
+	} from '$lib/reasoning';
 	import { etichettaTool, type PassoTool } from '$lib/toolLabel';
 	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
@@ -577,8 +582,13 @@
 	// portarseli dietro tutti a ogni poll sarebbe pagarli per non guardarli.
 	/** Id dei messaggi per cui lo store dichiara di avere un ragionamento. */
 	let indiceRag: string[] = [];
-	/** Testo già scaricato, per id. `null` = richiesta in corso o fallita. */
-	let ragCaricato: Record<string, { text: string; truncated: boolean } | null> = {};
+	/** Text per id. Missing = never requested, `null` = request in flight,
+	 *  `{ error }` = failed (shown with a retry), else loaded. See
+	 *  `statoRagionamento` in $lib/reasoning. */
+	let ragCaricato: Record<
+		string,
+		{ text: string; truncated: boolean } | { error: string } | null
+	> = {};
 	/** Quali bolle sono espanse. */
 	let ragAperti: Record<string, boolean> = {};
 	/** Chi mostra il 💭: lo decide `$lib/reasoning`, non una condizione qui. */
@@ -593,16 +603,27 @@
 		}
 	}
 
-	async function apriRagionamento(id: string) {
-		ragAperti = { ...ragAperti, [id]: !ragAperti[id] };
-		if (!ragAperti[id] || ragCaricato[id] !== undefined) return;
+	async function caricaRagionamento(id: string) {
+		if (!ragionamentoDaRichiedere(ragCaricato[id])) return;
 		ragCaricato = { ...ragCaricato, [id]: null };
+		const canale = `${tier}/${name}`;
 		try {
 			const v = await getChannelReasoning(tier, name, id);
+			if (`${tier}/${name}` !== canale) return; // the channel changed meanwhile
 			ragCaricato = { ...ragCaricato, [id]: { text: v.text, truncated: v.truncated } };
-		} catch {
-			// Resta `null`: il riquadro lo dice, invece di restare aperto e muto.
+		} catch (e) {
+			if (`${tier}/${name}` !== canale) return;
+			// A failure is a state of its own, with a retry: left as `null` it
+			// would read "loading…" forever and never be asked again.
+			const msg = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+			ragCaricato = { ...ragCaricato, [id]: { error: msg || 'errore sconosciuto' } };
 		}
+	}
+
+	async function apriRagionamento(id: string) {
+		ragAperti = { ...ragAperti, [id]: !ragAperti[id] };
+		// Reopening after a failure asks again, like the retry button.
+		if (ragAperti[id]) await caricaRagionamento(id);
 	}
 
 	/** Reply: cita il messaggio (anteprima in corsivo) e tagga l'autore. */
@@ -2529,14 +2550,22 @@
 						{/if}
 						<div class="text md">{@html renderMarkdown(linkifyFiles(stripChoices(splitQuote(m.text).body)))}</div>
 						{#if ragAperti[m.id]}
+							{@const rag = ragCaricato[m.id]}
+							{@const ragStato = statoRagionamento(rag)}
 							<div class="think-stored">
-								{#if ragCaricato[m.id] == null}
-									<span class="think-wait">Recupero il ragionamento…</span>
-								{:else}
-									{#if ragCaricato[m.id]?.truncated}
+								{#if ragStato === 'error'}
+									<span class="think-err" role="alert">
+										Non riesco a recuperare il ragionamento{rag && 'error' in rag && rag.error ? ` (${rag.error})` : ''}.
+									</span>
+									<button type="button" class="think-retry"
+										on:click={() => caricaRagionamento(m.id)}>Riprova</button>
+								{:else if ragStato === 'ready' && rag && 'text' in rag}
+									{#if rag.truncated}
 										<span class="think-cap">Ragionamento lungo: ne sono conservati l'inizio e la fine.</span>
 									{/if}
-									<pre>{ragCaricato[m.id]?.text}</pre>
+									<pre>{rag.text}</pre>
+								{:else}
+									<span class="think-wait">Recupero il ragionamento…</span>
 								{/if}
 							</div>
 						{/if}
@@ -3632,7 +3661,10 @@
 	   capo, come nel box live, e con `white-space: pre-wrap` non sfonda la bolla. */
 	.think-stored { margin: 6px 0 2px; padding: 8px 10px; border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--fg-muted) 7%, transparent); border-radius: 0 6px 6px 0; font-size: 12px; color: var(--fg-muted); }
 	.think-stored pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; line-height: 1.5; }
-	.think-wait, .think-cap { display: block; font-style: italic; opacity: .85; margin-bottom: 4px; }
+	.think-wait, .think-cap, .think-err { display: block; font-style: italic; opacity: .85; margin-bottom: 4px; }
+	.think-err { color: var(--danger, #c0392b); opacity: 1; }
+	.think-retry { background: transparent; border: 1px solid var(--border); color: var(--fg); border-radius: 5px; font-size: 12px; padding: 2px 8px; cursor: pointer; }
+	.think-retry:hover { background: rgba(255,107,61,.12); color: var(--accent); }
 	/* 🎯 fissa come obiettivo: compare all'hover come ↩ e 📋, ma se il messaggio
 	   È l'obiettivo resta SEMPRE visibile — riconoscere la bolla che regge il
 	   lavoro del canale non deve dipendere dal passarci sopra col mouse. */

@@ -24,9 +24,10 @@ import { leggiSorgente, senzaCommenti } from './lib/sorgente.mjs';
 
 const guasti = [];
 
-let bolleConRagionamento, indiceRagionamento;
+let bolleConRagionamento, indiceRagionamento, statoRagionamento, ragionamentoDaRichiedere;
 try {
-	({ bolleConRagionamento, indiceRagionamento } = await import('../src/lib/reasoning.js'));
+	({ bolleConRagionamento, indiceRagionamento, statoRagionamento, ragionamentoDaRichiedere } =
+		await import('../src/lib/reasoning.js'));
 } catch (e) {
 	guasti.push(`src/lib/reasoning.js non si importa (${e && e.message})`);
 }
@@ -112,6 +113,34 @@ if (typeof indiceRagionamento === 'function') {
 	}
 }
 
+// 1b. A failed fetch is an ERROR state with a retry, not an endless
+// "loading…" (review of clodia-web#239): `null` alone used to mean both
+// "in flight" and "failed", so a failure never showed and was never retried.
+if (typeof statoRagionamento !== 'function' || typeof ragionamentoDaRichiedere !== 'function') {
+	guasti.push(
+		'src/lib/reasoning.js does not export statoRagionamento/ragionamentoDaRichiedere: ' +
+			'a failed fetch would again look like a fetch in progress'
+	);
+} else {
+	/** @type {Array<[string, unknown, string, boolean]>} */
+	const stati = [
+		['never requested → idle, fetch', undefined, 'idle', true],
+		['in flight → loading, do NOT fetch twice', null, 'loading', false],
+		['failed → error, fetch again (retry)', { error: 'HTTP 502' }, 'error', true],
+		['failed with empty message → still error', { error: '' }, 'error', true],
+		['loaded → ready, never fetch again', { text: 'ok', truncated: false }, 'ready', false],
+		['loaded empty text → ready', { text: '', truncated: false }, 'ready', false],
+		['garbage → error, so it can be retried', { foo: 1 }, 'error', true]
+	];
+	for (const [nome, entry, stato, fetch] of stati) {
+		const s1 = statoRagionamento(entry);
+		const f1 = ragionamentoDaRichiedere(entry);
+		const ok = s1 === stato && f1 === fetch;
+		if (!ok) guasti.push(`${nome}: state ${s1}, fetch ${f1} (expected ${stato}, ${fetch})`);
+		console.log(`${ok ? 'ok  ' : 'KO  '} ${nome} → ${s1}/${f1}`);
+	}
+}
+
 // 2. La pagina usa il modulo e tiene l'indice aggiornato.
 const PAGINA = 'src/routes/topics/[tier]/[name]/+page.svelte';
 const pag = leggiSorgente(PAGINA, guasti, 'ragionamento storico in chat');
@@ -130,6 +159,29 @@ if (pag !== null) {
 	}
 	if (!/getChannelReasoning\s*\(/.test(codice)) {
 		guasti.push(`${PAGINA}: il testo del ragionamento non viene mai richiesto`);
+	}
+	// The box must tell a failure from a fetch in progress, and offer a retry.
+	if (!/statoRagionamento\s*\(/.test(codice)) {
+		guasti.push(
+			`${PAGINA}: the reasoning box does not derive its state from statoRagionamento(): ` +
+				`a failed fetch would read "loading…" forever`
+		);
+	}
+	if (/ragCaricato\[[^\]]+\]\s*==\s*null/.test(codice)) {
+		guasti.push(
+			`${PAGINA}: \`ragCaricato[id] == null\` is used as "loading": it also matches a ` +
+				`missing entry and hides failures`
+		);
+	}
+	if (!/ragionamentoDaRichiedere\s*\(/.test(codice)) {
+		guasti.push(
+			`${PAGINA}: the fetch is not gated by ragionamentoDaRichiedere(): a failed fetch ` +
+				`would never be asked again`
+		);
+	}
+	const errBlock = codice.match(/ragStato === 'error'[\s\S]{0,800}?\{:else/);
+	if (!errBlock || !/on:click=\{\(\) => caricaRagionamento\(/.test(errBlock[0])) {
+		guasti.push(`${PAGINA}: the error state of the reasoning box has no retry button`);
 	}
 	// Il refresh dell'indice deve stare dove arrivano i messaggi nuovi: il
 	// turno appena finito è proprio quello che si vuole riaprire.
