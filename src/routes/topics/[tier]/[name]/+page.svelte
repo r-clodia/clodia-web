@@ -24,6 +24,8 @@
 		resetChannelTrifecta,
 		getChannelMessages,
 		getChannelMessagesAndPresence,
+		getChannelReasoning,
+		getChannelReasoningIndex,
 		type PresenceState,
 		getChannelAliases,
 		postChannelMessage,
@@ -68,6 +70,7 @@
 	import { gateLabel } from '$lib/gateLabel';
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
 	import { liveBoxEntries } from '$lib/liveBox';
+	import { bolleConRagionamento, indiceRagionamento } from '$lib/reasoning';
 	import { etichettaTool, type PassoTool } from '$lib/toolLabel';
 	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
@@ -564,6 +567,43 @@
 			.map(([chiave]) => chiave)
 			.filter((chiave) => liveContinuesLast(shownMessages, chiave, seedName))
 	);
+
+	// --- Ragionamento dei turni GIÀ CONCLUSI (clodia-platform#484) -----------
+	// Il box live mostra il ragionamento mentre scorre, e finisce lì: chi
+	// riapre il canale dopo non aveva nessun modo di rileggerlo. Ora il server
+	// lo conserva e lo lega alla bolla che quel turno ha prodotto; qui si tiene
+	// l'indice (quali bolle ne hanno uno) e si scarica il testo solo di quelle
+	// che qualcuno apre davvero — il ragionamento di un turno sono decine di KB,
+	// portarseli dietro tutti a ogni poll sarebbe pagarli per non guardarli.
+	/** Id dei messaggi per cui lo store dichiara di avere un ragionamento. */
+	let indiceRag: string[] = [];
+	/** Testo già scaricato, per id. `null` = richiesta in corso o fallita. */
+	let ragCaricato: Record<string, { text: string; truncated: boolean } | null> = {};
+	/** Quali bolle sono espanse. */
+	let ragAperti: Record<string, boolean> = {};
+	/** Chi mostra il 💭: lo decide `$lib/reasoning`, non una condizione qui. */
+	$: bolleRag = bolleConRagionamento(shownMessages, indiceRag);
+
+	async function aggiornaIndiceRagionamento() {
+		try {
+			indiceRag = indiceRagionamento(await getChannelReasoningIndex(tier, name));
+		} catch {
+			// Un canale senza storico, o una rotta non ancora deployata, non
+			// deve rompere la chat: semplicemente nessun 💭.
+		}
+	}
+
+	async function apriRagionamento(id: string) {
+		ragAperti = { ...ragAperti, [id]: !ragAperti[id] };
+		if (!ragAperti[id] || ragCaricato[id] !== undefined) return;
+		ragCaricato = { ...ragCaricato, [id]: null };
+		try {
+			const v = await getChannelReasoning(tier, name, id);
+			ragCaricato = { ...ragCaricato, [id]: { text: v.text, truncated: v.truncated } };
+		} catch {
+			// Resta `null`: il riquadro lo dice, invece di restare aperto e muto.
+		}
+	}
 
 	/** Reply: cita il messaggio (anteprima in corsivo) e tagga l'autore. */
 	let replyingTo: { author: string; snippet: string } | null = null;
@@ -1700,6 +1740,9 @@
 		workingResponders = [];
 		_idleLastPoll = []; // la cintura non deve ereditare le assenze di un altro canale
 		resetLive(); // blocchi live (thinking/tools/reply) del canale precedente
+		indiceRag = []; // lo storico del ragionamento è per canale
+		ragCaricato = {};
+		ragAperti = {};
 		replyingTo = null; // niente reply-quote trascinata da un altro canale
 		filePath = ''; // riparti dalla radice dei file
 		_ackedTs = ''; // l'ack delle mention è per-topic
@@ -1723,6 +1766,7 @@
 			scrollDown();
 			_ackTail();
 			void loadEligibility(t, n);
+			void aggiornaIndiceRagionamento();
 		} catch (e) {
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
@@ -1824,6 +1868,10 @@
 			// `refreshInfo`), unica fonte che la conosca.
 			for (const [a, testi] of newAiTexts(messages, previousLastId)) resetLiveReply(a, testi);
 			if (last && previousLastId && last.id !== previousLastId) {
+				// Il turno appena concluso è proprio quello che si vorrà
+				// riaprire: senza questa riletta la sua bolla resterebbe senza
+				// 💭 fino a un ricaricamento della pagina.
+				void aggiornaIndiceRagionamento();
 				segnoDiVita();
 				await tick();
 				if (wasNearBottom) {
@@ -2448,6 +2496,16 @@
 									{copiedMessageId === m.id ? '✓' : '📋'}
 								</button>
 							{/if}
+							<!-- Il ragionamento del turno che ha prodotto questa bolla
+							     (clodia-platform#484). Il bottone compare SOLO dove lo store
+							     ne ha uno: la regola sta in $lib/reasoning, e un 💭 che apre
+							     il vuoto sarebbe peggio di nessun 💭. -->
+							{#if bolleRag.has(m.id)}
+								<button type="button" class="think-btn" class:on={ragAperti[m.id]}
+									title={ragAperti[m.id] ? 'Nascondi il ragionamento' : 'Mostra il ragionamento di questo turno'}
+									aria-expanded={Boolean(ragAperti[m.id])}
+									on:click={() => apriRagionamento(m.id)}>💭</button>
+							{/if}
 							{#if m.kind !== 'system'}
 								<button type="button" class="reply-btn" title={`Rispondi a ${m.author}`}
 									on:click={() => replyTo(m)}>↩</button>
@@ -2470,6 +2528,18 @@
 							<blockquote class="quote">{splitQuote(m.text).quote}</blockquote>
 						{/if}
 						<div class="text md">{@html renderMarkdown(linkifyFiles(stripChoices(splitQuote(m.text).body)))}</div>
+						{#if ragAperti[m.id]}
+							<div class="think-stored">
+								{#if ragCaricato[m.id] == null}
+									<span class="think-wait">Recupero il ragionamento…</span>
+								{:else}
+									{#if ragCaricato[m.id]?.truncated}
+										<span class="think-cap">Ragionamento lungo: ne sono conservati l'inizio e la fine.</span>
+									{/if}
+									<pre>{ragCaricato[m.id]?.text}</pre>
+								{/if}
+							</div>
+						{/if}
 						<!-- Le pill restano su OGNI domanda ancora aperta, non solo
 						     sull'ultimo messaggio: chi decide quando sparire è
 						     `pillsAttive` ($lib/pillPersistenti, issue#407) — click,
@@ -3552,6 +3622,17 @@
 	.copy-btn { margin-left: auto; }
 	.msg:hover .reply-btn, .msg:hover .copy-btn, .copy-btn.copied { opacity: 1; }
 	.reply-btn:hover, .copy-btn:hover { background: rgba(255,107,61,.12); color: var(--accent); }
+	/* 💭 ragionamento del turno concluso (clodia-platform#484). Come ↩ e 📋
+	   compare all'hover, ma se il riquadro è APERTO resta visibile: un bottone
+	   che sparisce mentre il suo pannello è aperto non si sa più come chiudere. */
+	.think-btn { background: transparent; border: none; color: var(--fg-muted); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 5px; opacity: 0; transition: opacity .12s ease, background .12s ease; }
+	.msg:hover .think-btn, .think-btn.on { opacity: 1; }
+	.think-btn:hover { background: rgba(255,107,61,.12); }
+	/* Il testo del ragionamento è `pre`: va a capo dove l'agente lo ha mandato a
+	   capo, come nel box live, e con `white-space: pre-wrap` non sfonda la bolla. */
+	.think-stored { margin: 6px 0 2px; padding: 8px 10px; border-left: 2px solid color-mix(in srgb, var(--accent) 45%, var(--border)); background: color-mix(in srgb, var(--fg-muted) 7%, transparent); border-radius: 0 6px 6px 0; font-size: 12px; color: var(--fg-muted); }
+	.think-stored pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; line-height: 1.5; }
+	.think-wait, .think-cap { display: block; font-style: italic; opacity: .85; margin-bottom: 4px; }
 	/* 🎯 fissa come obiettivo: compare all'hover come ↩ e 📋, ma se il messaggio
 	   È l'obiettivo resta SEMPRE visibile — riconoscere la bolla che regge il
 	   lavoro del canale non deve dipendere dal passarci sopra col mouse. */

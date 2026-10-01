@@ -1072,6 +1072,42 @@ export async function getChannelEligibility(
 ): Promise<{ tier: string; agents: AgentEligibility[] }> {
 	return apiGet(`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/eligibility`, opts);
 }
+/** Il ragionamento di un turno concluso (clodia-platform#484).
+ *
+ *  Due chiamate e non una: l'indice è piccolo e si legge all'apertura del
+ *  canale per sapere QUALI bolle hanno qualcosa da mostrare, il testo è grosso
+ *  e si scarica solo quando qualcuno apre quel 💭. Portarsi dietro il
+ *  ragionamento di ogni turno insieme ai messaggi sarebbe decine di KB per
+ *  bolla, quasi sempre per non guardarli. */
+export async function getChannelReasoningIndex(
+	tier: string,
+	name: string,
+	opts: RequestOptions = {}
+): Promise<{ messages: string[] }> {
+	return apiGet(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/reasoning`,
+		opts
+	);
+}
+export async function getChannelReasoning(
+	tier: string,
+	name: string,
+	messageId: string,
+	opts: RequestOptions = {}
+): Promise<{
+	message_id: string;
+	spawn: string | null;
+	seed: string | null;
+	ts: string | null;
+	truncated: boolean;
+	text: string;
+}> {
+	return apiGet(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/reasoning/${encodeURIComponent(messageId)}`,
+		opts
+	);
+}
+
 /** Ruolo di un ospite nello scope. `owner` non si assegna invitando: è la
  *  proprietà del topic, non un grado di accesso. */
 export type ScopeRole = 'contributor' | 'reader';
