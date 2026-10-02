@@ -74,8 +74,7 @@
 		bolleConRagionamento,
 		indiceRagionamento,
 		ragionamentoDaRichiedere,
-		statoRagionamento
-	} from '$lib/reasoning';
+		statoRagionamento, passiRagionamento } from '$lib/reasoning';
 	import { etichettaTool, type PassoTool } from '$lib/toolLabel';
 	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
@@ -587,7 +586,14 @@
 	 *  `statoRagionamento` in $lib/reasoning. */
 	let ragCaricato: Record<
 		string,
-		{ text: string; truncated: boolean } | { error: string } | null
+		| {
+				text: string;
+				truncated: boolean;
+				tools: Array<{ tool: string; input_summary: string }>;
+				toolsOmitted: number;
+		  }
+		| { error: string }
+		| null
 	> = {};
 	/** Quali bolle sono espanse. */
 	let ragAperti: Record<string, boolean> = {};
@@ -610,7 +616,15 @@
 		try {
 			const v = await getChannelReasoning(tier, name, id);
 			if (`${tier}/${name}` !== canale) return; // the channel changed meanwhile
-			ragCaricato = { ...ragCaricato, [id]: { text: v.text, truncated: v.truncated } };
+			ragCaricato = {
+				...ragCaricato,
+				[id]: {
+					text: v.text ?? '',
+					truncated: v.truncated,
+					tools: passiRagionamento(v),
+					toolsOmitted: v.tools_omitted ?? 0
+				}
+			};
 		} catch (e) {
 			if (`${tier}/${name}` !== canale) return;
 			// A failure is a state of its own, with a retry: left as `null` it
@@ -2560,10 +2574,24 @@
 									<button type="button" class="think-retry"
 										on:click={() => caricaRagionamento(m.id)}>Riprova</button>
 								{:else if ragStato === 'ready' && rag && 'text' in rag}
+									{#if rag.tools && rag.tools.length}
+										<!-- Tool actions, labelled exactly as in the live box (#453, #484). -->
+										<ul class="think-steps">
+											{#each rag.tools as t}
+												{@const e = etichettaTool(t.tool, t.input_summary)}
+												<li title={`🔧 ${e.esteso}`}>🔧 {e.breve}</li>
+											{/each}
+										</ul>
+										{#if rag.toolsOmitted}
+											<span class="think-cap">… e altre {rag.toolsOmitted} azioni non conservate.</span>
+										{/if}
+									{/if}
 									{#if rag.truncated}
 										<span class="think-cap">Ragionamento lungo: ne sono conservati l'inizio e la fine.</span>
 									{/if}
-									<pre>{rag.text}</pre>
+									{#if rag.text}
+										<pre>{rag.text}</pre>
+									{/if}
 								{:else}
 									<span class="think-wait">Recupero il ragionamento…</span>
 								{/if}
@@ -4151,4 +4179,15 @@
 	.gate-edit { display: flex; flex-direction: column; gap: 0.3rem; width: 100%; margin: 0.3rem 0; }
 	.gate-edit label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.15rem; }
 	.gate-edit textarea, .gate-edit input { width: 100%; font: inherit; }
+	.think-steps {
+		list-style: none;
+		margin: 0 0 0.4rem;
+		padding: 0;
+		font-size: 0.85em;
+	}
+	.think-steps li {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
 </style>

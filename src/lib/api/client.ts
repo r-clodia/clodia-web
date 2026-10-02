@@ -1101,6 +1101,8 @@ export async function getChannelReasoning(
 	ts: string | null;
 	truncated: boolean;
 	text: string;
+	tools?: Array<{ tool: string; input_summary: string }>;
+	tools_omitted?: number;
 }> {
 	return apiGet(
 		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/reasoning/${encodeURIComponent(messageId)}`,
