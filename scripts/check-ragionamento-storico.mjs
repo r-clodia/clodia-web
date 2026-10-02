@@ -24,9 +24,9 @@ import { leggiSorgente, senzaCommenti } from './lib/sorgente.mjs';
 
 const guasti = [];
 
-let bolleConRagionamento, indiceRagionamento, statoRagionamento, ragionamentoDaRichiedere;
+let bolleConRagionamento, indiceRagionamento, statoRagionamento, ragionamentoDaRichiedere, passiRagionamento;
 try {
-	({ bolleConRagionamento, indiceRagionamento, statoRagionamento, ragionamentoDaRichiedere } =
+	({ bolleConRagionamento, indiceRagionamento, statoRagionamento, ragionamentoDaRichiedere, passiRagionamento } =
 		await import('../src/lib/reasoning.js'));
 } catch (e) {
 	guasti.push(`src/lib/reasoning.js non si importa (${e && e.message})`);
@@ -110,6 +110,35 @@ if (typeof indiceRagionamento === 'function') {
 		if (n !== atteso) {
 			guasti.push(`indiceRagionamento(${JSON.stringify(payload)}) → ${n} id (attesi ${atteso})`);
 		}
+	}
+}
+
+// 1c. Tool actions are part of the stored box (#484 reopened, 2 Oct 2026): the
+// runtimes in use emit no thinking text, so a box that shows only `text` is
+// empty for every real turn.
+if (typeof passiRagionamento !== 'function') {
+	guasti.push('src/lib/reasoning.js does not export passiRagionamento: stored tool actions would never show');
+} else {
+	const passi = passiRagionamento({
+		text: '',
+		tools: [{ tool: 'Bash', input_summary: 'ls' }, { tool: '' }, null, { tool: 'x', input_summary: 5 }]
+	});
+	const ok = JSON.stringify(passi) === JSON.stringify([
+		{ tool: 'Bash', input_summary: 'ls' },
+		{ tool: 'x', input_summary: '' }
+	]);
+	if (!ok) guasti.push(`passiRagionamento: ${JSON.stringify(passi)}`);
+	if (passiRagionamento({ text: 'x' }).length !== 0) guasti.push('passiRagionamento without tools must be []');
+	console.log(`${ok ? 'ok  ' : 'KO  '} stored tool actions are read`);
+}
+{
+	const pag = senzaCommenti(leggiSorgente('src/routes/topics/[tier]/[name]/+page.svelte'));
+	if (!/passiRagionamento\(v\)/.test(pag)) guasti.push('the page does not keep the stored tool actions');
+	if (!/think-steps[\s\S]*etichettaTool\(t\.tool, t\.input_summary\)/.test(pag)) {
+		guasti.push('the stored box does not render tool actions with etichettaTool, as the live box does');
+	}
+	if (/<pre>\{rag\.text\}<\/pre>/.test(pag) && !/\{#if rag\.text\}\s*<pre>\{rag\.text\}<\/pre>/.test(pag)) {
+		guasti.push('an empty <pre> is rendered when the turn has no thinking text');
 	}
 }
 

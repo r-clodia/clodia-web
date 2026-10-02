@@ -81,3 +81,22 @@ export function ragionamentoDaRichiedere(entry) {
 	const s = statoRagionamento(entry);
 	return s === 'idle' || s === 'error';
 }
+
+/**
+ * The tool actions of a stored turn, as the live box showed them
+ * (clodia-platform#484, reopened): the runtimes in use emit no thinking text,
+ * so the live box is filled by tool actions — a stored box without them was
+ * always empty. Defensive: anything malformed is dropped, never rendered.
+ * @param {unknown} entry
+ * @returns {Array<{ tool: string, input_summary: string }>}
+ */
+export function passiRagionamento(entry) {
+	const e = /** @type {any} */ (entry);
+	if (!e || typeof e !== 'object' || !Array.isArray(e.tools)) return [];
+	return e.tools
+		.filter((/** @type {any} */ t) => t && typeof t === 'object' && typeof t.tool === 'string' && t.tool)
+		.map((/** @type {any} */ t) => ({
+			tool: t.tool,
+			input_summary: typeof t.input_summary === 'string' ? t.input_summary : ''
+		}));
+}
