@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, connectOpenAI, connectGithub, connectTelegram, registerMcp, unregisterMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
+	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, connectOpenAI, connectGithub, connectTelegram, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
 	import type { ConnectorIssue, MailboxStatus } from '$lib/api/client';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { askWainston } from '$lib/stores/helpdesk';
@@ -32,6 +32,8 @@
 		mcp?: boolean; // backend MCP montato (Add-MCP)
 		builtin?: boolean; // integrazione interna (es. storage topic local-fs)
 		transport?: string;
+		auth?: string; // 'oauth' per i backend MCP che vogliono un consenso (#532)
+		authorized?: boolean; // consenso OAuth presente e ancora spendibile
 	}
 
 	// Connettore Google UNIFICATO (sempre elencato): un solo consenso OAuth per
@@ -155,10 +157,19 @@
 			const mcp = connectors
 				.filter((x) => x.provider === 'mcp' && !baseIds.has(x.id))
 				.map((x) => ({
-					id: x.id, name: x.label, wired: true, connected: true, accounts: [],
+					id: x.id, name: x.label, wired: true,
+					// `connected: true` fisso diceva «montato» e lasciava capire
+					// «usabile»: un backend OAuth senza consenso è montato e non
+					// risponde a niente (#532). Lo stato vero lo dà il gateway.
+					connected: x.auth === 'oauth' ? x.connected : true,
+					operational: x.operational, issues: x.issues,
+					accounts: [],
 					mcp: true, transport: x.transport,
-					blurb: `MCP server montato (${x.transport ?? 'stdio'}) — tool esposti agli agent via gateway.`,
-					scope: 'mcp'
+					auth: x.auth, authorized: x.authorized,
+					blurb: x.auth === 'oauth'
+						? `MCP server montato (${x.transport ?? 'http'}) con consenso OAuth — il token sta nel vault del gateway e si rinnova da solo.`
+						: `MCP server montato (${x.transport ?? 'stdio'}) — tool esposti agli agent via gateway.`,
+					scope: x.auth === 'oauth' ? 'mcp · oauth' : 'mcp'
 				}));
 			cards = [...base, ...storage, ...mcp];
 		} catch (err) {
@@ -480,6 +491,58 @@
 		}
 	}
 
+	// ─── Consenso OAuth di un server MCP montato (clodia-platform#532) ───
+	// Il gateway non ha una URL pubblica su cui ricevere il redirect: la
+	// persona autorizza, atterra sul loopback e incolla indietro la URL. È la
+	// stessa strada del connettore Google, per la stessa ragione.
+	let oauthOpen = false;
+	let oauthServer = '';
+	let oauthUrl = '';
+	let oauthRedirect = '';
+	let oauthState = '';
+	let oauthCode = '';
+	let oauthBusy = false;
+	let oauthError = '';
+
+	async function openMcpOAuth(name: string) {
+		oauthServer = name;
+		oauthUrl = '';
+		oauthCode = '';
+		oauthError = '';
+		oauthOpen = true;
+		oauthBusy = true;
+		try {
+			const res = await startMcpOAuth(name);
+			oauthUrl = res.auth_url;
+			oauthState = res.state;
+			oauthRedirect = res.redirect_uri;
+		} catch (err) {
+			oauthError = err instanceof ApiError ? err.message : String(err);
+		} finally {
+			oauthBusy = false;
+		}
+	}
+
+	function closeMcpOAuth() {
+		oauthOpen = false;
+		oauthBusy = false;
+	}
+
+	async function submitMcpOAuth() {
+		oauthBusy = true;
+		oauthError = '';
+		try {
+			const res = await completeMcpOAuth(oauthServer, { state: oauthState, code: oauthCode });
+			toastSuccess('MCP server autorizzato', `${res.server}${res.detail ? ' — ' + res.detail : ''}`);
+			closeMcpOAuth();
+			await load();
+		} catch (err) {
+			oauthError = err instanceof ApiError ? err.message : String(err);
+		} finally {
+			oauthBusy = false;
+		}
+	}
+
 	async function removeMcp(name: string) {
 		try {
 			await unregisterMcp(name);
@@ -526,7 +589,7 @@
 					<div class="provider">{c.mcp ? (c.transport ?? 'mcp') : (c.provider ?? 'google')}</div>
 				</div>
 				<span class="pill" class:pill-on={c.connected && c.operational !== false} class:pill-broken={c.operational === false && (c.connected || Boolean(c.issues?.length))}>
-					{c.builtin ? 'Built-in' : c.mcp ? 'MCP montato' : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto'}
+					{c.builtin ? 'Built-in' : c.auth === 'oauth' && !c.authorized ? 'Da autorizzare' : c.mcp ? 'MCP montato' : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto'}
 				</span>
 			</div>
 
@@ -551,6 +614,11 @@
 						</span>
 					{/if}
 					<button type="button" class="btn ghost" on:click={() => testConn(c.id)} disabled={testing[c.id]}>{testing[c.id] ? '…' : 'Test'}</button>
+					{#if c.auth === 'oauth'}
+						<button type="button" class="btn" class:primary={!c.authorized} on:click={() => openMcpOAuth(c.id)}>
+							{c.authorized ? 'Riautorizza' : 'Connetti'}
+						</button>
+					{/if}
 					<button type="button" class="btn ghost" on:click={() => removeMcp(c.id)}>Rimuovi</button>
 				{:else if !c.wired}
 					<button type="button" class="btn" disabled>Presto</button>
@@ -783,6 +851,47 @@
 	</div>
 {/if}
 
+{#if oauthOpen}
+	<div class="overlay" on:click|self={closeMcpOAuth} role="presentation">
+		<div class="modal" role="dialog" aria-modal="true" aria-label="Autorizza MCP server">
+			<div class="modal-head">
+				<strong>Autorizza «{oauthServer}»</strong>
+				<button class="x" type="button" on:click={closeMcpOAuth} aria-label="Chiudi">×</button>
+			</div>
+			<p class="note">
+				Apri la URL di autorizzazione, accetta il consenso e <strong>incolla qui la URL</strong>
+				su cui il browser è atterrato (<code>{oauthRedirect || '…'}</code>): è una pagina che
+				non esiste, conta solo l’indirizzo. Il token finisce nel <strong>vault</strong> del
+				gateway — mai nel config, mai in questa pagina.
+			</p>
+			{#if oauthUrl}
+				<label class="field">
+					<span>1 · URL di autorizzazione</span>
+					<input type="text" readonly value={oauthUrl} class="mono" />
+				</label>
+				<p class="note">
+					<a href={oauthUrl} target="_blank" rel="noreferrer noopener">Apri il consenso in una nuova scheda ↗</a>
+				</p>
+				<label class="field">
+					<span>2 · URL di ritorno (o il solo <code>code</code>)</span>
+					<input type="text" bind:value={oauthCode} spellcheck="false" autocomplete="off"
+						placeholder={`${oauthRedirect || 'http://127.0.0.1:8000/oauth/mcp/callback'}?code=…&state=…`} />
+				</label>
+			{:else if oauthBusy}
+				<p class="note">Chiedo l’autorizzazione al server MCP…</p>
+			{/if}
+			{#if oauthError}<div class="modal-err">{oauthError}</div>{/if}
+			<div class="modal-foot">
+				<button type="button" class="btn" on:click={closeMcpOAuth} disabled={oauthBusy}>Annulla</button>
+				<button type="button" class="btn primary" on:click={submitMcpOAuth}
+					disabled={oauthBusy || !oauthUrl || !oauthCode.trim()}>
+					{oauthBusy ? 'Scambio…' : 'Completa'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 {#if mcpOpen}
 	<div class="overlay" on:click|self={closeMcp} role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" aria-label="Add MCP server">
@@ -795,6 +904,11 @@
 				stdio (<code>command/args/env</code>) o http (<code>url/headers</code>). Per i segreti usa
 				un placeholder <code>{'${NAME}'}</code> nel config: comparirà un campo dedicato e il valore
 				andrà nel <strong>vault</strong> (mai nel config salvato).
+			</p>
+			<p class="note">
+				Se il server non usa un token ma un <strong>consenso OAuth</strong>, non c'è niente da
+				incollare: aggiungi <code>{`"auth": {"type": "oauth"}`}</code> accanto a <code>url</code>,
+				registra, poi premi <strong>Connetti</strong> sulla sua card.
 			</p>
 			<label class="field">
 				<span>mcp.json</span>

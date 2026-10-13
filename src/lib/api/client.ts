@@ -2080,6 +2080,10 @@ export interface ToolConnector {
 	accounts: string[];
 	issues?: ConnectorIssue[];
 	transport?: string;
+	/** backend MCP con consenso OAuth (clodia-platform#532): 'oauth' o assente. */
+	auth?: string;
+	/** solo per `auth === 'oauth'`: il consenso c'è ed è ancora spendibile. */
+	authorized?: boolean;
 	/** storage backend dei topic (provider 'storage'): adapter attivo + versioning. */
 	builtin?: boolean;
 	backend?: string;
@@ -2293,6 +2297,27 @@ export async function registerMcp(
 /** DELETE `/tools/mcp/{name}` — smonta un MCP server registrato. */
 export async function unregisterMcp(name: string, opts: RequestOptions = {}): Promise<{ unregistered: string }> {
 	return apiDelete(`/tools/mcp/${encodeURIComponent(name)}`, opts);
+}
+
+/** POST `/tools/mcp/{name}/oauth/start` — avvia il consenso OAuth di un server
+ *  MCP montato (clodia-platform#532) e ritorna la URL di autorizzazione da
+ *  aprire. Nessun segreto nella risposta: lo `state` è il filo del consenso,
+ *  il token resta nel vault del gateway. */
+export async function startMcpOAuth(
+	name: string,
+	opts: RequestOptions = {}
+): Promise<{ state: string; auth_url: string; redirect_uri: string }> {
+	return apiPost(`/tools/mcp/${encodeURIComponent(name)}/oauth/start`, {}, opts);
+}
+
+/** POST `/tools/mcp/{name}/oauth/complete` — chiude il consenso. `code` accetta
+ *  il parametro nudo o la URL intera su cui il browser è atterrato. */
+export async function completeMcpOAuth(
+	name: string,
+	body: { state: string; code: string },
+	opts: RequestOptions = {}
+): Promise<{ connected: boolean; server: string; detail?: string }> {
+	return apiPost(`/tools/mcp/${encodeURIComponent(name)}/oauth/complete`, body, opts);
 }
 
 // ─── Providers (motori di inferenza, backend clodia-logic) ───────────────────
