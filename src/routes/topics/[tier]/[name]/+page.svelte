@@ -52,11 +52,10 @@
 		setTopicGoal,
 		addLocalFolder,
 		removeLocalFolder,
-		getTelegramLink,
-		connectTelegramLink,
-		disconnectTelegramLink,
 		getTopicMailboxes,
-		setTopicMailbox,
+		getConnectorRegistry,
+		getConnectorAction,
+		applyConnectorAction,
 		TOPIC_STATUSES,
 		type ChannelInfo,
 		type ChannelMessage,
@@ -87,7 +86,9 @@
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import { puoDiventareObiettivo, eObiettivoFissato, statoObiettivo, attendeOwner } from '$lib/goal';
 	import type { TierWarning } from '$lib/api/types';
-	import type { TelegramSealState } from '$lib/api/client';
+	import type { ConnectorActionState, ConnectorRegistry } from '$lib/api/client';
+	import { azioniDiTopic, esempiPerDirezione, tipoDiCampo } from '$lib/connettori';
+	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
 
 	$: params = $page.params as Record<string, string>;
 	$: tier = params.tier ?? '';
@@ -1257,46 +1258,135 @@
 		}
 	}
 
-	// Icona rapida Drive (18 set 2026, richiesta di Davide): un click apre un
-	// dialog con un solo campo, la conferma scrive in ENTRAMBE le direzioni
-	// (egress + ingress) — solo whitelist, Drive non ha un binding da fare.
-	// Telegram ha una dinamica diversa (vedi sotto): dialog e stato separati.
-	let quickAddKind: 'gdrive' | null = null;
-	let quickAddValue = '';
-	let quickAddBusy = false;
-	let quickAddErr = '';
+	// ─── I bottoni dei connettori, dal registry (clodia-platform#520) ───
+	//
+	// Qui c'erano tre blocchi quasi uguali — Drive, Telegram, Mailbox — ognuno
+	// con il suo stato, il suo dialog e la sua funzione di conferma, e il
+	// quarto connettore voleva il quarto blocco. Adesso i bottoni sono quelli
+	// che i connettori INSTALLATI dichiarano (`topic_actions`), il dialog è uno
+	// e i campi li dichiara l'azione: un connettore arrivato con un pack
+	// compare qui senza una riga in più in questo file.
+	//
+	// Due cose NON sono cambiate, perché sono le due che possono degradare in
+	// silenzio: un campo con un insieme di valori resta una TENDINA (un
+	// indirizzo scritto a mano autorizzerebbe una casella dietro cui non c'è
+	// nessuna credenziale), e la presa d'atto sul cap SEAL la chiede il server
+	// con `seal.requires_ack` — la regola sta in un posto solo.
+	let registry: ConnectorRegistry | null = null;
+	$: azioniTopic = azioniDiTopic(registry, { isAdmin: $isAdmin });
+	/** Lo stato delle azioni che agganciano un CANALE: è l'unico caso in cui
+	 *  «collegato» è una proprietà dell'azione e non delle voci in lista, ed è
+	 *  ciò che colora il bottone. Per le altre, le voci scritte si vedono nelle
+	 *  due liste qui sopra. */
+	let statiCanale: Record<string, ConnectorActionState> = {};
 
-	function openQuickAdd(kind: 'gdrive') {
-		quickAddKind = kind;
-		quickAddValue = '';
-		quickAddErr = '';
-	}
+	let azioneAperta: { connettore: string; azione: string; nome: string } | null = null;
+	let azioneStato: ConnectorActionState | null = null;
+	let azioneValori: Record<string, string> = {};
+	let azioneBusy = false;
+	let azioneErr = '';
+	let azioneAck = false;
 
-	function quickAddUri(): string {
-		return quickAddValue.trim();
-	}
-
-	async function confirmQuickAdd() {
-		const uri = quickAddUri();
-		if (!uri || quickAddBusy) return;
-		quickAddBusy = true;
-		quickAddErr = '';
+	async function loadConnettori() {
 		try {
-			// Le due direzioni sono indipendenti lato server: se una fallisce
-			// (es. forma non concedibile) l'altra può comunque essere andata a
-			// buon fine — riportiamo l'errore ma senza fingere che nulla sia
-			// stato scritto.
-			await Promise.all([
-				editTopicEgressScope(tier, name, 'egress', 'allow', uri),
-				editTopicEgressScope(tier, name, 'ingress', 'allow', uri)
-			]);
-			quickAddKind = null;
-			await loadEgressScope();
-		} catch (e) {
-			quickAddErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			quickAddBusy = false;
+			registry = await getConnectorRegistry();
+		} catch {
+			// Silenzioso, come le altre liste di questa colonna: senza registry
+			// la riga dei bottoni non compare, il resto del pannello sì.
+			registry = null;
+			return;
 		}
+		for (const a of azioniDiTopic(registry, { isAdmin: $isAdmin })) {
+			if (a.binding !== 'channel') continue;
+			try {
+				statiCanale[a.chiave] = await getConnectorAction(tier, name, a.connettore, a.azione);
+			} catch {
+				delete statiCanale[a.chiave];
+			}
+		}
+		statiCanale = { ...statiCanale };
+	}
+
+	async function apriAzione(a: { connettore: string; azione: string; nome: string }) {
+		azioneAperta = a;
+		azioneStato = null;
+		azioneValori = {};
+		azioneErr = '';
+		// La presa d'atto riparte da zero a ogni apertura: è il consenso a
+		// QUESTO collegamento, non una preferenza dell'utente.
+		azioneAck = false;
+		azioneBusy = true;
+		try {
+			const st = await getConnectorAction(tier, name, a.connettore, a.azione);
+			azioneStato = st;
+			azioneValori = Object.fromEntries(
+				st.fields.map((f) => [f.name, f.options?.length ? f.options[0].value : ''] as const)
+			);
+		} catch (e) {
+			azioneErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			azioneBusy = false;
+		}
+	}
+
+	function chiudiAzione() {
+		azioneAperta = null;
+		azioneStato = null;
+	}
+
+	/** Un campo obbligatorio vuoto: il bottone resta spento, come prima. */
+	$: azioneIncompleta =
+		!azioneStato ||
+		azioneStato.fields.some((f) => f.required !== false && !(azioneValori[f.name] ?? '').trim()) ||
+		(azioneStato.seal?.requires_ack === true && !azioneAck);
+
+	async function confermaAzione() {
+		const a = azioneAperta;
+		if (!a || !azioneStato || azioneBusy || azioneIncompleta) return;
+		azioneBusy = true;
+		azioneErr = '';
+		try {
+			const st = await applyConnectorAction(tier, name, a.connettore, a.azione, 'connect', {
+				...azioneValori,
+				// Si manda SEMPRE, anche falsa: il server deve leggere ciò che
+				// l'owner ha dichiarato, e l'assenza di un booleano non è una
+				// dichiarazione.
+				accept_seal_downgrade: azioneAck
+			});
+			if (st.binding === 'channel') statiCanale = { ...statiCanale, [`${a.connettore}/${a.azione}`]: st };
+			chiudiAzione();
+			await Promise.all([loadEgressScope(), loadMailboxes()]);
+		} catch (e) {
+			azioneErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			azioneBusy = false;
+		}
+	}
+
+	async function staccaAzione(a: { connettore: string; azione: string }, campi: Record<string, string> = {}) {
+		if (azioneBusy) return;
+		azioneBusy = true;
+		azioneErr = '';
+		try {
+			const st = await applyConnectorAction(tier, name, a.connettore, a.azione, 'disconnect', campi);
+			if (st.binding === 'channel') statiCanale = { ...statiCanale, [`${a.connettore}/${a.azione}`]: st };
+			await Promise.all([loadEgressScope(), loadMailboxes()]);
+		} catch (e) {
+			azioneErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		} finally {
+			azioneBusy = false;
+		}
+	}
+
+	/** Il click sul bottone: un'azione con binding alterna collegato/scollegato
+	 *  come faceva quello di Telegram, le altre aprono sempre il dialog. */
+	function onAzioneClick(a: { connettore: string; azione: string; nome: string; binding: string; chiave: string }) {
+		const st = statiCanale[a.chiave];
+		if (a.binding === 'channel' && st?.connected) {
+			void staccaAzione(a);
+			return;
+		}
+		void apriAzione(a);
 	}
 
 	// Cartella condivisa Mac↔container (20 set 2026, seguito della richiesta di
@@ -1353,117 +1443,26 @@
 		}
 	}
 
-	// Telegram: connesso/disconnesso, non solo whitelist (23 set 2026). Prima
-	// l'icona scriveva SOLO la whitelist (come Drive), e il messaggero
-	// continuava a dire «nessuna chat collegata» perché mancava il binding
-	// vero — un secondo passo che nessuna UI faceva. Ora il bottone riflette
-	// lo stato reale e lo stesso click fa whitelist + binding, in entrambe le
-	// direzioni (connetti/disconnetti).
-	let telegramConnected = false;
-	let telegramChatId: string | null = null;
-	let telegramDialogOpen = false;
-	let telegramValue = '';
-	let telegramBusy = false;
-	let telegramErr = '';
-	// clodia-platform#405: su un topic sopra il cap del channel (Telegram regge
-	// fino a SEAL-1: provider extra-UE, gruppi non E2E) il collegamento non è
-	// più un rifiuto secco — è una domanda all'owner. Chi il tier lo assegna è
-	// chi il rischio lo porta, e deve poter dire di sì per iscritto. Il «se
-	// chiedere» lo decide il server (`seal.requires_ack`): la regola sta in un
-	// posto solo, qui si mostra soltanto.
-	let telegramSeal: TelegramSealState | null = null;
-	let telegramAck = false;
-
-	async function loadTelegramLink() {
-		try {
-			const r = await getTelegramLink(tier, name);
-			telegramConnected = r.connected;
-			telegramChatId = r.chat_id;
-			telegramSeal = r.seal ?? null;
-		} catch {
-			// silenzioso: lo stato resta quello di default (disconnesso) finché
-			// non si può leggere — coerente con come le altre liste falliscono qui.
-		}
-	}
-
-	function openTelegramDialog() {
-		telegramDialogOpen = true;
-		telegramValue = '';
-		telegramErr = '';
-		// La presa d'atto riparte da zero a ogni apertura: è il consenso a
-		// QUESTO collegamento, non una preferenza dell'utente.
-		telegramAck = false;
-		void loadTelegramLink();
-	}
-
-	async function confirmConnectTelegram() {
-		const v = telegramValue.trim();
-		if (!v || telegramBusy) return;
-		if (telegramSeal?.requires_ack && !telegramAck) return;
-		telegramBusy = true;
-		telegramErr = '';
-		try {
-			const r = await connectTelegramLink(tier, name, v, telegramAck);
-			telegramConnected = r.connected;
-			telegramChatId = r.chat_id;
-			telegramSeal = r.seal ?? telegramSeal;
-			telegramDialogOpen = false;
-			await loadEgressScope();
-		} catch (e) {
-			telegramErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			telegramBusy = false;
-		}
-	}
-
-	async function disconnectTelegram() {
-		if (telegramBusy) return;
-		telegramBusy = true;
-		try {
-			const r = await disconnectTelegramLink(tier, name);
-			telegramConnected = r.connected;
-			telegramChatId = r.chat_id;
-			// Scollegando, il server revoca anche la presa d'atto: il prossimo
-			// collegamento torna a chiedere invece di ereditare un sì vecchio.
-			telegramSeal = r.seal ?? telegramSeal;
-			await loadEgressScope();
-		} catch (e) {
-			telegramErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			telegramBusy = false;
-		}
-	}
-
-	function onTelegramButtonClick() {
-		if (telegramConnected) {
-			void disconnectTelegram();
-		} else {
-			openTelegramDialog();
-		}
-	}
-
-	// Mailbox (26 set 2026, clodia-platform#406): il quarto connettore. Qui non
-	// si incolla niente — le caselle sono quelle già configurate nel sistema, e
-	// se ne SCEGLIE una: un campo libero avrebbe fatto scrivere a mano un
-	// indirizzo che poi non corrisponde a nessuna credenziale, autorizzando una
-	// casella che non esiste. Come Drive (e a differenza di Telegram) è sola
-	// autorizzazione: nessun binding da fare, la posta la leggono i verbi email.
+	// Le caselle collegate a questa stanza. Non è più un connettore cablato: è
+	// il pannello che mostra i valori di un INSIEME che il gateway amministra
+	// (`options: mailboxes`), e compare solo se un'azione installata punta su
+	// quell'insieme. La chiave è il nome dell'insieme — un elenco chiuso del
+	// gateway — non il nome di un connettore: un altro connettore che puntasse
+	// lo stesso insieme erediterebbe questo elenco senza collegarlo a mano.
 	let mailboxes: TopicMailbox[] = [];
-	let mailboxDialogOpen = false;
-	let mailboxChoice = '';
-	let mailboxBusy = false;
-	let mailboxErr = '';
 	/** Errore di CARICAMENTO dell'elenco: distinto da «nessuna casella». Un 403 o
 	 *  un gateway giù non devono diventare «Nessuna casella configurata», che
 	 *  manda a cercare nelle Integrazioni un problema che non c'è. */
 	let mailboxLoadErr = '';
 
+	$: azioneDelleCaselle = azioniTopic.find((a) =>
+		a.campi.some((f) => f.options === 'mailboxes')
+	);
 	$: mailboxCollegate = mailboxes.filter((m) => m.inbox || m.outbox);
-	$: mailboxDisponibili = mailboxes.filter((m) => !(m.inbox && m.outbox));
 
 	async function loadMailboxes() {
 		// La rotta è solo per gli admin: per chi non lo è non la si chiede
-		// nemmeno, e il connettore non compare.
+		// nemmeno, e il pannello non compare.
 		if (!$isAdmin) {
 			mailboxes = [];
 			return;
@@ -1474,41 +1473,6 @@
 		} catch (e) {
 			mailboxes = [];
 			mailboxLoadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		}
-	}
-
-	function openMailboxDialog() {
-		mailboxErr = '';
-		mailboxChoice = mailboxDisponibili[0]?.account ?? '';
-		mailboxDialogOpen = true;
-	}
-
-	async function confirmConnectMailbox() {
-		if (!mailboxChoice || mailboxBusy) return;
-		mailboxBusy = true;
-		mailboxErr = '';
-		try {
-			mailboxes = await setTopicMailbox(tier, name, 'connect', mailboxChoice);
-			mailboxDialogOpen = false;
-			await loadEgressScope();
-		} catch (e) {
-			mailboxErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			mailboxBusy = false;
-		}
-	}
-
-	async function disconnectMailbox(account: string) {
-		if (mailboxBusy) return;
-		mailboxBusy = true;
-		mailboxErr = '';
-		try {
-			mailboxes = await setTopicMailbox(tier, name, 'disconnect', account);
-			await loadEgressScope();
-		} catch (e) {
-			mailboxErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			mailboxBusy = false;
 		}
 	}
 
@@ -2217,7 +2181,7 @@
 		document.addEventListener('visibilitychange', onVisibilityChange);
 		programmaPoll();
 		void refreshGateInfo();
-		void loadTelegramLink();
+		void loadConnettori();
 		void loadMailboxes();
 		getAgents()
 			.then((as) => {
@@ -3208,49 +3172,35 @@
 						</div>
 						{#if isOwner}
 							<div class="egress-quick-row">
-								<button type="button" class="egress-quick-btn"
-									class:egress-quick-btn-connected={telegramConnected}
-									disabled={telegramBusy}
-									title={telegramConnected
-										? `Connesso alla chat ${telegramChatId} — clic per disconnettere`
-										: 'Collega un gruppo/chat Telegram'}
-									on:click={onTelegramButtonClick}>
-									<svg class="brand-icon" viewBox="0 0 240 240" aria-hidden="true">
-										<circle cx="120" cy="120" r="120" fill="#29b6f6" />
-										<path d="M180.5 72.1 156.9 172c-1.8 8-6.6 10-13.4 6.2l-37-27.3-17.9 17.2c-2 2-3.7 3.7-7.5 3.7l2.7-38 69.4-62.7c3-2.7-.7-4.2-4.6-1.5L60 130.6l-37.2-11.6c-8.1-2.5-8.2-8.1 1.7-12l145.4-56c6.7-2.5 12.6 1.6 10.6 12.1Z"
-											fill="#fff" />
-									</svg>
-									{telegramBusy ? '…' : 'Telegram'}
-								</button>
-								<button type="button" class="egress-quick-btn" title="Aggiungi una cartella Drive"
-									on:click={() => openQuickAdd('gdrive')}>
-									<svg class="brand-icon" viewBox="0 0 87.3 78" aria-hidden="true">
-										<path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" />
-										<path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47" />
-										<path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z" fill="#ea4335" />
-										<path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d" />
-										<path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc" />
-										<path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
-									</svg>
-									Drive
-								</button>
+								<!-- Un bottone per ogni azione che i connettori INSTALLATI
+								     dichiarano (clodia-platform#520). `admin_only` lo dice il
+								     manifest: una casella di sistema è posta che non è
+								     dell'owner della stanza, e quella regola viveva in un
+								     `{#if $isAdmin}` attorno a un bottone scritto a mano. -->
+								{#each azioniTopic as a (a.chiave)}
+									<button type="button" class="egress-quick-btn"
+										class:egress-quick-btn-connected={statiCanale[a.chiave]?.connected}
+										disabled={azioneBusy}
+										title={statiCanale[a.chiave]?.connected
+											? `Collegato a ${statiCanale[a.chiave]?.bound} — clic per scollegare`
+											: a.etichetta}
+										on:click={() => onAzioneClick(a)}>
+										{#if a.icona}
+											<span class="brand-icon"><ConnectorIcon name={a.icona} size={14} /></span>
+										{/if}
+										{a.nome}
+									</button>
+								{/each}
+								<!-- La cartella condivisa Mac↔container NON è un connettore e
+								     resta cablata: non ha uno schema, non ha un verbo e non
+								     scrive nessuna whitelist — dichiara un bind di filesystem
+								     reale (`meta.local_folders`). Nessuna grammatica del
+								     manifest la descrive, e inventarne una per un caso solo
+								     sarebbe peggio del cablaggio. -->
 								<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
 									on:click={openLocalFolderDialog}>🗂️ Cartella Mac</button>
-								{#if $isAdmin}
-									<!-- Solo un admin (decisione di Davide, 27 set 2026): una casella
-									     di sistema è posta che non è dell'owner del topic. -->
-									<button type="button" class="egress-quick-btn"
-										class:egress-quick-btn-connected={mailboxCollegate.length > 0}
-										disabled={mailboxBusy || mailboxes.length === 0}
-										title={mailboxLoadErr
-											? `Caselle non disponibili: ${mailboxLoadErr}`
-											: mailboxes.length === 0
-												? 'Nessuna casella configurata nel sistema (Impostazioni → Integrazioni)'
-												: 'Autorizza una casella di sistema come fonte e destinazione di questo topic'}
-										on:click={openMailboxDialog}>✉️ Mailbox</button>
-								{/if}
 							</div>
-							{#if $isAdmin && mailboxCollegate.length > 0}
+							{#if azioneDelleCaselle && mailboxCollegate.length > 0}
 								<ul class="egress-list">
 									{#each mailboxCollegate as m (m.account)}
 										<li>
@@ -3261,16 +3211,16 @@
 												     e un ✕ che non cambia nulla sarebbe peggio di nessun ✕. -->
 												<span class="muted"> · globale</span>
 											{:else}
-												<button type="button" class="egress-remove" disabled={mailboxBusy}
+												<button type="button" class="egress-remove" disabled={azioneBusy}
 													title="Scollega da questo topic (la casella resta configurata nel sistema)"
-													on:click={() => disconnectMailbox(m.account)}>✕</button>
+													on:click={() => staccaAzione(azioneDelleCaselle, { account: m.account })}>✕</button>
 											{/if}
 										</li>
 									{/each}
 								</ul>
 							{/if}
-							{#if $isAdmin && (mailboxErr || mailboxLoadErr)}
-								<p class="cred-hint" role="alert">{mailboxErr || mailboxLoadErr}</p>
+							{#if azioneErr || ($isAdmin && mailboxLoadErr)}
+								<p class="cred-hint" role="alert">{azioneErr || mailboxLoadErr}</p>
 							{/if}
 							{#if (info?.meta.local_folders ?? []).length > 0}
 								<ul class="egress-list">
@@ -3289,7 +3239,7 @@
 									<option value="egress">Egress</option>
 									<option value="ingress">Ingress</option>
 								</select>
-								<input type="text" placeholder="es. gdrive:folder/1AbC…" bind:value={egressNewUri}
+								<input type="text" placeholder={esempiPerDirezione(registry, egressNewDir === 'ingress' ? 'ingress' : 'egress') || 'nuova voce'} bind:value={egressNewUri}
 									disabled={egressBusy} />
 								<button type="submit" class="link-btn" disabled={egressBusy || !egressNewUri.trim()}>
 									{egressBusy ? '…' : '+ aggiungi'}
@@ -3355,102 +3305,68 @@
      direzioni (egress + ingress) — la guardia vera resta lato server. Solo
      whitelist: Drive non ha un binding da fare (a differenza di Telegram,
      dialog separato sotto). -->
-<Modal open={quickAddKind !== null} dismissable={!quickAddBusy} maxWidth={380}
-	on:close={() => (quickAddKind = null)}>
-	<h2 slot="title">📁 Aggiungi Drive</h2>
-	<p class="meta-note">
-		Incolla il link della cartella Drive (dalla barra del browser).
-		Aggiunta come destinazione ammessa e fonte fidata <b>solo in questo
-		topic</b>.
-	</p>
-	<input type="text" class="egress-quick-input"
-		placeholder="https://drive.google.com/drive/folders/…"
-		bind:value={quickAddValue} disabled={quickAddBusy}
-		on:keydown={(e) => e.key === 'Enter' && confirmQuickAdd()} />
-	{#if quickAddErr}<p class="cred-hint" role="alert">{quickAddErr}</p>{/if}
-	<div class="remote-actions" slot="actions">
-		<button type="button" class="link-btn" disabled={quickAddBusy || !quickAddValue.trim()}
-			on:click={confirmQuickAdd}>
-			{quickAddBusy ? '…' : '+ aggiungi'}
-		</button>
-	</div>
-</Modal>
-
-<!-- Telegram: connetti in un click (23 set 2026) — whitelist E binding
-     insieme, non due passi scollegati come prima. Il bottone in sidebar
-     mostra lo stato e alterna connetti/disconnetti; questo dialog compare
-     solo per il chat_id quando non è ancora connesso. -->
-<Modal open={telegramDialogOpen} dismissable={!telegramBusy} maxWidth={380}
-	on:close={() => (telegramDialogOpen = false)}>
-	<h2 slot="title">📨 Connetti Telegram</h2>
-	<p class="meta-note">
-		Chat id del gruppo (es. <code>-1001234567890</code>) o handle di una
-		persona (es. <code>@nomeutente</code>). Collega la chat al topic
-		(whitelist <b>e</b> il messaggero inizia davvero a riportarne i
-		messaggi) — non solo una destinazione ammessa.
-	</p>
-	<input type="text" class="egress-quick-input" placeholder="-1001234567890 oppure @nomeutente"
-		bind:value={telegramValue} disabled={telegramBusy}
-		on:keydown={(e) => e.key === 'Enter' && confirmConnectTelegram()} />
-	{#if telegramSeal?.requires_ack}
-		<!-- clodia-platform#405: il cap non è più un muro, è una domanda — ma la
-		     domanda dev'essere quella vera («i messaggi di una stanza {telegramSeal
-		     .tier} passeranno da un provider {telegramSeal.cap}»), non un «sei
-		     sicuro?». Resta registrata nel topic con chi e quando. -->
-		<label class="seal-ack">
-			<input type="checkbox" bind:checked={telegramAck} disabled={telegramBusy} />
-			<span>
-				Questo canale è <b>{telegramSeal.tier}</b>, Telegram regge fino a
-				<b>{telegramSeal.cap}</b> (server fuori UE, gruppi non cifrati
-				end-to-end). Collegandolo, i messaggi di questa stanza passeranno di
-				lì: prendo atto del downgrade. La scelta resta scritta nel topic.
-			</span>
-		</label>
-	{:else if telegramSeal?.ack}
+<!-- Il dialog di UNA azione di connettore (clodia-platform#520).
+     Uno solo: i campi li dichiara l'azione, i valori di un campo con un
+     insieme li risolve il gateway. Prima ce n'erano tre — Drive, Telegram,
+     Mailbox — e il quarto connettore voleva il quarto dialog. -->
+<Modal open={azioneAperta !== null} dismissable={!azioneBusy} maxWidth={420}
+	on:close={chiudiAzione}>
+	<h2 slot="title">{azioneStato?.label ?? azioneAperta?.nome ?? ''}</h2>
+	{#if azioneStato}
 		<p class="meta-note">
-			Downgrade del canale già accettato da <b>{telegramSeal.ack.by}</b>
-			({telegramSeal.ack.tier} → {telegramSeal.ack.cap}). Si revoca
-			scollegando.
+			Vale <b>solo in questa stanza</b> ({azioneStato.tier}): ciò che l'azione
+			autorizza diventa fonte e destinazione di questo topic, non degli altri.
 		</p>
+		{#each azioneStato.fields as f (f.name)}
+			<label class="meta-note" for={`campo-${f.name}`}>{f.label || f.name}</label>
+			{#if tipoDiCampo(f) === 'scelta'}
+				<!-- Un campo con un insieme di valori è una TENDINA, mai un campo
+				     libero: un valore scritto a mano finirebbe in whitelist identico
+				     a uno vero, ma dietro non ci sarebbe nessuna credenziale —
+				     l'autorizzazione esisterebbe, la casella no. -->
+				<select id={`campo-${f.name}`} class="egress-quick-input"
+					bind:value={azioneValori[f.name]} disabled={azioneBusy}>
+					{#each f.options ?? [] as o (o.value)}
+						<option value={o.value}>{o.label}</option>
+					{/each}
+				</select>
+			{:else}
+				<input id={`campo-${f.name}`} type="text" class="egress-quick-input"
+					placeholder={f.placeholder} bind:value={azioneValori[f.name]}
+					disabled={azioneBusy}
+					on:keydown={(e) => e.key === 'Enter' && confermaAzione()} />
+			{/if}
+		{/each}
+		{#if azioneStato.seal?.requires_ack}
+			<!-- clodia-platform#405: il cap non è un muro, è una domanda — e la
+			     domanda dev'essere quella vera, non un «sei sicuro?». Il «se
+			     chiedere» lo decide il server (`seal.requires_ack`): due copie
+			     della stessa policy sono due copie che un giorno diranno il
+			     contrario, e quella che conta non sarà quella letta dall'owner. -->
+			<label class="seal-ack">
+				<input type="checkbox" bind:checked={azioneAck} disabled={azioneBusy} />
+				<span>
+					Questo canale è <b>{azioneStato.seal.tier}</b>, {azioneAperta?.nome} regge
+					fino a <b>{azioneStato.seal.cap}</b>. Collegandolo, i messaggi di questa
+					stanza passeranno di lì: prendo atto del downgrade. La scelta resta
+					scritta nel topic.
+				</span>
+			</label>
+		{:else if azioneStato.seal?.ack}
+			<p class="meta-note">
+				Downgrade del canale già accettato da <b>{azioneStato.seal.ack.by}</b>
+				({azioneStato.seal.ack.tier} → {azioneStato.seal.ack.cap}). Si revoca
+				scollegando.
+			</p>
+		{/if}
+	{:else if azioneBusy}
+		<p class="meta-note">caricamento…</p>
 	{/if}
-	{#if telegramErr}<p class="cred-hint" role="alert">{telegramErr}</p>{/if}
+	{#if azioneErr}<p class="cred-hint" role="alert">{azioneErr}</p>{/if}
 	<div class="remote-actions" slot="actions">
-		<button type="button" class="link-btn"
-			disabled={telegramBusy || !telegramValue.trim() || (telegramSeal?.requires_ack && !telegramAck)}
-			on:click={confirmConnectTelegram}>
-			{telegramBusy ? '…' : '+ connetti'}
-		</button>
-	</div>
-</Modal>
-
-<!-- Mailbox (26 set 2026, clodia-platform#406): nessun campo libero, una scelta
-     fra le caselle già configurate nel sistema — scriverne una a mano
-     autorizzerebbe un indirizzo dietro cui non c'è nessuna credenziale.
-     Collegarla la rende insieme fonte e destinazione, e solo di questo topic. -->
-<Modal open={mailboxDialogOpen} dismissable={!mailboxBusy} maxWidth={420}
-	on:close={() => (mailboxDialogOpen = false)}>
-	<h2 slot="title">✉️ Collega una casella</h2>
-	<p class="meta-note">
-		Le caselle sono quelle configurate nel sistema (Impostazioni →
-		Integrazioni): qui se ne autorizza una per <b>questo topic</b>, e diventa
-		insieme fonte fidata in ingresso e casella con cui rispondere. Nessun
-		messaggio viene scaricato da solo: la posta la leggono i verbi email degli
-		agenti, che senza questa autorizzazione vengono rifiutati.
-	</p>
-	{#if mailboxDisponibili.length === 0}
-		<p class="muted">Tutte le caselle di sistema sono già collegate a questo topic.</p>
-	{:else}
-		<select class="egress-quick-input" bind:value={mailboxChoice} disabled={mailboxBusy}>
-			{#each mailboxDisponibili as m (m.account)}
-				<option value={m.account}>{m.email}{m.send_only ? ' (solo invio)' : ''}</option>
-			{/each}
-		</select>
-	{/if}
-	{#if mailboxErr}<p class="cred-hint" role="alert">{mailboxErr}</p>{/if}
-	<div class="remote-actions" slot="actions">
-		<button type="button" class="link-btn" disabled={mailboxBusy || !mailboxChoice}
-			on:click={confirmConnectMailbox}>
-			{mailboxBusy ? '…' : '+ collega'}
+		<button type="button" class="link-btn" disabled={azioneBusy || azioneIncompleta}
+			on:click={confermaAzione}>
+			{azioneBusy ? '…' : '+ collega'}
 		</button>
 	</div>
 </Modal>

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, connectOpenAI, connectGithub, connectTelegram, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
-	import type { ConnectorIssue, MailboxStatus } from '$lib/api/client';
+	import { getTools, getConnectorRegistry, connectConnector, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
+	import type { ConnectorIssue, MailboxStatus, ConnectorRegistry } from '$lib/api/client';
+	import { cardsDiTools, serviziDiPack } from '$lib/connettori';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { askWainston } from '$lib/stores/helpdesk';
 	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
@@ -16,59 +17,50 @@
 	// Il token finale è custodito nella vault del gateway, non in secrets/.
 	// Drive/Calendar: in arrivo (stesso meccanismo, backend non ancora esposto).
 
+	// Il modello di una card. Non lo costruisce più questa pagina: lo deriva
+	// `$lib/connettori.js` dal registry dei connettori installati, unito allo
+	// stato vivo di `GET /tools`. Qui resta solo la forma, perché il markup la
+	// legge (clodia-platform#520).
 	interface CardModel {
 		id: string;
 		name: string;
 		blurb: string;
 		scope: string;
-		wired: boolean; // ha un backend di connessione
+		icon: string;
+		wired: boolean; // ha un modo di collegarsi da qui
 		connected: boolean;
 		operational?: boolean;
 		accounts: string[];
 		issues?: ConnectorIssue[];
-		provider?: string; // etichetta provider (google, openai, storage, …)
-		kind?: 'gmail' | 'gworkspace' | 'google' | 'openai' | 'mailbox' | 'github' | 'telegram'; // flusso di connessione da usare
-		bot_username?: string; // Telegram: @username del bot connesso
+		provider?: string;
+		bot_username?: string;
 		mcp?: boolean; // backend MCP montato (Add-MCP)
 		builtin?: boolean; // integrazione interna (es. storage topic local-fs)
 		transport?: string;
 		auth?: string; // 'oauth' per i backend MCP che vogliono un consenso (#532)
-		authorized?: boolean; // consenso OAuth presente e ancora spendibile
+		authorized?: boolean;
+		setupLabel: string;
+		docsUrl: string;
+		/** La credenziale che il manifest dichiara: form (si incolla) o oauth. */
+		credenziale: {
+			id: string;
+			label: string;
+			kind: string;
+			fields: { name: string; label: string; secret: boolean; required: boolean; placeholder: string }[];
+		} | null;
+		/** Insiemi di valori che questa pagina amministra (oggi: `mailboxes`). */
+		gestisce: string[];
 	}
 
-	// Connettore Google UNIFICATO (sempre elencato): un solo consenso OAuth per
-	// Gmail + Drive + Docs + Calendar → un solo token (niente due grant che si
-	// scalzano il refresh token a vicenda).
-	const BASE: CardModel[] = [
-		{ id: 'google', name: 'Google', wired: true, connected: false, accounts: [],
-		  provider: 'google', kind: 'google',
-		  blurb: 'Gmail, Drive, Documenti e Calendar in un solo consenso (un token OAuth): lettura/invio email + accesso ai file dell’owner.',
-		  scope: 'Gmail · Drive · Docs · Calendar' },
-		{ id: 'openai-images', name: 'Image generation', wired: true, connected: false, accounts: [],
-		  provider: 'openai', kind: 'openai',
-		  blurb: 'Generazione avatar/immagini via gpt-image-2 (PFP degli agenti). Key custodita nel vault.',
-		  scope: 'api.openai.com/v1/images' },
-		{ id: 'github', name: 'GitHub', wired: true, connected: false, accounts: [],
-		  provider: 'github', kind: 'github',
-		  blurb: 'Repo, issue, PR e code search via il server MCP ufficiale GitHub (tool github.*). Connetti con un Personal Access Token.',
-		  scope: 'api.githubcopilot.com/mcp' },
-		{ id: 'mailboxes', name: 'Caselle email (IMAP/SMTP)', wired: true, connected: false, accounts: [],
-		  provider: 'email', kind: 'mailbox',
-		  blurb: 'Connettore multi-casella: aggiungi/togli mailbox IMAP/SMTP (info@, IONOS, …). Delegabili per-agent.',
-		  scope: 'IMAP/SMTP' },
-		{ id: 'telegram', name: 'Telegram', wired: true, connected: false, accounts: [],
-		  provider: 'telegram', kind: 'telegram',
-		  blurb: 'Gli agenti inviano/ricevono messaggi (tool telegram.*) con lease per-chat. Crea un bot dedicato con @BotFather e incolla il token. In dubbio? Chiedi a Wainston.',
-		  scope: 'api.telegram.org/bot' }
-	];
-
-	let cards: CardModel[] = BASE.map((c) => ({ ...c }));
+	let cards: CardModel[] = [];
+	let registry: ConnectorRegistry | null = null;
 	// Edizione (Modular Distro): se il profilo dichiara i connettori nativi,
 	// le card fuori lista non esistono (l'enforcement vero è nel gateway).
 	$: allowedConnectors = $instanceProfile.integrations?.connectors ?? null;
-	$: visibleCards = allowedConnectors === null
-		? cards
-		: cards.filter((c) => c.mcp || c.builtin || allowedConnectors.includes(c.id));
+	$: visibleCards = cards;
+	// I servizi lungo-vivi dei pack (#515): il campo arriva con
+	// clodia-tools#362 e finché non c'è la sezione semplicemente non compare.
+	let servizi: ReturnType<typeof serviziDiPack> = [];
 	let loading = true;
 	let loadError = '';
 
@@ -112,7 +104,20 @@
 		loading = true;
 		loadError = '';
 		try {
-			const { connectors } = await getTools();
+			// Due domande diverse, due sorgenti: il registry dice COSA sono i
+			// connettori installati (ed è l'unico posto dove esiste un
+			// connettore arrivato con un pack), lo snapshot dice come stanno
+			// adesso — account, guasti, e le cose che il gateway monta senza
+			// manifest (backend MCP, storage dei topic).
+			const tools = await getTools();
+			try {
+				registry = await getConnectorRegistry();
+			} catch {
+				// Un gateway più vecchio della rotta: si resta sulle card che
+				// lo snapshot conosce, invece di non mostrare niente.
+				registry = null;
+			}
+			servizi = serviziDiPack(tools);
 			let boxes: string[] = [];
 			let statuses: MailboxStatus[] = [];
 			try {
@@ -123,55 +128,9 @@
 			}
 			mailboxes = boxes;
 			mailboxStatuses = statuses;
-			const base = BASE.map((c) => {
-				const live = connectors.find((x) => x.id === c.id);
-				if (c.id === 'mailboxes') {
-					const issues = live?.issues ?? statuses
-						.filter((status) => !status.operational)
-						.map(({ account, missing, error }) => ({ account, missing, error }));
-					return {
-						...c,
-						connected: live?.connected ?? boxes.length > 0,
-						operational: live?.operational ?? (statuses.length > 0 ? statuses.every((status) => status.operational) : undefined),
-						accounts: live?.accounts ?? boxes,
-						issues
-					};
-				}
-				return live ? { ...c, connected: live.connected, operational: live.operational, accounts: live.accounts, issues: live.issues,
-				                bot_username: (live as { bot_username?: string }).bot_username } : { ...c };
-			});
-			// Storage dei topic (provider === 'storage') → card "built-in".
-			const storage = connectors
-				.filter((x) => x.provider === 'storage')
-				.map((x) => ({
-					id: x.id, name: x.label, wired: true, connected: x.connected, accounts: [],
-					provider: 'storage', builtin: true,
-					blurb: `Backend di storage dei topic (${x.backend ?? 'local-fs'}, versioning ${x.versioning ?? 'emulated'}). I topic vivono qui, dietro il gateway. Drive/Dropbox in arrivo.`,
-					scope: x.backend ?? 'local-fs'
-				}));
-			// Backend MCP montati → card dinamiche (provider === 'mcp'), ESCLUSI gli id
-			// già rappresentati da un connettore nativo (es. 'github': il backend MCP
-			// è la sua implementazione, la card nativa è quella giusta) — evita la card
-			// doppia e il bottone che cade nel fallback (modale gmail).
-			const baseIds = new Set(BASE.map((c) => c.id));
-			const mcp = connectors
-				.filter((x) => x.provider === 'mcp' && !baseIds.has(x.id))
-				.map((x) => ({
-					id: x.id, name: x.label, wired: true,
-					// `connected: true` fisso diceva «montato» e lasciava capire
-					// «usabile»: un backend OAuth senza consenso è montato e non
-					// risponde a niente (#532). Lo stato vero lo dà il gateway.
-					connected: x.auth === 'oauth' ? x.connected : true,
-					operational: x.operational, issues: x.issues,
-					accounts: [],
-					mcp: true, transport: x.transport,
-					auth: x.auth, authorized: x.authorized,
-					blurb: x.auth === 'oauth'
-						? `MCP server montato (${x.transport ?? 'http'}) con consenso OAuth — il token sta nel vault del gateway e si rinnova da solo.`
-						: `MCP server montato (${x.transport ?? 'stdio'}) — tool esposti agli agent via gateway.`,
-					scope: x.auth === 'oauth' ? 'mcp · oauth' : 'mcp'
-				}));
-			cards = [...base, ...storage, ...mcp];
+			cards = cardsDiTools(registry, tools.connectors, {
+				ammessi: allowedConnectors ? [...allowedConnectors] : null
+			}) as unknown as CardModel[];
 		} catch (err) {
 			loadError = err instanceof ApiError ? err.message : String(err);
 		} finally {
@@ -259,109 +218,76 @@
 		}
 	}
 
-	// ─── Connessione OpenAI (Image generation) — paste della API key ───
-	let keyOpen = false;
-	let apiKey = '';
-	let keyBusy = false;
-	let keyError = '';
+	// ─── La credenziale che il manifest dichiara (clodia-platform#520) ───
+	//
+	// Una sola modale per tutti i connettori che si collegano incollando
+	// qualcosa. Prima ce n'erano tre identiche — OpenAI, GitHub, Telegram —
+	// con tre funzioni, tre stati e tre messaggi, e un connettore in più voleva
+	// la quarta. Ora i campi li dichiara il provider (`fields[]`) e questa
+	// pagina non ne conosce i nomi: li raccoglie e li manda.
+	//
+	// Il deposito resta quello di prima: per un connettore del gateway la rotta
+	// generica delega al suo handler nativo, che attorno alla scrittura fa
+	// quello che il deposito generico non fa (GitHub monta il backend MCP,
+	// Telegram valida il token con getMe e salva l'@username).
+	let credOpen = false;
+	let credCard: CardModel | null = null;
+	let credValues: Record<string, string> = {};
+	let credBusy = false;
+	let credError = '';
 
-	function openKey() {
-		apiKey = '';
-		keyError = '';
-		keyOpen = true;
+	function openCredential(c: CardModel) {
+		credCard = c;
+		credValues = Object.fromEntries((c.credenziale?.fields ?? []).map((f) => [f.name, '']));
+		credError = '';
+		credOpen = true;
 	}
-	function closeKey() {
-		keyOpen = false;
-		keyBusy = false;
+	function closeCredential() {
+		credOpen = false;
+		credBusy = false;
 	}
-	async function submitKey() {
-		if (!apiKey.trim()) {
-			keyError = 'Incolla la API key (sk-…).';
+	async function submitCredential() {
+		const c = credCard;
+		const cred = c?.credenziale;
+		if (!c || !cred) return;
+		const mancante = cred.fields.find((f) => f.required && !(credValues[f.name] ?? '').trim());
+		if (mancante) {
+			credError = `Compila «${mancante.label || mancante.name}».`;
 			return;
 		}
-		keyBusy = true;
-		keyError = '';
+		credBusy = true;
+		credError = '';
 		try {
-			await connectOpenAI(apiKey.trim());
-			toastSuccess('Image generation connesso', 'OpenAI key nel vault');
-			closeKey();
+			const valori = Object.fromEntries(
+				Object.entries(credValues).map(([k, v]) => [k, v.trim()])
+			);
+			await connectConnector(c.id, cred.id, valori);
+			toastSuccess(`${c.name} connesso`, 'credenziale nel vault del gateway');
+			closeCredential();
 			await load();
 		} catch (err) {
-			keyError = err instanceof ApiError ? err.message : String(err);
+			credError = err instanceof ApiError ? err.message : String(err);
 		} finally {
-			keyBusy = false;
+			credBusy = false;
 		}
 	}
 
-	// ─── Connessione GitHub — Personal Access Token (paste-key) ───
-	let githubOpen = false;
-	let githubPat = '';
-	let githubBusy = false;
-	let githubError = '';
-
-	function openGithub() {
-		githubPat = '';
-		githubError = '';
-		githubOpen = true;
-	}
-	function closeGithub() {
-		githubOpen = false;
-		githubBusy = false;
-	}
-	async function submitGithub() {
-		if (!githubPat.trim()) {
-			githubError = 'Incolla il Personal Access Token GitHub.';
-			return;
-		}
-		githubBusy = true;
-		githubError = '';
-		try {
-			await connectGithub(githubPat.trim());
-			toastSuccess('GitHub connesso', 'PAT nel vault, backend MCP registrato');
-			closeGithub();
-			await load();
-		} catch (err) {
-			githubError = err instanceof ApiError ? err.message : String(err);
-		} finally {
-			githubBusy = false;
-		}
+	/** Il gesto di «Connetti» per una card: lo decide ciò che la card dichiara,
+	 *  non il suo nome. L'OAuth resta sul flusso Google esistente — #519 ha
+	 *  lasciato `kind: oauth` fuori dalla rotta generica (consenso, stato fra le
+	 *  due gambe, callback), quindi un flusso generico non esiste ancora. */
+	/** La domanda che l'owner farebbe a Wainston per questo connettore. Prima
+	 *  era una frase su Telegram, scritta qui e disponibile solo a Telegram. */
+	function aiuto(c: CardModel) {
+		return `Aiuto, sto configurando l'integrazione ${c.name}. Da dove parto?`;
 	}
 
-	// ─── Connessione Telegram — token di un bot dedicato (paste-key) ───
-	let telegramOpen = false;
-	let telegramToken = '';
-	let telegramBusy = false;
-	let telegramError = '';
-
-	function openTelegram() {
-		telegramToken = '';
-		telegramError = '';
-		telegramOpen = true;
-	}
-	function closeTelegram() {
-		telegramOpen = false;
-		telegramBusy = false;
-	}
-	async function submitTelegram() {
-		if (!telegramToken.trim()) {
-			telegramError = 'Incolla il token del bot (da @BotFather).';
-			return;
-		}
-		telegramBusy = true;
-		telegramError = '';
-		try {
-			const res = await connectTelegram(telegramToken.trim());
-			toastSuccess('Telegram connesso', res.bot_username ? `@${res.bot_username}` : 'token nel vault');
-			closeTelegram();
-			await load();
-		} catch (err) {
-			telegramError = err instanceof ApiError ? err.message : String(err);
-		} finally {
-			telegramBusy = false;
-		}
+	function connetti(c: CardModel) {
+		if (c.gestisce.includes('mailboxes')) return openMailboxes();
+		if (c.credenziale?.kind === 'oauth') return openConnect('google');
+		if (c.credenziale) return openCredential(c);
 	}
 
-	const TELEGRAM_HELP = 'Aiuto, sto configurando l’integrazione Telegram. Da dove parto?';
 
 	// ─── Chi può usare una casella ──────────────────────────────────────────
 	//
@@ -583,7 +509,7 @@
 	{#each visibleCards as c (c.id)}
 		<div class="card" class:on={c.connected && c.operational !== false} class:broken={c.operational === false && (c.connected || Boolean(c.issues?.length))}>
 			<div class="card-head">
-				<span class="glyph" aria-hidden="true"><ConnectorIcon provider={c.provider} kind={c.kind} mcp={c.mcp} size={26} /></span>
+				<span class="glyph" aria-hidden="true"><ConnectorIcon name={c.icon} size={26} /></span>
 				<div class="title">
 					<div class="name">{c.name}</div>
 					<div class="provider">{c.mcp ? (c.transport ?? 'mcp') : (c.provider ?? 'google')}</div>
@@ -604,9 +530,9 @@
 			{/if}
 
 			<div class="card-foot">
-				<span class="account">{c.connected && c.accounts.length ? c.accounts.join(', ') : (c.kind === 'telegram' && c.bot_username ? '@' + c.bot_username : '—')}</span>
+				<span class="account">{c.connected && c.accounts.length ? c.accounts.join(', ') : (c.bot_username ? '@' + c.bot_username : '—')}</span>
 				{#if c.builtin}
-					<span class="builtin-note">interno · pluggable (P4: Drive/Dropbox)</span>
+					<span class="builtin-note">interno · pluggable</span>
 				{:else if c.mcp}
 					{#if testResult[c.id]}
 						<span class="test-badge" class:ok={testResult[c.id].ok === true} class:ko={testResult[c.id].ok === false} title={testResult[c.id].detail}>
@@ -622,8 +548,12 @@
 					<button type="button" class="btn ghost" on:click={() => removeMcp(c.id)}>Rimuovi</button>
 				{:else if !c.wired}
 					<button type="button" class="btn" disabled>Presto</button>
-				{:else if c.kind === 'mailbox'}
-					<button type="button" class="btn primary" on:click={openMailboxes}>Gestisci caselle</button>
+				{:else if c.gestisce.includes('mailboxes')}
+					<!-- Il pannello che amministra un INSIEME di valori del gateway.
+					     La chiave è il nome dell'insieme (`mailboxes`), che è un elenco
+					     chiuso suo: un altro connettore che puntasse un campo sullo
+					     stesso insieme erediterebbe questo bottone senza collegarlo. -->
+					<button type="button" class="btn primary" on:click={openMailboxes}>{c.setupLabel || 'Gestisci'}</button>
 				{:else if c.connected}
 					{#if testResult[c.id]}
 						<span class="test-badge" class:ok={testResult[c.id].ok === true} class:ko={testResult[c.id].ok === false} title={testResult[c.id].detail}>
@@ -631,20 +561,43 @@
 						</span>
 					{/if}
 					<button type="button" class="btn ghost" on:click={() => testConn(c.id)} disabled={testing[c.id]}>{testing[c.id] ? '…' : 'Test'}</button>
-					{#if c.kind === 'telegram'}
-						<button type="button" class="btn ghost" on:click={() => askWainston(TELEGRAM_HELP)}>💬 Aiuto</button>
-					{/if}
-					<button type="button" class="btn ghost" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'google' ? 'google' : c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Riconnetti</button>
+					<button type="button" class="btn ghost" on:click={() => askWainston(aiuto(c))}>💬 Aiuto</button>
+					<button type="button" class="btn ghost" on:click={() => connetti(c)}>Riconnetti</button>
 				{:else}
-					{#if c.kind === 'telegram'}
-						<button type="button" class="btn ghost" on:click={() => askWainston(TELEGRAM_HELP)}>💬 Aiuto setup</button>
-					{/if}
-					<button type="button" class="btn primary" on:click={() => c.kind === 'github' ? openGithub() : c.kind === 'openai' ? openKey() : c.kind === 'telegram' ? openTelegram() : openConnect(c.kind === 'google' ? 'google' : c.kind === 'gworkspace' ? 'gworkspace' : 'gmail')}>Connetti</button>
+					<button type="button" class="btn ghost" on:click={() => askWainston(aiuto(c))}>💬 Aiuto setup</button>
+					<button type="button" class="btn primary" on:click={() => connetti(c)}>{c.setupLabel || 'Connetti'}</button>
 				{/if}
 			</div>
 		</div>
 	{/each}
 </div>
+
+{#if servizi.length}
+	<!-- I processi lungo-vivi che i pack dichiarano (clodia-platform#515): un
+	     connettore che ha bisogno di un processo è rotto quanto quel processo, e
+	     finora non c'era modo di vederlo da fuori. La sezione compare solo se il
+	     gateway manda il campo: con una versione precedente a clodia-tools#362
+	     non c'è, e una pagina che si rompe su un campo che arriverà è peggio di
+	     una sezione che non c'è ancora. -->
+	<section class="servizi">
+		<h2>Servizi dei pack</h2>
+		<ul>
+			{#each servizi as s (s.chiave)}
+				<li class:srv-on={s.vivo} class:srv-ko={s.rotto}>
+					<span class="srv-stato">{s.vivo ? '●' : s.rotto ? '▲' : '○'}</span>
+					<code>{s.chiave}</code>
+					<span class="srv-dett">
+						{s.stato}{s.salute ? ` · ${s.salute}` : ''}{s.isolato ? ' · isolato' : ''}
+						{#if s.tentativi > 0}· {s.tentativi} riavvii{/if}
+					</span>
+					{#if s.ultimoErrore}
+						<div class="srv-err">{s.ultimoErrore}</div>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	</section>
+{/if}
 
 {#if modalOpen}
 	<div class="overlay" on:click|self={closeModal} role="presentation">
@@ -716,86 +669,42 @@
 	</div>
 {/if}
 
-{#if keyOpen}
-	<div class="overlay" on:click|self={closeKey} role="presentation">
-		<div class="modal" role="dialog" aria-modal="true" aria-label="Connetti Image generation">
+{#if credOpen && credCard?.credenziale}
+	<!-- La credenziale che il manifest DICHIARA (clodia-platform#520).
+	     Una modale per tutti: prima ce n'erano tre identiche (OpenAI, GitHub,
+	     Telegram) e la quarta la voleva il quarto connettore. I campi sono
+	     quelli del provider, e questa pagina non ne conosce i nomi. -->
+	<div class="overlay" on:click|self={closeCredential} role="presentation">
+		<div class="modal" role="dialog" aria-modal="true" aria-label="Connetti {credCard.name}">
 			<div class="modal-head">
-				<strong>Image generation (OpenAI)</strong>
-				<button class="x" type="button" on:click={closeKey} aria-label="Chiudi">×</button>
+				<strong>{credCard.setupLabel || `Connetti ${credCard.name}`}</strong>
+				<button class="x" type="button" on:click={closeCredential} aria-label="Chiudi">×</button>
 			</div>
 			<p class="note">
-				Incolla una <strong>OpenAI API key</strong> (<code>sk-…</code>) con accesso alle Images
-				API (gpt-image-2). Viene depositata nel <strong>vault</strong> del gateway, mai nel
-				config né esposta agli agent. Serve a generare gli avatar (PFP) degli agenti.
+				{credCard.blurb}
+				La credenziale è custodita nel <strong>vault</strong> del gateway: non entra nel
+				config, non la vedono gli agent, e non torna più indietro da nessuna risposta.
 			</p>
-			<label class="field">
-				<span>API key</span>
-				<input type="password" bind:value={apiKey} placeholder="sk-…" autocomplete="off" spellcheck="false" />
-			</label>
-			{#if keyError}<div class="modal-err">{keyError}</div>{/if}
+			{#each credCard.credenziale.fields as f (f.name)}
+				<label class="field">
+					<span>{f.label || f.name}</span>
+					{#if f.secret}
+						<input type="password" bind:value={credValues[f.name]} placeholder={f.placeholder}
+							autocomplete="off" spellcheck="false" />
+					{:else}
+						<input type="text" bind:value={credValues[f.name]} placeholder={f.placeholder}
+							autocomplete="off" spellcheck="false" />
+					{/if}
+				</label>
+			{/each}
+			{#if credCard.docsUrl}
+				<p class="note"><a href={credCard.docsUrl} target="_blank" rel="noreferrer">Documentazione del connettore</a></p>
+			{/if}
+			{#if credError}<div class="modal-err">{credError}</div>{/if}
 			<div class="modal-foot">
-				<button type="button" class="btn" on:click={closeKey} disabled={keyBusy}>Annulla</button>
-				<button type="button" class="btn primary" on:click={submitKey} disabled={keyBusy}>
-					{keyBusy ? 'Connessione…' : 'Connetti'}
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
-
-
-{#if githubOpen}
-	<div class="overlay" on:click|self={closeGithub} role="presentation">
-		<div class="modal" role="dialog" aria-modal="true" aria-label="Connetti GitHub">
-			<div class="modal-head">
-				<strong>Connetti GitHub</strong>
-				<button class="x" type="button" on:click={closeGithub} aria-label="Chiudi">×</button>
-			</div>
-			<p class="note">
-				Incolla un <strong>Personal Access Token</strong> GitHub
-				(<code>github.com/settings/tokens</code>) con gli scope che vuoi concedere agli
-				agent (es. <code>repo</code>). Viene custodito nel <strong>vault</strong>, mai
-				esposto agli agent: i tool <code>github.*</code> passano dal server MCP ufficiale.
-			</p>
-			<label class="field">
-				<span>Personal Access Token</span>
-				<input type="password" bind:value={githubPat} placeholder="ghp_… / github_pat_…" autocomplete="off" spellcheck="false" />
-			</label>
-			{#if githubError}<div class="modal-err">{githubError}</div>{/if}
-			<div class="modal-foot">
-				<button type="button" class="btn" on:click={closeGithub} disabled={githubBusy}>Annulla</button>
-				<button type="button" class="btn primary" on:click={submitGithub} disabled={githubBusy}>
-					{githubBusy ? 'Connessione…' : 'Connetti'}
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
-
-{#if telegramOpen}
-	<div class="overlay" on:click|self={closeTelegram} role="presentation">
-		<div class="modal" role="dialog" aria-modal="true" aria-label="Connetti Telegram">
-			<div class="modal-head">
-				<strong>Connetti Telegram</strong>
-				<button class="x" type="button" on:click={closeTelegram} aria-label="Chiudi">×</button>
-			</div>
-			<p class="note">
-				Crea un <strong>bot dedicato</strong> in Telegram con
-				<code>@BotFather</code> (comando <code>/newbot</code>) e incolla qui il
-				<strong>token</strong> che ti restituisce. Viene custodito nel
-				<strong>vault</strong>, mai esposto agli agent: lo usano solo i tool
-				<code>telegram.*</code>. Usa un bot nuovo, non condiviso con altri sistemi.
-				Bloccato? Premi <em>💬 Aiuto setup</em> sulla card e te lo spiega Wainston.
-			</p>
-			<label class="field">
-				<span>Bot token</span>
-				<input type="password" bind:value={telegramToken} placeholder="123456789:AA…" autocomplete="off" spellcheck="false" />
-			</label>
-			{#if telegramError}<div class="modal-err">{telegramError}</div>{/if}
-			<div class="modal-foot">
-				<button type="button" class="btn" on:click={closeTelegram} disabled={telegramBusy}>Annulla</button>
-				<button type="button" class="btn primary" on:click={submitTelegram} disabled={telegramBusy}>
-					{telegramBusy ? 'Connessione…' : 'Connetti'}
+				<button type="button" class="btn" on:click={closeCredential} disabled={credBusy}>Annulla</button>
+				<button type="button" class="btn primary" on:click={submitCredential} disabled={credBusy}>
+					{credBusy ? 'Connessione…' : 'Connetti'}
 				</button>
 			</div>
 		</div>
@@ -939,6 +848,19 @@
 {/if}
 
 <style>
+	/* Servizi dei pack (#515): stato, ultimo errore. Stessa grammatica visiva
+	   delle card — verde se gira, triangolo se si è rotto. */
+	.servizi { margin: 18px 0 0; }
+	.servizi h2 { font-size: 14px; margin: 0 0 8px; }
+	.servizi ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+	.servizi li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 13px;
+		border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+	.srv-on { border-color: #2e7d32; }
+	.srv-ko { border-color: #d32f2f; }
+	.srv-stato { font-size: 11px; }
+	.srv-dett { opacity: .7; font-size: 12px; }
+	.srv-err { flex-basis: 100%; font-size: 12px; color: #d32f2f; word-break: break-word; }
+
 	.head-actions { display: flex; gap: 8px; align-items: center; }
 	.secrets { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); padding-top: 10px; }
 	.secrets .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); }

@@ -2096,9 +2096,102 @@ export interface ConnectorIssue {
 	error?: string | null;
 }
 
-/** GET `/tools` — stato dei connettori (quali account sono connessi). */
-export async function getTools(opts: RequestOptions = {}): Promise<{ connectors: ToolConnector[] }> {
-	return apiGet<{ connectors: ToolConnector[] }>('/tools', opts);
+/** Un servizio lungo-vivo dichiarato da un pack (clodia-platform#515). */
+export interface PackService {
+	pack: string;
+	service: string;
+	state: string;
+	pid?: number | null;
+	isolated?: boolean;
+	failures?: number;
+	last_exit?: number | null;
+	last_error?: string | null;
+	health?: string | null;
+}
+
+/** GET `/tools` — stato dei connettori (quali account sono connessi).
+ *
+ * `services` arriva da clodia-tools#362 (#515) ed è opzionale di proposito:
+ * finché quella versione non è in produzione il campo non c'è, e la pagina
+ * mostra la sezione solo quando c'è qualcosa da mostrare. */
+export async function getTools(
+	opts: RequestOptions = {}
+): Promise<{ connectors: ToolConnector[]; services?: PackService[] }> {
+	return apiGet<{ connectors: ToolConnector[]; services?: PackService[] }>('/tools', opts);
+}
+
+/** Una voce del registry dei connettori (`GET /tools/connectors`). */
+export interface RegistryConnector {
+	id: string;
+	label: string;
+	pack: string;
+	namespace: string;
+	builtin: boolean;
+	schemes: {
+		scheme: string;
+		direction: string;
+		label: string;
+		icon: string;
+		hierarchical: boolean;
+		danger: string;
+		forms: { label: string; example: string }[];
+	}[];
+	providers: {
+		id: string;
+		label: string;
+		kind: string;
+		vault_entry: string;
+		connected?: boolean;
+		fields: { name: string; label: string; secret: boolean; required: boolean; placeholder: string }[];
+	}[];
+	verbs: { verb: string; direction: string; scheme: string; prefix: boolean; dtype: string }[];
+	topic_actions: {
+		id: string;
+		label: string;
+		binding: string;
+		admin_only: boolean;
+		fields: { name: string; label: string; required: boolean; placeholder: string; options?: unknown }[];
+		adds: { ingress: string[]; egress: string[] };
+	}[];
+	tools_card: {
+		setup_label: string;
+		status_verb: string;
+		docs_url: string;
+		blurb: string;
+		scope: string;
+		icon: string;
+	} | null;
+}
+
+export interface ConnectorRegistry {
+	connectors: RegistryConnector[];
+	schemes: { egress: string[]; source: string[] };
+	services?: PackService[];
+	problems?: string[];
+	ignored?: string[];
+}
+
+/** GET `/tools/connectors` — i connettori INSTALLATI, dal registry dei pack.
+ *
+ * È la sorgente di ciò che le pagine disegnano (clodia-platform#520): quali
+ * bottoni ha un topic, quali card ha la pagina Tools, come si chiamano gli
+ * schemi. `/tools/connectors` e non `/internal/connectors` perché `/internal`
+ * è server-to-server e il proxy della webui non lo inoltra: sono la stessa
+ * funzione del gateway, montata dove il browser arriva. */
+export async function getConnectorRegistry(opts: RequestOptions = {}): Promise<ConnectorRegistry> {
+	return apiGet<ConnectorRegistry>('/tools/connectors', opts);
+}
+
+/** POST `/tools/connectors/{id}/connect` — la credenziale che il manifest
+ * dichiara. I campi sono quelli dichiarati dal provider: questo client non ne
+ * conosce i nomi, li inoltra. Campi vuoti = disconnessione. */
+export async function connectConnector(
+	id: string,
+	provider: string,
+	fields: Record<string, string>,
+	opts: RequestOptions = {}
+): Promise<{ connected: boolean; connector: string; provider: string }> {
+	return apiPost(`/tools/connectors/${encodeURIComponent(id)}/connect`, { provider, ...fields }, opts);
 }
 
 // ── Backup gestito (ISO 27001 A.8.13) ───────────────────────────────────────
@@ -2201,15 +2294,6 @@ export async function requestCert(
 	return apiPost('/clodia/cert-request', body, opts);
 }
 
-/** POST `/tools/openai/connect` — attiva l'integrazione Image generation:
- *  deposita la OpenAI API key nel vault del gateway. `api_key` vuota = disconnette. */
-export async function connectOpenAI(
-	api_key: string,
-	opts: RequestOptions = {}
-): Promise<{ connected: boolean }> {
-	return apiPost('/tools/openai/connect', { api_key }, opts);
-}
-
 /** Caselle email generiche (IMAP/SMTP) — connettore multi-mailbox. */
 export interface MailboxInput {
 	account: string;
@@ -2259,22 +2343,6 @@ export async function testConnector(
 	opts: RequestOptions = {}
 ): Promise<{ ok: boolean | null; detail: string }> {
 	return apiPost(`/tools/${encodeURIComponent(id)}/test`, {}, opts);
-}
-
-export async function connectGithub(
-	pat: string,
-	opts: RequestOptions = {}
-): Promise<{ connected: boolean }> {
-	return apiPost('/tools/github/connect', { pat }, opts);
-}
-
-/** POST `/tools/telegram/connect` — connette un bot Telegram dedicato. Valida il
- *  token con getMe, lo deposita nel vault e cache @username. token vuoto → disconnette. */
-export async function connectTelegram(
-	token: string,
-	opts: RequestOptions = {}
-): Promise<{ connected: boolean; bot_username?: string }> {
-	return apiPost('/tools/telegram/connect', { token }, opts);
 }
 
 /** GET `/tools/telegram/status` — stato non sensibile (configured, @username,
@@ -2605,21 +2673,6 @@ export interface TelegramLinkStatus {
 	seal?: TelegramSealState;
 }
 
-export async function getTelegramLink(tier: string, name: string, opts: RequestOptions = {}): Promise<TelegramLinkStatus> {
-	return apiGet(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tg-link`, opts);
-}
-
-/** `acceptSealDowngrade` = l'owner prende atto che su un topic sopra il cap i
- *  messaggi passeranno comunque da Telegram (clodia-platform#405). Resta
- *  registrata nel meta del topic: è un consenso, non una spunta usa-e-getta. */
-export async function connectTelegramLink(tier: string, name: string, chatId: string, acceptSealDowngrade = false, opts: RequestOptions = {}): Promise<TelegramLinkStatus> {
-	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tg-link`, { action: 'connect', chat_id: chatId, accept_seal_downgrade: acceptSealDowngrade }, opts);
-}
-
-export async function disconnectTelegramLink(tier: string, name: string, opts: RequestOptions = {}): Promise<TelegramLinkStatus> {
-	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tg-link`, { action: 'disconnect' }, opts);
-}
-
 /** GET/POST `/api/topics/{tier}/{name}/mailbox-link` — connettore «Mailbox»
  *  del canale (clodia-platform#406): si sceglie una casella GIÀ configurata
  *  nel sistema e quella diventa in un colpo solo fonte (`inbox:`) e
@@ -2645,14 +2698,53 @@ export async function getTopicMailboxes(tier: string, name: string, opts: Reques
 	return d.mailboxes ?? [];
 }
 
-export async function setTopicMailbox(
-	tier: string, name: string, action: 'connect' | 'disconnect', account: string,
+/** Lo stato di UNA azione di connettore su un topic (clodia-platform#520).
+ *
+ *  La forma generica di `tg-link` e `mailbox-link`: i campi da riempire li
+ *  dichiara il manifest del connettore, i valori offerti li risolve il gateway
+ *  (una casella si SCEGLIE fra quelle di sistema, non si digita — un indirizzo
+ *  scritto a mano finirebbe in whitelist senza una credenziale dietro), e
+ *  `entries` sono le voci che questa stanza ha già. */
+export interface ConnectorActionState {
+	connector: string;
+	action: string;
+	label: string;
+	binding: string;
+	admin_only: boolean;
+	tier: string;
+	fields: {
+		name: string;
+		label: string;
+		required: boolean;
+		placeholder: string;
+		options?: { value: string; label: string }[] | null;
+	}[];
+	entries: { ingress: string[]; egress: string[] };
+	seal?: TelegramSealState | null;
+	bound?: string | null;
+	connected?: boolean;
+}
+
+export async function getConnectorAction(
+	tier: string, name: string, connector: string, action: string, opts: RequestOptions = {}
+): Promise<ConnectorActionState> {
+	return apiGet(
+		`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/connectors/` +
+			`${encodeURIComponent(connector)}/${encodeURIComponent(action)}`, opts);
+}
+
+/** POST della stessa rotta: `{action}` più i campi DICHIARATI dall'azione.
+ *  I nomi dei campi non sono scritti qui — è ciò che permette a un connettore
+ *  arrivato con un pack di funzionare senza toccare questo file. */
+export async function applyConnectorAction(
+	tier: string, name: string, connector: string, action: string,
+	verso: 'connect' | 'disconnect', fields: Record<string, unknown> = {},
 	opts: RequestOptions = {}
-): Promise<TopicMailbox[]> {
-	const d = await apiPost<{ mailboxes?: TopicMailbox[] }>(
-		`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mailbox-link`,
-		{ action, account }, opts);
-	return d.mailboxes ?? [];
+): Promise<ConnectorActionState> {
+	return apiPost(
+		`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/connectors/` +
+			`${encodeURIComponent(connector)}/${encodeURIComponent(action)}`,
+		{ action: verso, ...fields }, opts);
 }
 
 /** Riclassificazione del livello SEAL di un topic (clodia-platform#426). */
