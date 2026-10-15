@@ -53,7 +53,7 @@
 		addLocalFolder,
 		removeLocalFolder,
 		getTopicMailboxes,
-		getConnectorRegistry,
+		getTopicConnectors,
 		getConnectorAction,
 		applyConnectorAction,
 		TOPIC_STATUSES,
@@ -86,7 +86,7 @@
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import { puoDiventareObiettivo, eObiettivoFissato, statoObiettivo, attendeOwner } from '$lib/goal';
 	import type { TierWarning } from '$lib/api/types';
-	import type { ConnectorActionState, ConnectorRegistry } from '$lib/api/client';
+	import type { ConnectorActionState, TopicConnectors } from '$lib/api/client';
 	import { azioniDiTopic, esempiPerDirezione, tipoDiCampo } from '$lib/connettori';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
 
@@ -1272,7 +1272,10 @@
 	// indirizzo scritto a mano autorizzerebbe una casella dietro cui non c'è
 	// nessuna credenziale), e la presa d'atto sul cap SEAL la chiede il server
 	// con `seal.requires_ack` — la regola sta in un posto solo.
-	let registry: ConnectorRegistry | null = null;
+	// Owner-scoped listing (clodia-logic#521), not `/tools/connectors`: the
+	// gateway serves that to admins only, and a non-admin owner of this topic
+	// would lose its buttons with a silent 401 (review of #242).
+	let registry: TopicConnectors | null = null;
 	$: azioniTopic = azioniDiTopic(registry, { isAdmin: $isAdmin });
 	/** Lo stato delle azioni che agganciano un CANALE: è l'unico caso in cui
 	 *  «collegato» è una proprietà dell'azione e non delle voci in lista, ed è
@@ -1289,7 +1292,7 @@
 
 	async function loadConnettori() {
 		try {
-			registry = await getConnectorRegistry();
+			registry = await getTopicConnectors(tier, name);
 		} catch {
 			// Silenzioso, come le altre liste di questa colonna: senza registry
 			// la riga dei bottoni non compare, il resto del pannello sì.

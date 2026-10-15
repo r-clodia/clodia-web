@@ -2182,6 +2182,38 @@ export async function getConnectorRegistry(opts: RequestOptions = {}): Promise<C
 	return apiGet<ConnectorRegistry>('/tools/connectors', opts);
 }
 
+/** The connectors as a TOPIC page draws them (`GET /api/topics/{tier}/{name}/connectors`,
+ *  clodia-logic#521). Owner-scoped: the agent-server serves it to the human
+ *  topic owner or an admin, reduced to topic actions with their declared
+ *  fields, scheme forms, verb families and glyph — no providers, no vault
+ *  entry names, and no `admin_only` action for a non-admin. The topic page
+ *  must not read `/tools/connectors`: the gateway serves that to admins only,
+ *  and a non-admin owner would lose the buttons with a silent 401. */
+export interface TopicConnectors {
+	tier: string;
+	connectors: {
+		id: string;
+		label: string;
+		schemes: RegistryConnector['schemes'];
+		verbs: { verb: string; dtype: string }[];
+		topic_actions: {
+			id: string;
+			label: string;
+			binding: string;
+			admin_only: boolean;
+			fields: { name: string; label: string; required: boolean; placeholder: string; options?: string }[];
+		}[];
+		tools_card: { icon: string } | null;
+	}[];
+}
+
+export async function getTopicConnectors(
+	tier: string, name: string, opts: RequestOptions = {}
+): Promise<TopicConnectors> {
+	return apiGet<TopicConnectors>(
+		`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/connectors`, opts);
+}
+
 /** POST `/tools/connectors/{id}/connect` — la credenziale che il manifest
  * dichiara. I campi sono quelli dichiarati dal provider: questo client non ne
  * conosce i nomi, li inoltra. Campi vuoti = disconnessione. */

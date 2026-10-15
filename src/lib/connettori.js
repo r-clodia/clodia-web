@@ -101,6 +101,7 @@ export function cardsDiTools(registry, live, opzioni = {}) {
 			builtin: vivo?.builtin === true,
 			setupLabel: card.setup_label || '',
 			docsUrl: card.docs_url || '',
+			docsHref: linkDocumentazione(card.docs_url),
 			credenziale,
 			gestisce
 		});
@@ -119,6 +120,27 @@ export function cardsDiTools(registry, live, opzioni = {}) {
 		: cards.filter(
 				(c) => c.provider === 'mcp' || c.builtin === true || ammessi.includes(String(c.id))
 			);
+}
+
+/**
+ * The documentation link of a connector, or `''` when it must not be a link.
+ *
+ * `docs_url` comes from a pack manifest and would go into an `href` in the
+ * origin that holds the session token: `javascript:` or `data:` would run
+ * there. Only an absolute `https://` URL with a host becomes a link; the page
+ * shows anything else as plain text (review of clodia-web#242). The gateway
+ * refuses such manifests too (clodia-tools#365) — this is the second wall.
+ * @param {unknown} url
+ * @returns {string}
+ */
+export function linkDocumentazione(url) {
+	if (typeof url !== 'string' || !url.startsWith('https://') || /\s/.test(url)) return '';
+	try {
+		const u = new URL(url);
+		return u.protocol === 'https:' && u.hostname ? url : '';
+	} catch {
+		return '';
+	}
 }
 
 /** @param {Record<string, unknown>} r */
@@ -146,6 +168,7 @@ function cardSenzaManifest(r) {
 		builtin: r.builtin === true,
 		setupLabel: '',
 		docsUrl: '',
+		docsHref: '',
 		credenziale: null,
 		gestisce: [],
 		mcp,

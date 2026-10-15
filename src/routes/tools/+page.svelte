@@ -41,6 +41,7 @@
 		authorized?: boolean;
 		setupLabel: string;
 		docsUrl: string;
+		docsHref: string;
 		/** La credenziale che il manifest dichiara: form (si incolla) o oauth. */
 		credenziale: {
 			id: string;
@@ -697,8 +698,11 @@
 					{/if}
 				</label>
 			{/each}
-			{#if credCard.docsUrl}
-				<p class="note"><a href={credCard.docsUrl} target="_blank" rel="noreferrer">Documentazione del connettore</a></p>
+			{#if credCard.docsHref}
+				<p class="note"><a href={credCard.docsHref} target="_blank" rel="noopener noreferrer">Documentazione del connettore</a></p>
+			{:else if credCard.docsUrl}
+				<!-- Not https:// — shown as text, never as a link (review of #242). -->
+				<p class="note">Documentazione del connettore: <code>{credCard.docsUrl}</code></p>
 			{/if}
 			{#if credError}<div class="modal-err">{credError}</div>{/if}
 			<div class="modal-foot">
