@@ -308,6 +308,28 @@ export function etichettaDiUri(registry, uri) {
 }
 
 /**
+ * Due payload di connettori in uno solo, per id — il secondo vince.
+ *
+ * Serve a chi può leggere i connettori solo **un pezzo per volta**
+ * (clodia-platform#545 §4): il feed delle osservazioni vive nel layout, quindi
+ * su qualunque pagina, ma un umano non admin non può leggere il registry
+ * completo (`GET /tools/connectors` è da admin) — legge la lista *owner-scoped*
+ * del topic che ha aperto. Unendo quelle liste man mano che le ottiene, un
+ * nome imparato resta per la sessione invece di sparire al cambio di pagina.
+ *
+ * Unione e non concatenazione: lo stesso connettore compare in ogni lista, e
+ * due copie della stessa riga farebbero dipendere la risposta dall'ordine.
+ * @param {unknown} accumulato
+ * @param {unknown} nuovo
+ */
+export function registryUnito(accumulato, nuovo) {
+	const perId = new Map();
+	for (const c of elenco(accumulato)) if (c?.id) perId.set(String(c.id), c);
+	for (const c of elenco(nuovo)) if (c?.id) perId.set(String(c.id), c);
+	return { connectors: [...perId.values()] };
+}
+
+/**
  * Perché un'uscita sarebbe stata fermata: `egress:<famiglia>` → la frase.
  *
  * La famiglia è il `dtype` dei verbi di un connettore, cioè il nome con cui il

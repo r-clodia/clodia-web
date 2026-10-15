@@ -18,8 +18,15 @@
 	 */
 	import { onDestroy, onMount } from 'svelte';
 	import { browser } from '$app/environment';
-	import { getObservations, getConnectorRegistry, type Observation } from '$lib/api/client';
-	import { motivoDiOsservazione } from '$lib/connettori';
+	import { page } from '$app/stores';
+	import {
+		getObservations,
+		getConnectorRegistry,
+		getTopicConnectors,
+		type Observation
+	} from '$lib/api/client';
+	import { isAdmin } from '$lib/stores/capabilities';
+	import { motivoDiOsservazione, registryUnito } from '$lib/connettori';
 
 	/** Ogni quanto si chiede al backend. Non è una chat: 15s è abbastanza
 	 *  ravvicinato per collegare l'evento all'azione che l'ha causato, e
@@ -45,9 +52,39 @@
 		unattended: 'accesso ai dati di un topic da un job'
 	};
 
-	/** Il registry, per tradurre `egress:<famiglia>`. Se non arriva, il motivo
-	 *  resta la sua chiave: monco, ma non inventato. */
+	/** I connettori noti, per tradurre `egress:<famiglia>`. Se non arrivano, il
+	 *  motivo resta la sua chiave: monco, ma non inventato.
+	 *
+	 *  Da DOVE arrivano dipende da chi guarda (clodia-platform#545 §4). Prima si
+	 *  leggeva sempre `GET /tools/connectors`, che il gateway serve ai soli
+	 *  ADMIN: per tutti gli altri la chiamata finiva in 401 silenzioso e il
+	 *  feed mostrava la chiave grezza `egress:<famiglia>` — cioè proprio a chi
+	 *  non amministra, e quindi ha più bisogno del nome del connettore che
+	 *  della famiglia con cui il reference monitor lo classifica. È lo stesso
+	 *  difetto che #521 ha chiuso sulla pagina del topic, nel punto in cui era
+	 *  rimasto. Un non admin legge la lista owner-scoped del topic che ha
+	 *  aperto, e i nomi si ACCUMULANO: imparati una volta, restano per la
+	 *  sessione invece di sparire cambiando pagina. */
 	let registry: unknown = null;
+	/** Quale sorgente è già stata letta: `admin`, oppure `<tier>/<name>`. */
+	let fonteLetta = '';
+
+	async function caricaConnettori(admin: boolean, tier: string, name: string) {
+		// Una sola lettura per sorgente: i connettori installati non cambiano
+		// durante una sessione, e un fallimento lascia i motivi alla loro chiave.
+		const fonte = admin ? 'admin' : tier && name ? `${tier}/${name}` : '';
+		if (!fonte || fonte === fonteLetta) return;
+		fonteLetta = fonte;
+		try {
+			const payload = admin
+				? await getConnectorRegistry()
+				: await getTopicConnectors(tier, name);
+			registry = registryUnito(registry, payload);
+		} catch {
+			// Niente nomi: i motivi restano le loro chiavi. Si riprova alla
+			// prossima sorgente, non su questa.
+		}
+	}
 
 	function describe(o: Observation): string {
 		const why = o.why ? (WHY[o.why] ?? motivoDiOsservazione(registry, o.why)) : '';
@@ -80,13 +117,19 @@
 		}
 	}
 
+	// Rileggere quando cambia chi guarda (`isAdmin` arriva dopo il primo render)
+	// o quale topic è aperto. `caricaConnettori` si ferma da sé se quella
+	// sorgente l'ha già letta.
+	$: if (browser) {
+		void caricaConnettori(
+			$isAdmin === true,
+			String($page.params?.tier ?? ''),
+			String($page.params?.name ?? '')
+		);
+	}
+
 	onMount(() => {
 		if (!browser) return;
-		// Una sola volta: i connettori installati non cambiano durante una
-		// sessione, e un fallimento qui lascia i motivi alla loro chiave.
-		void getConnectorRegistry()
-			.then((r) => (registry = r))
-			.catch(() => (registry = null));
 		void poll();
 		timer = setInterval(poll, POLL_MS);
 	});
