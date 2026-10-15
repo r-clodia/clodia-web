@@ -1325,6 +1325,9 @@
 			azioneValori = Object.fromEntries(
 				st.fields.map((f) => [f.name, f.options?.length ? f.options[0].value : ''] as const)
 			);
+			// A group the bot joined with this topic's link (#549): its id comes
+			// from Telegram, so it is offered ready instead of typed by hand.
+			if (st.suggestions?.length) azioneValori = { ...azioneValori, ...st.suggestions[0].values };
 		} catch (e) {
 			azioneErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
@@ -3183,10 +3186,14 @@
 								{#each azioniTopic as a (a.chiave)}
 									<button type="button" class="egress-quick-btn"
 										class:egress-quick-btn-connected={statiCanale[a.chiave]?.connected}
+										class:egress-quick-btn-pending={!statiCanale[a.chiave]?.connected &&
+											(statiCanale[a.chiave]?.suggestions?.length ?? 0) > 0}
 										disabled={azioneBusy}
 										title={statiCanale[a.chiave]?.connected
 											? `Collegato a ${statiCanale[a.chiave]?.bound} — clic per scollegare`
-											: a.etichetta}
+											: statiCanale[a.chiave]?.suggestions?.length
+												? `Il bot è entrato in «${statiCanale[a.chiave]?.suggestions?.[0].label}» — clic per approvare`
+												: a.etichetta}
 										on:click={() => onAzioneClick(a)}>
 										{#if a.icona}
 											<span class="brand-icon"><ConnectorIcon name={a.icona} size={14} /></span>
@@ -3320,6 +3327,22 @@
 			Vale <b>solo in questa stanza</b> ({azioneStato.tier}): ciò che l'azione
 			autorizza diventa fonte e destinazione di questo topic, non degli altri.
 		</p>
+		{#if azioneStato.suggestions?.length}
+			<!-- clodia-platform#549: groups the bot joined through this topic's
+			     link. The id is Telegram's; approving is the same connect. -->
+			<p class="meta-note">Il bot è stato aggiunto con il link di questo topic a:</p>
+			<div class="egress-quick-row">
+				{#each azioneStato.suggestions as s (JSON.stringify(s.values))}
+					<button type="button" class="egress-quick-btn"
+						class:egress-quick-btn-pending={Object.entries(s.values).every(([k, v]) => azioneValori[k] === v)}
+						disabled={azioneBusy}
+						title={s.added_by ? `aggiunto da ${s.added_by}` : ''}
+						on:click={() => (azioneValori = { ...azioneValori, ...s.values })}>
+						{s.label}
+					</button>
+				{/each}
+			</div>
+		{/if}
 		{#each azioneStato.fields as f (f.name)}
 			<label class="meta-note" for={`campo-${f.name}`}>{f.label || f.name}</label>
 			{#if tipoDiCampo(f) === 'scelta'}
@@ -4078,6 +4101,8 @@
 	   torna al primo sguardo distratto. */
 	.egress-quick-btn-connected { border-color: #2e7d32; color: #2e7d32; }
 	.egress-quick-btn-connected:hover { border-color: #d32f2f; color: #d32f2f; }
+	/* A group the bot joined by link, waiting for the owner (#549). */
+	.egress-quick-btn-pending { border-color: #ed6c02; color: #ed6c02; }
 	.egress-quick-input { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px;
 		padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
 		background: var(--bg); color: var(--fg); margin-top: 8px; }

@@ -2755,6 +2755,15 @@ export interface ConnectorActionState {
 	seal?: TelegramSealState | null;
 	bound?: string | null;
 	connected?: boolean;
+	/** Chats the bot joined for this topic by link (clodia-platform#549),
+	 *  ready for the owner: picking one fills the fields with the id Telegram
+	 *  gave. Nothing is authorised until the owner connects it. */
+	suggestions?: {
+		label: string;
+		values: Record<string, string>;
+		requested_by?: string;
+		added_by?: string;
+	}[];
 }
 
 export async function getConnectorAction(
