@@ -18,7 +18,8 @@
 	 */
 	import { onDestroy, onMount } from 'svelte';
 	import { browser } from '$app/environment';
-	import { getObservations, type Observation } from '$lib/api/client';
+	import { getObservations, getConnectorRegistry, type Observation } from '$lib/api/client';
+	import { motivoDiOsservazione } from '$lib/connettori';
 
 	/** Ogni quanto si chiede al backend. Non è una chat: 15s è abbastanza
 	 *  ravvicinato per collegare l'evento all'azione che l'ha causato, e
@@ -35,19 +36,21 @@
 	let since = 0;
 	let timer: ReturnType<typeof setInterval> | null = null;
 
+	/** Le righe che NON parlano di un connettore: sono della piattaforma, e
+	 *  nessun manifest le dichiara. Le uscite verso un connettore (`egress:…`)
+	 *  le nomina il registry — prima stavano qui, cioè questo componente sapeva
+	 *  quali connettori esistono e si fermava a quelli (clodia-platform#520). */
 	const WHY: Record<string, string> = {
-		'egress:email': 'invio email verso una destinazione non dichiarata',
-		'egress:telegram': 'messaggio Telegram verso una chat non dichiarata',
-		'egress:http': 'POST HTTP verso un host non dichiarato',
-		'egress:drive': 'scrittura su Drive fuori dalle cartelle dichiarate',
-		'egress:gsheets': 'scrittura su un foglio non dichiarato',
-		'egress:github': 'scrittura su un repository non dichiarato',
 		denied_tools: 'verbo escluso per questo agent',
 		unattended: 'accesso ai dati di un topic da un job'
 	};
 
+	/** Il registry, per tradurre `egress:<famiglia>`. Se non arriva, il motivo
+	 *  resta la sua chiave: monco, ma non inventato. */
+	let registry: unknown = null;
+
 	function describe(o: Observation): string {
-		const why = o.why ? WHY[o.why] ?? o.why : '';
+		const why = o.why ? (WHY[o.why] ?? motivoDiOsservazione(registry, o.why)) : '';
 		if (o.verb.startsWith('egress-context:')) {
 			return `avrebbe chiesto conferma a ${o.agent}: uscita da un canale contaminato`;
 		}
@@ -79,6 +82,11 @@
 
 	onMount(() => {
 		if (!browser) return;
+		// Una sola volta: i connettori installati non cambiano durante una
+		// sessione, e un fallimento qui lascia i motivi alla loro chiave.
+		void getConnectorRegistry()
+			.then((r) => (registry = r))
+			.catch(() => (registry = null));
 		void poll();
 		timer = setInterval(poll, POLL_MS);
 	});

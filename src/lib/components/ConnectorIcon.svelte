@@ -1,11 +1,20 @@
 <script lang="ts">
-	// Icona rappresentativa di un connettore in base al provider/kind.
-	export let provider: string | undefined = undefined;
-	export let kind: string | undefined = undefined;
-	export let mcp = false;
+	// Libreria di GLIFI, non di connettori (clodia-platform#520).
+	//
+	// Prima questo componente decideva da sé quale disegno spettava a chi,
+	// deducendolo dal nome del provider: sapeva che `google` è Google e che
+	// `kind: 'mailbox'` vuole la busta. Un connettore arrivato con un pack non
+	// aveva modo di scegliere, e per averne uno serviva un deploy di questo
+	// repository.
+	//
+	// Ora la SCELTA arriva dal manifest (`tools_card.icon`) e qui restano solo i
+	// disegni — che nel frontend ci devono stare, perché un logo è un file SVG.
+	// Un nome sconosciuto ricade sul glifo generico: un pack può dichiarare
+	// quello che vuole senza rompere la pagina.
+	export let name: string | undefined = undefined;
 	export let size = 26;
 
-	$: key = mcp ? 'mcp' : (kind === 'mailbox' ? 'email' : (provider ?? '').toLowerCase());
+	$: key = (name ?? '').toLowerCase();
 </script>
 
 {#if key === 'google'}
@@ -33,6 +42,25 @@
 {:else if key === 'mcp'}
 	<svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
 		<path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0 1-10 0V8zM12 16v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+	</svg>
+{:else if key === 'telegram'}
+	<svg width={size} height={size} viewBox="0 0 240 240" aria-hidden="true">
+		<circle cx="120" cy="120" r="120" fill="#29b6f6" />
+		<path d="M180.5 72.1 156.9 172c-1.8 8-6.6 10-13.4 6.2l-37-27.3-17.9 17.2c-2 2-3.7 3.7-7.5 3.7l2.7-38 69.4-62.7c3-2.7-.7-4.2-4.6-1.5L60 130.6l-37.2-11.6c-8.1-2.5-8.2-8.1 1.7-12l145.4-56c6.7-2.5 12.6 1.6 10.6 12.1Z"
+			fill="#fff" />
+	</svg>
+{:else if key === 'drive'}
+	<svg width={size} height={size} viewBox="0 0 87.3 78" aria-hidden="true">
+		<path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" />
+		<path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47" />
+		<path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 11.5z" fill="#ea4335" />
+		<path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d" />
+		<path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc" />
+		<path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00" />
+	</svg>
+{:else if key === 'github'}
+	<svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+		<path fill="currentColor" d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1.1-.8.1-.8.1-.8 1.2.1 1.9 1.3 1.9 1.3 1.1 1.9 2.9 1.3 3.6 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17.4 5.1 18.4 5.4 18.4 5.4c.7 1.7.3 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"/>
 	</svg>
 {:else}
 	<svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">

@@ -35,7 +35,8 @@
 	 * rifiuto arriva da lì e si mostra così com'è.
 	 */
 	import { onMount } from 'svelte';
-	import { getEgressWhitelist, editEgressWhitelist, type UriLabelInfo } from '$lib/api/client';
+	import { getEgressWhitelist, editEgressWhitelist, getConnectorRegistry, type UriLabelInfo } from '$lib/api/client';
+	import { esempiPerDirezione } from '$lib/connettori';
 	import UriLabel from '$lib/components/UriLabel.svelte';
 	import { isAdmin } from '$lib/stores/capabilities';
 
@@ -50,6 +51,10 @@
 	 *  contaminare. Due elenchi con due significati opposti: tenerli in due
 	 *  schede evita di leggere una riga nella colonna sbagliata. */
 	let tab: 'egress' | 'ingress' = 'egress';
+	// Gli esempi del campo «nuova voce» vengono dagli schemi INSTALLATI: due
+	// scritti a mano nominano un connettore, e il giorno che quel connettore non
+	// c'è più suggeriscono una forma che nessuno accetta più (#520).
+	let registry: unknown = null;
 	let q = '';
 	let schema = '';
 	let mostrati = 50;
@@ -150,6 +155,9 @@
 	}
 
 	onMount(async () => {
+		void getConnectorRegistry()
+			.then((r) => (registry = r))
+			.catch(() => (registry = null));
 		try {
 			const r = await getEgressWhitelist();
 			mode = r.mode ?? 'unknown';
@@ -205,9 +213,8 @@
 				<input
 					bind:value={nuova}
 					disabled={inCorso}
-					placeholder={tab === 'egress'
-						? 'mailto:qualcuno@esempio.it · https://host/percorso'
-						: 'https://fonte.esempio.eu/'}
+					placeholder={esempiPerDirezione(registry, tab === 'egress' ? 'egress' : 'ingress') ||
+						(tab === 'egress' ? 'destinazione' : 'fonte')}
 					aria-label={tab === 'egress' ? 'nuova destinazione' : 'nuova fonte'}
 				/>
 				<button type="submit" disabled={inCorso || !nuova.trim()}>

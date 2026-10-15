@@ -63,9 +63,15 @@ const VIETATI = {
 };
 
 /** Ciò che deve restare. In pagina: la sezione egress/ingress locale, vicina di
- *  posto alla Telegram rimossa. Nel client: il Telegram che serve ancora —
- *  la connessione del bot — e la lettura dell'egress/ingress del topic. Se
- *  sparissero anche loro, la rimozione ha sforato. */
+ *  posto alla Telegram rimossa. Nel client: il Telegram che serve ancora — la
+ *  connessione del bot — e la lettura dell'egress/ingress del topic. Se
+ *  sparissero anche loro, la rimozione ha sforato.
+ *
+ *  Il testimone della connessione del bot è `connectConnector` e non più
+ *  `connectTelegram` (clodia-platform#520): la credenziale di un connettore si
+ *  deposita dalla rotta generica, che per Telegram delega allo stesso handler
+ *  del gateway di prima — valida il token con getMe e memorizza l'@username.
+ *  Il gesto è vivo, la funzione per-vendor non serviva più a nessuno. */
 const RICHIESTI = {
 	[PAGINA]: [
 		['getTopicEgressScope', "la lettura dell'egress/ingress locale del topic"],
@@ -73,7 +79,7 @@ const RICHIESTI = {
 	],
 	[CLIENT]: [
 		['getTopicEgressScope', "l'endpoint dell'egress/ingress locale del topic"],
-		['connectTelegram', 'la connessione del bot Telegram, che resta un tool vivo']
+		['connectConnector', 'il deposito della credenziale di un connettore, bot Telegram compreso']
 	]
 };
 
