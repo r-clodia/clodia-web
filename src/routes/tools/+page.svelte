@@ -42,6 +42,7 @@
 		/** I metodi del «Connetti» di un backend MCP (#565) e quello attivo. */
 		authMethods?: { type: string; scope?: string; fields?: { name: string; label: string; secret: boolean }[] }[];
 		authActive?: string | null;
+		canDisconnect?: boolean;
 		setupLabel: string;
 		docsUrl: string;
 		docsHref: string;
@@ -481,13 +482,16 @@
 		const metodi = c.authMethods ?? [];
 		if (metodi.length === 1 && metodi[0].type === 'oauth') return openMcpOAuth(c.id);
 		mcCard = c;
-		mcMethod = metodi[0]?.type === 'oauth' ? 'oauth' : 'credential';
+		// Riconnetti/Riautorizza riparte dal metodo ATTIVO: il gateway rifiuta di
+		// passare all'altro finché non si è fatto «Disconnetti».
+		mcMethod = c.authActive ?? (metodi[0]?.type === 'oauth' ? 'oauth' : 'credential');
 		const campi = metodi.find((m) => m.type === 'credential')?.fields ?? [];
 		mcValues = Object.fromEntries(campi.map((f) => [f.name, '']));
 		mcError = '';
 		mcOpen = true;
 	}
 	function closeMcpConnect() {
+		if (mcBusy) return; // la prova è in corso: il suo esito appartiene a questa modale
 		mcOpen = false;
 		mcBusy = false;
 		mcValues = {};
@@ -507,10 +511,10 @@
 		mcBusy = true;
 		mcError = '';
 		try {
-			const res = await connectMcp(c.id, Object.fromEntries(
-				Object.entries(mcValues).map(([k, v]) => [k, v.trim()])
-			));
+			// I valori com'è: una password può iniziare o finire con uno spazio.
+			const res = await connectMcp(c.id, { ...mcValues });
 			toastSuccess(`${c.name} connesso`, res.detail ?? 'credenziale nel vault del gateway');
+			mcBusy = false;
 			closeMcpConnect();
 			await load();
 		} catch (err) {
@@ -520,10 +524,10 @@
 		}
 	}
 	async function disconnectMcpCard(c: CardModel) {
-		if (!confirm(`Disconnettere ${c.name}? La credenziale viene cancellata dal vault.`)) return;
+		if (!confirm(`Disconnettere ${c.name}? Credenziale e token vengono cancellati dal vault.`)) return;
 		try {
 			await disconnectMcp(c.id);
-			toastSuccess(`${c.name} disconnesso`, 'credenziale rimossa dal vault');
+			toastSuccess(`${c.name} disconnesso`, 'credenziale e token rimossi dal vault');
 			await load();
 		} catch (err) {
 			toastError('Disconnessione fallita', err instanceof ApiError ? err.message : String(err));
@@ -606,7 +610,9 @@
 							<button type="button" class="btn" on:click={() => openMcpConnect(c)}>
 								{c.authActive === 'oauth' && c.auth === 'oauth' ? 'Riautorizza' : 'Riconnetti'}
 							</button>
-							<button type="button" class="btn ghost" on:click={() => disconnectMcpCard(c)}>Disconnetti</button>
+							{#if c.canDisconnect}
+								<button type="button" class="btn ghost" on:click={() => disconnectMcpCard(c)}>Disconnetti</button>
+							{/if}
 						{:else}
 							<button type="button" class="btn primary" on:click={() => openMcpConnect(c)}>Connetti</button>
 						{/if}
@@ -794,10 +800,14 @@
 					<span>Metodo</span>
 					{#each mcCard.authMethods ?? [] as m (m.type)}
 						<label class="radio">
-							<input type="radio" bind:group={mcMethod} value={m.type} />
+							<input type="radio" bind:group={mcMethod} value={m.type}
+								disabled={Boolean(mcCard.authActive) && m.type !== mcCard.authActive} />
 							{m.type === 'oauth' ? `Consenso OAuth${m.scope ? ` (${m.scope})` : ''}` : 'Credenziale (API key / password)'}
 						</label>
 					{/each}
+					{#if mcCard.authActive}
+						<small class="note">Per cambiare metodo, prima «Disconnetti».</small>
+					{/if}
 				</div>
 			{/if}
 			{#if mcMethod === 'oauth'}
@@ -812,9 +822,9 @@
 					<label class="field">
 						<span>{f.label || f.name}</span>
 						{#if f.secret}
-							<input type="password" bind:value={mcValues[f.name]} autocomplete="off" spellcheck="false" />
+							<input type="password" name="mcp-{mcCard.id}-{f.name}" bind:value={mcValues[f.name]} autocomplete="new-password" spellcheck="false" />
 						{:else}
-							<input type="text" bind:value={mcValues[f.name]} autocomplete="off" spellcheck="false" />
+							<input type="text" name="mcp-{mcCard.id}-{f.name}" bind:value={mcValues[f.name]} autocomplete="off" spellcheck="false" />
 						{/if}
 					</label>
 				{/each}

@@ -2113,6 +2113,10 @@ export interface ToolConnector {
 	auth?: string;
 	/** solo per `auth === 'oauth'`: il consenso c'è ed è ancora spendibile. */
 	authorized?: boolean;
+	/** metodi del «Connetti» (clodia-platform#565): tipi, scope, campi — mai valori. */
+	auth_methods?: { type: string; scope?: string; fields?: { name: string; label: string; secret: boolean }[] }[];
+	/** il metodo con cui il backend è connesso, o null. */
+	auth_active?: string | null;
 	/** storage backend dei topic (provider 'storage'): adapter attivo + versioning. */
 	builtin?: boolean;
 	backend?: string;

@@ -23,15 +23,18 @@ const pagina = leggiSorgente(PAGINA, guasti, 'la pagina Integrations');
 if (pagina !== null) {
 	const codice = senzaCommenti(pagina);
 	for (const [ago, cosa] of [
-		['openMcpConnect', 'il «Connetti» generico dalla card'],
-		['connectMcp(', 'la chiamata che prova e salva la credenziale'],
-		['disconnectMcp(', 'il «Disconnetti»'],
-		['authMethods', 'i metodi dichiarati dal backend']
+		[/\bopenMcpConnect\(/, 'il «Connetti» generico dalla card'],
+		[/(?<![A-Za-z])connectMcp\(/, 'la chiamata che prova e salva la credenziale'],
+		[/\bdisconnectMcp\(/, 'il «Disconnetti»'],
+		[/\bauthMethods\b/, 'i metodi dichiarati dal backend'],
+		[/autocomplete="new-password"/, 'nessun autofill del login sui campi segreti']
 	]) {
-		if (!codice.includes(ago)) guasti.push(`${PAGINA}: manca «${ago}» — ${cosa}`);
+		if (!ago.test(codice)) guasti.push(`${PAGINA}: manca ${ago} — ${cosa}`);
 	}
-	if (/secretValues|secrets\s*[:}]/.test(codice)) {
-		guasti.push(`${PAGINA}: «Add MCP» chiede di nuovo i segreti al mount — vanno chiesti al «Connetti»`);
+	// «Add MCP» non chiede segreti al mount: la chiamata manda solo il config.
+	const reg = codice.match(/registerMcp\(([^)]*)\)/);
+	if (!reg || reg[1].replace(/\s/g, '') !== '{config:parsed}') {
+		guasti.push(`${PAGINA}: «Add MCP» deve mandare solo { config: parsed } — i segreti vanno chiesti al «Connetti»`);
 	}
 }
 
@@ -53,7 +56,13 @@ if (!card) guasti.push('connettori.js: il backend MCP non produce una card');
 else {
 	if (card.connected) guasti.push('connettori.js: backend con metodi e senza connessione risulta connesso');
 	if ((card.authMethods ?? []).length !== 2) guasti.push('connettori.js: la card perde i metodi del «Connetti»');
+	if (!card.canDisconnect) guasti.push('connettori.js: con auth_methods il gateway ha «Disconnetti»');
 }
+// Gateway vecchio (< 2.112.0): OAuth autorizzato → attivo «oauth», niente «Disconnetti».
+const [vecchio] = cardsDiTools(null, [{ id: 'old', provider: 'mcp', transport: 'http',
+	connected: true, auth: 'oauth', authorized: true }], { ammessi: null });
+if (vecchio?.authActive !== 'oauth') guasti.push('connettori.js: su un gateway vecchio l\'OAuth autorizzato non risulta attivo');
+if (vecchio?.canDisconnect) guasti.push('connettori.js: su un gateway vecchio «Disconnetti» porterebbe a un 404');
 const [semplice] = cardsDiTools(null, [{ id: 'plain', provider: 'mcp', transport: 'stdio' }], { ammessi: null });
 if (!semplice?.connected) guasti.push('connettori.js: un backend senza metodi deve restare «montato» (connesso)');
 

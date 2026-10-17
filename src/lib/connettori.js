@@ -189,7 +189,11 @@ function cardSenzaManifest(r) {
 		auth: r.auth,
 		authorized: r.authorized,
 		authMethods,
-		authActive: typeof r.auth_active === 'string' ? r.auth_active : null
+		// Un gateway senza `auth_methods` (< 2.112.0) non dice il metodo attivo
+		// né ha la rotta `disconnect`: per un OAuth di #532 autorizzato l'attivo
+		// è l'OAuth, e «Disconnetti» non si mostra.
+		authActive: typeof r.auth_active === 'string' ? r.auth_active : oauth && r.authorized ? 'oauth' : null,
+		canDisconnect: Array.isArray(r.auth_methods)
 	};
 }
 
