@@ -43,7 +43,8 @@ if (pagina) {
 		['apiInstallPack(', 'the page never installs an available pack'],
 		['item.first_party', 'the removal confirmation does not tell a first-party pack apart'],
 		['reinstallarlo', 'the confirmation does not say the pack can be reinstalled'],
-		['connettori del pack si chiudono', 'the confirmation does not say the connectors close']
+		['connettori del pack si chiudono', 'the confirmation does not say the connectors close'],
+		['usedByText(pendingDelete.item)', 'the confirmation does not name the agents that lose skills (`used_by`)']
 	]) {
 		if (!codice.includes(s)) guasti.push(`${SUPERFICIE}: ${why}`);
 	}

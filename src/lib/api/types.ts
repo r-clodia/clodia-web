@@ -714,6 +714,9 @@ export interface Pack {
 	readonly version: string;
 	// first-party con upstream dichiarato → la UI mostra "Check update".
 	readonly first_party?: boolean;
+	// Agenti FUORI dal pack che ne usano le skill (clodia-platform#562): la
+	// rimozione gliele toglie, e la conferma lo dice prima.
+	readonly used_by?: ReadonlyArray<{ readonly agent: string; readonly skills: ReadonlyArray<string> }>;
 	readonly has_upstream?: boolean;
 	// Esiste una dichiarazione del pack (bundled o upstream) con cui confrontare
 	// i seed installati? Senza, il bottone "Check drift" prometterebbe una

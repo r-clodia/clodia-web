@@ -331,6 +331,18 @@
 		}
 	}
 
+	// Chi perde skill con la rimozione (#562): base-pack non si rimuove, ma i
+	// suoi agenti usano skill di comms-pack — l'owner lo legge prima di confermare.
+	function usedByText(p: Pack): string {
+		const u = p.used_by ?? [];
+		if (!u.length) return '';
+		return (
+			'Perdono skill di questo pack: ' +
+			u.map((x) => `${x.agent} (${x.skills.join(', ')})`).join('; ') +
+			'. '
+		);
+	}
+
 	// --- Elimina pack / plugin sciolto ---
 	let pendingDelete: { kind: 'pack'; item: Pack } | { kind: 'plugin'; item: Plugin } | null = null;
 	let deleting = false;
@@ -461,6 +473,7 @@
 		? pendingDelete.item.first_party
 			? 'Verranno rimossi i plugin del pack e i suoi agenti, che vengono archiviati, non cancellati. ' +
 				'I connettori del pack si chiudono: i suoi verbi e i suoi bottoni nei topic non sono più disponibili. ' +
+				usedByText(pendingDelete.item) +
 				'Potrai reinstallarlo da «Pack ufficiali disponibili».'
 			: 'Verranno rimossi i plugin del pack e i suoi agenti (non nativi). L\'azione non è reversibile.'
 		: 'Verranno rimosse tutte le skill, rule e configurazioni MCP del plugin. L\'azione non è reversibile.'}
