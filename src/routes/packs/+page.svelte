@@ -474,6 +474,7 @@
 			? 'Verranno rimossi i plugin del pack e i suoi agenti, che vengono archiviati, non cancellati. ' +
 				'I connettori del pack si chiudono: i suoi verbi e i suoi bottoni nei topic non sono più disponibili. ' +
 				usedByText(pendingDelete.item) +
+				'Le sessioni di tutti gli agenti ripartono (un turno in corso si interrompe). ' +
 				'Potrai reinstallarlo da «Pack ufficiali disponibili».'
 			: 'Verranno rimossi i plugin del pack e i suoi agenti (non nativi). L\'azione non è reversibile.'
 		: 'Verranno rimosse tutte le skill, rule e configurazioni MCP del plugin. L\'azione non è reversibile.'}
