@@ -44,7 +44,11 @@ if (pagina) {
 		['item.first_party', 'the removal confirmation does not tell a first-party pack apart'],
 		['reinstallarlo', 'the confirmation does not say the pack can be reinstalled'],
 		['connettori del pack si chiudono', 'the confirmation does not say the connectors close'],
-		['usedByText(pendingDelete.item)', 'the confirmation does not name the agents that lose skills (`used_by`)']
+		['usedByText(pendingDelete.item)', 'the confirmation does not name the agents that lose skills (`used_by`)'],
+		// clodia-platform#563: a pack can be turned off without removing it.
+		['p.disableable', 'the page never offers to disable a pack'],
+		['setEnabled(p, true)', 'a disabled pack cannot be enabled again from the page'],
+		['open={pendingDisable !== null}', 'disabling is not confirmed before it happens']
 	]) {
 		if (!codice.includes(s)) guasti.push(`${SUPERFICIE}: ${why}`);
 	}

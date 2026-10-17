@@ -1976,6 +1976,17 @@ export async function installPack(
 	return apiPost(`/clodia/packs/${encodeURIComponent(name)}/install`, {}, opts);
 }
 
+/** POST `/clodia/packs/{name}/disable` | `/enable` — spegne o riaccende un
+ * pack senza rimuoverlo (clodia-platform#563). */
+export async function setPackEnabled(
+	name: string,
+	enabled: boolean,
+	opts: RequestOptions = {}
+): Promise<{ agents_restarted?: number; already?: boolean }> {
+	const verbo = enabled ? 'enable' : 'disable';
+	return apiPost(`/clodia/packs/${encodeURIComponent(name)}/${verbo}`, {}, opts);
+}
+
 /** POST `/clodia/packs/{name}/check-update` — controlla su GitHub se c'è una versione più recente. */
 export async function checkPackUpdate(
 	name: string,

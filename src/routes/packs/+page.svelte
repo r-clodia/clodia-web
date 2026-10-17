@@ -9,6 +9,7 @@
 		importPackZip,
 		deletePack,
 		installPack as apiInstallPack,
+		setPackEnabled,
 		listAvailablePacks,
 		deletePlugin,
 		updatePack as apiUpdatePack,
@@ -343,6 +344,28 @@
 		);
 	}
 
+	// --- Disattiva / riattiva (clodia-platform#563) ---
+	let toggling: string | null = null;
+	let pendingDisable: Pack | null = null;
+
+	async function setEnabled(p: Pack, enabled: boolean) {
+		if (toggling) return;
+		toggling = p.name;
+		try {
+			const r = await setPackEnabled(p.name, enabled);
+			toastSuccess(
+				`${p.name} ${enabled ? 'riattivato' : 'disattivato'}` +
+					(r.agents_restarted !== undefined ? ` · ${r.agents_restarted} agenti riavviati` : '')
+			);
+			pendingDisable = null;
+			await load();
+		} catch (err) {
+			toastError(enabled ? 'Riattivazione fallita' : 'Disattivazione fallita', errorMessage(err).message);
+		} finally {
+			toggling = null;
+		}
+	}
+
 	// --- Elimina pack / plugin sciolto ---
 	let pendingDelete: { kind: 'pack'; item: Pack } | { kind: 'plugin'; item: Plugin } | null = null;
 	let deleting = false;
@@ -467,6 +490,19 @@
 {/if}
 
 <ConfirmDialog
+	open={pendingDisable !== null}
+	title={`Disattivare il pack "${pendingDisable?.name ?? ''}"?`}
+	message={'Il pack resta installato ma spento: i suoi agenti non vengono caricati, le sue skill non sono servite, ' +
+		'i suoi server MCP vengono smontati e i suoi connettori si chiudono. ' +
+		(pendingDisable ? usedByText(pendingDisable) : '') +
+		'Le sessioni di tutti gli agenti ripartono. Si riattiva con un clic, senza perdere nulla.'}
+	confirmLabel="Disattiva"
+	loading={toggling !== null}
+	on:confirm={() => pendingDisable && setEnabled(pendingDisable, false)}
+	on:cancel={() => (pendingDisable = null)}
+/>
+
+<ConfirmDialog
 	open={pendingDelete !== null}
 	title={`Rimuovere ${pendingDelete?.kind === 'pack' ? 'il pack' : 'il plugin'} "${pendingDelete?.item.name ?? ''}"?`}
 	message={pendingDelete?.kind === 'pack'
@@ -509,7 +545,7 @@
 		<div class="section-label">Packs</div>
 		<div class="tree" role="tree">
 			{#each packs as p (p.name)}
-				<div class="pack" role="treeitem" aria-expanded={isPackOpen(p.name)} aria-selected="false">
+				<div class="pack" class:disabled-pack={p.disabled} role="treeitem" aria-expanded={isPackOpen(p.name)} aria-selected="false">
 					<div class="pack-head">
 						<button type="button" class="pack-toggle" on:click={() => togglePack(p.name)} aria-label={isPackOpen(p.name) ? 'Chiudi' : 'Apri'}>
 							<span class="chevron" class:open={isPackOpen(p.name)}>▸</span>
@@ -538,6 +574,14 @@
 								>
 							{/if}
 						</span>
+						{#if p.disabled}<span class="warn-badge" title="Pack disattivato: agenti non caricati, skill non servite, connettori chiusi">disattivato</span>{/if}
+						{#if $isAdmin && p.disableable}
+							{#if p.disabled}
+								<button type="button" class="update-btn" disabled={toggling === p.name} on:click={() => setEnabled(p, true)}>{toggling === p.name ? 'Riattivo…' : 'Riattiva'}</button>
+							{:else}
+								<button type="button" class="check-btn" disabled={toggling === p.name} on:click={() => (pendingDisable = p)}>Disattiva</button>
+							{/if}
+						{/if}
 						{#if $isAdmin}
 							<!-- Bottone multi-stato: Check update → Update vX.Y.Z → Finish setup -->
 							{#if p.has_upstream && checkResults[p.name]?.update_available}
@@ -661,6 +705,9 @@
 {/if}
 
 <style>
+	.pack.disabled-pack {
+		opacity: 0.6;
+	}
 	.head {
 		display: flex;
 		align-items: flex-end;

@@ -714,6 +714,10 @@ export interface Pack {
 	readonly version: string;
 	// first-party con upstream dichiarato → la UI mostra "Check update".
 	readonly first_party?: boolean;
+	// Pack spento ma non rimosso (clodia-platform#563): agenti non caricati,
+	// skill non servite, il gateway lo tratta come assente. base-pack no.
+	readonly disabled?: boolean;
+	readonly disableable?: boolean;
 	// Agenti FUORI dal pack che ne usano le skill (clodia-platform#562): la
 	// rimozione gliele toglie, e la conferma lo dice prima.
 	readonly used_by?: ReadonlyArray<{ readonly agent: string; readonly skills: ReadonlyArray<string> }>;
