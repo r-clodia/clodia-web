@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getConnectorRegistry, connectConnector, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
+	import { getTools, getConnectorRegistry, connectConnector, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
 	import type { ConnectorIssue, MailboxStatus, ConnectorRegistry } from '$lib/api/client';
 	import { cardsDiTools, serviziDiPack } from '$lib/connettori';
 	import { isAdmin } from '$lib/stores/capabilities';
@@ -39,6 +39,10 @@
 		transport?: string;
 		auth?: string; // 'oauth' per i backend MCP che vogliono un consenso (#532)
 		authorized?: boolean;
+		/** I metodi del «Connetti» di un backend MCP (#565) e quello attivo. */
+		authMethods?: { type: string; scope?: string; fields?: { name: string; label: string; secret: boolean }[] }[];
+		authActive?: string | null;
+		canDisconnect?: boolean;
 		setupLabel: string;
 		docsUrl: string;
 		docsHref: string;
@@ -366,22 +370,15 @@
 	// ─── Add MCP server ───
 	let mcpOpen = false;
 	let mcpJson = '';
-	let secretValues: Record<string, string> = {};
 	let mcpBusy = false;
 	let mcpError = '';
 
-	// Placeholder ${NAME} nel config (esclude ${VAULT:...}) → input segreto dedicato.
-	$: placeholders = Array.from(
-		new Set(
-			[...mcpJson.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)]
-				.map((m) => m[1])
-				.filter((n) => !n.startsWith('VAULT'))
-		)
-	);
+	// Niente segreti al mount (clodia-platform#565): un placeholder ${NAME} nel
+	// config diventa un campo del «Connetti» della card, che lo prova prima di
+	// metterlo nel vault.
 
 	function openMcp() {
 		mcpJson = '';
-		secretValues = {};
 		mcpError = '';
 		mcpOpen = true;
 	}
@@ -405,9 +402,7 @@
 		mcpBusy = true;
 		mcpError = '';
 		try {
-			const secrets: Record<string, string> = {};
-			for (const p of placeholders) if (secretValues[p]) secrets[p] = secretValues[p];
-			const res = await registerMcp({ config: parsed, secrets });
+			const res = await registerMcp({ config: parsed });
 			toastSuccess('MCP server registrato', (res.registered || []).join(', '));
 			closeMcp();
 			await load();
@@ -470,6 +465,75 @@
 		}
 	}
 
+	// ─── «Connetti» di un backend MCP (clodia-platform#565) ───
+	// Il backend dichiara come si connette: consenso OAuth, credenziale da
+	// inserire, o entrambi. Un solo metodo OAuth → dritti al consenso; altrimenti
+	// questa modale fa scegliere il metodo e raccoglie i campi. I valori vanno al
+	// gateway, che li prova con `list_tools` e solo allora li mette nel vault.
+	let mcOpen = false;
+	let mcCard: CardModel | null = null;
+	let mcMethod = 'credential';
+	let mcValues: Record<string, string> = {};
+	let mcBusy = false;
+	let mcError = '';
+	$: mcFields = mcCard?.authMethods?.find((m) => m.type === 'credential')?.fields ?? [];
+
+	function openMcpConnect(c: CardModel) {
+		const metodi = c.authMethods ?? [];
+		if (metodi.length === 1 && metodi[0].type === 'oauth') return openMcpOAuth(c.id);
+		mcCard = c;
+		// Riconnetti/Riautorizza riparte dal metodo ATTIVO: il gateway rifiuta di
+		// passare all'altro finché non si è fatto «Disconnetti».
+		mcMethod = c.authActive ?? (metodi[0]?.type === 'oauth' ? 'oauth' : 'credential');
+		const campi = metodi.find((m) => m.type === 'credential')?.fields ?? [];
+		mcValues = Object.fromEntries(campi.map((f) => [f.name, '']));
+		mcError = '';
+		mcOpen = true;
+	}
+	function closeMcpConnect() {
+		if (mcBusy) return; // la prova è in corso: il suo esito appartiene a questa modale
+		mcOpen = false;
+		mcBusy = false;
+		mcValues = {};
+	}
+	async function submitMcpConnect() {
+		const c = mcCard;
+		if (!c) return;
+		if (mcMethod === 'oauth') {
+			closeMcpConnect();
+			return openMcpOAuth(c.id);
+		}
+		const mancante = mcFields.find((f) => !(mcValues[f.name] ?? '').trim());
+		if (mancante) {
+			mcError = `Compila «${mancante.label || mancante.name}».`;
+			return;
+		}
+		mcBusy = true;
+		mcError = '';
+		try {
+			// I valori com'è: una password può iniziare o finire con uno spazio.
+			const res = await connectMcp(c.id, { ...mcValues });
+			toastSuccess(`${c.name} connesso`, res.detail ?? 'credenziale nel vault del gateway');
+			mcBusy = false;
+			closeMcpConnect();
+			await load();
+		} catch (err) {
+			mcError = err instanceof ApiError ? err.message : String(err);
+		} finally {
+			mcBusy = false;
+		}
+	}
+	async function disconnectMcpCard(c: CardModel) {
+		if (!confirm(`Disconnettere ${c.name}? Credenziale e token vengono cancellati dal vault.`)) return;
+		try {
+			await disconnectMcp(c.id);
+			toastSuccess(`${c.name} disconnesso`, 'credenziale e token rimossi dal vault');
+			await load();
+		} catch (err) {
+			toastError('Disconnessione fallita', err instanceof ApiError ? err.message : String(err));
+		}
+	}
+
 	async function removeMcp(name: string) {
 		try {
 			await unregisterMcp(name);
@@ -516,7 +580,7 @@
 					<div class="provider">{c.mcp ? (c.transport ?? 'mcp') : (c.provider ?? 'google')}</div>
 				</div>
 				<span class="pill" class:pill-on={c.connected && c.operational !== false} class:pill-broken={c.operational === false && (c.connected || Boolean(c.issues?.length))}>
-					{c.builtin ? 'Built-in' : c.auth === 'oauth' && !c.authorized ? 'Da autorizzare' : c.mcp ? 'MCP montato' : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto'}
+					{c.builtin ? 'Built-in' : c.mcp && c.authMethods?.length && !c.connected ? (c.authMethods.length === 1 && c.auth === 'oauth' ? 'Da autorizzare' : 'Da connettere') : c.mcp && c.authMethods?.length ? 'Connesso' : c.mcp ? 'MCP montato' : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto'}
 				</span>
 			</div>
 
@@ -541,10 +605,17 @@
 						</span>
 					{/if}
 					<button type="button" class="btn ghost" on:click={() => testConn(c.id)} disabled={testing[c.id]}>{testing[c.id] ? '…' : 'Test'}</button>
-					{#if c.auth === 'oauth'}
-						<button type="button" class="btn" class:primary={!c.authorized} on:click={() => openMcpOAuth(c.id)}>
-							{c.authorized ? 'Riautorizza' : 'Connetti'}
-						</button>
+					{#if c.authMethods?.length}
+						{#if c.connected}
+							<button type="button" class="btn" on:click={() => openMcpConnect(c)}>
+								{c.authActive === 'oauth' && c.auth === 'oauth' ? 'Riautorizza' : 'Riconnetti'}
+							</button>
+							{#if c.canDisconnect}
+								<button type="button" class="btn ghost" on:click={() => disconnectMcpCard(c)}>Disconnetti</button>
+							{/if}
+						{:else}
+							<button type="button" class="btn primary" on:click={() => openMcpConnect(c)}>Connetti</button>
+						{/if}
 					{/if}
 					<button type="button" class="btn ghost" on:click={() => removeMcp(c.id)}>Rimuovi</button>
 				{:else if !c.wired}
@@ -715,6 +786,60 @@
 	</div>
 {/if}
 
+{#if mcOpen && mcCard}
+	<!-- «Connetti» di un backend MCP (clodia-platform#565): il metodo lo
+	     dichiara il backend, i campi pure. Nessun valore torna indietro. -->
+	<div class="overlay" on:click|self={closeMcpConnect} role="presentation">
+		<div class="modal" role="dialog" aria-modal="true" aria-label="Connetti {mcCard.name}">
+			<div class="modal-head">
+				<strong>Connetti {mcCard.name}</strong>
+				<button class="x" type="button" on:click={closeMcpConnect} aria-label="Chiudi">×</button>
+			</div>
+			{#if (mcCard.authMethods ?? []).length > 1}
+				<div class="field">
+					<span>Metodo</span>
+					{#each mcCard.authMethods ?? [] as m (m.type)}
+						<label class="radio">
+							<input type="radio" bind:group={mcMethod} value={m.type}
+								disabled={Boolean(mcCard.authActive) && m.type !== mcCard.authActive} />
+							{m.type === 'oauth' ? `Consenso OAuth${m.scope ? ` (${m.scope})` : ''}` : 'Credenziale (API key / password)'}
+						</label>
+					{/each}
+					{#if mcCard.authActive}
+						<small class="note">Per cambiare metodo, prima «Disconnetti».</small>
+					{/if}
+				</div>
+			{/if}
+			{#if mcMethod === 'oauth'}
+				<p class="note">Si apre il consenso sul sito del servizio; il token finisce nel <strong>vault</strong> del gateway.</p>
+			{:else}
+				<p class="note">
+					Il gateway prova la credenziale chiedendo l'elenco dei tool al server, e la mette nel
+					<strong>vault</strong> solo se risponde. Non entra nel config, non la vedono gli agent, e
+					non torna più indietro da nessuna risposta.
+				</p>
+				{#each mcFields as f (f.name)}
+					<label class="field">
+						<span>{f.label || f.name}</span>
+						{#if f.secret}
+							<input type="password" name="mcp-{mcCard.id}-{f.name}" bind:value={mcValues[f.name]} autocomplete="new-password" spellcheck="false" />
+						{:else}
+							<input type="text" name="mcp-{mcCard.id}-{f.name}" bind:value={mcValues[f.name]} autocomplete="off" spellcheck="false" />
+						{/if}
+					</label>
+				{/each}
+			{/if}
+			{#if mcError}<div class="modal-err">{mcError}</div>{/if}
+			<div class="modal-foot">
+				<button type="button" class="btn" on:click={closeMcpConnect} disabled={mcBusy}>Annulla</button>
+				<button type="button" class="btn primary" on:click={submitMcpConnect} disabled={mcBusy}>
+					{mcBusy ? 'Prova in corso…' : mcMethod === 'oauth' ? 'Avvia consenso' : 'Connetti'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
 {#if mbOpen}
 	<div class="overlay" on:click|self={closeMailboxes} role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" aria-label="Caselle email">
@@ -815,8 +940,9 @@
 			<p class="note">
 				Incolla il <code>mcp.json</code> del server (formato <code>{`{"mcpServers": {…}}`}</code>),
 				stdio (<code>command/args/env</code>) o http (<code>url/headers</code>). Per i segreti usa
-				un placeholder <code>{'${NAME}'}</code> nel config: comparirà un campo dedicato e il valore
-				andrà nel <strong>vault</strong> (mai nel config salvato).
+				un placeholder <code>{'${NAME}'}</code> nel config: qui non si chiede niente — dopo la
+				registrazione premi <strong>Connetti</strong> sulla card, inserisci il valore, e il gateway
+				lo prova prima di metterlo nel <strong>vault</strong> (mai nel config salvato).
 			</p>
 			<p class="note">
 				Se il server non usa un token ma un <strong>consenso OAuth</strong>, non c'è niente da
@@ -828,17 +954,6 @@
 				<textarea bind:value={mcpJson} rows="9" spellcheck="false" class="mono"
 					placeholder={'{\n  "mcpServers": {\n    "github": {\n      "command": "npx",\n      "args": ["-y","@modelcontextprotocol/server-github"],\n      "env": { "GITHUB_TOKEN": "${GH_TOKEN}" }\n    }\n  }\n}'}></textarea>
 			</label>
-			{#if placeholders.length}
-				<div class="secrets">
-					<span class="lbl">Segreti (→ vault)</span>
-					{#each placeholders as p (p)}
-						<label class="field">
-							<span>{p}</span>
-							<input type="password" bind:value={secretValues[p]} placeholder={`valore per ${p}`} autocomplete="off" />
-						</label>
-					{/each}
-				</div>
-			{/if}
 			{#if mcpError}<div class="modal-err">{mcpError}</div>{/if}
 			<div class="modal-foot">
 				<button type="button" class="btn" on:click={closeMcp} disabled={mcpBusy}>Annulla</button>
@@ -866,8 +981,7 @@
 	.srv-err { flex-basis: 100%; font-size: 12px; color: #d32f2f; word-break: break-word; }
 
 	.head-actions { display: flex; gap: 8px; align-items: center; }
-	.secrets { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); padding-top: 10px; }
-	.secrets .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); }
+	.radio { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
 	textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); padding: 9px 11px; font-size: 12px; line-height: 1.5; resize: vertical; }
 	.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 	.hint { margin: 4px 0 0; color: var(--fg-muted); font-size: 12px; }

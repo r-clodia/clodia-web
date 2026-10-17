@@ -148,19 +148,32 @@ function cardSenzaManifest(r) {
 	const mcp = r.provider === 'mcp';
 	const transport = typeof r.transport === 'string' ? r.transport : undefined;
 	const oauth = r.auth === 'oauth';
+	// I metodi del «Connetti» (clodia-platform#565): tipi, scope, nomi ed
+	// etichette dei campi — mai valori. Un gateway più vecchio non li manda, e
+	// per un backend OAuth di #532 si ricostruisce l'unico metodo che c'era.
+	const authMethods = Array.isArray(r.auth_methods)
+		? r.auth_methods
+		: oauth
+			? [{ type: 'oauth' }]
+			: [];
+	const credential = authMethods.some((m) => m && m.type === 'credential');
 	const backend = typeof r.backend === 'string' ? r.backend : 'local-fs';
 	return {
 		id: String(r.id),
 		name: String(r.label ?? r.id),
 		blurb: mcp
-			? oauth
-				? `MCP server montato (${transport ?? 'http'}) con consenso OAuth — il token sta nel vault del gateway e si rinnova da solo.`
-				: `MCP server montato (${transport ?? 'stdio'}) — tool esposti agli agent via gateway.`
+			? credential
+				? `MCP server montato (${transport ?? 'http'}) — si connette con «Connetti»${oauth ? ' (consenso OAuth o credenziale)' : ''}: la credenziale sta nel vault del gateway, mai nel config.`
+				: oauth
+					? `MCP server montato (${transport ?? 'http'}) con consenso OAuth — il token sta nel vault del gateway e si rinnova da solo.`
+					: `MCP server montato (${transport ?? 'stdio'}) — tool esposti agli agent via gateway.`
 			: `Backend di storage dei topic (${backend}, versioning ${r.versioning ?? 'emulated'}). I topic vivono qui, dietro il gateway.`,
-		scope: mcp ? (oauth ? 'mcp · oauth' : 'mcp') : backend,
+		scope: mcp
+			? ['mcp', ...authMethods.map((m) => (m.type === 'credential' ? 'credenziale' : 'oauth'))].join(' · ')
+			: backend,
 		icon: mcp ? 'mcp' : 'storage',
 		wired: true,
-		connected: mcp && !oauth ? true : Boolean(r.connected),
+		connected: mcp && authMethods.length === 0 ? true : Boolean(r.connected),
 		operational: r.operational,
 		accounts: [],
 		issues: r.issues ?? [],
@@ -174,7 +187,13 @@ function cardSenzaManifest(r) {
 		mcp,
 		transport,
 		auth: r.auth,
-		authorized: r.authorized
+		authorized: r.authorized,
+		authMethods,
+		// Un gateway senza `auth_methods` (< 2.112.0) non dice il metodo attivo
+		// né ha la rotta `disconnect`: per un OAuth di #532 autorizzato l'attivo
+		// è l'OAuth, e «Disconnetti» non si mostra.
+		authActive: typeof r.auth_active === 'string' ? r.auth_active : oauth && r.authorized ? 'oauth' : null,
+		canDisconnect: Array.isArray(r.auth_methods)
 	};
 }
 

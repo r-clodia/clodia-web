@@ -2113,6 +2113,10 @@ export interface ToolConnector {
 	auth?: string;
 	/** solo per `auth === 'oauth'`: il consenso c'è ed è ancora spendibile. */
 	authorized?: boolean;
+	/** metodi del «Connetti» (clodia-platform#565): tipi, scope, campi — mai valori. */
+	auth_methods?: { type: string; scope?: string; fields?: { name: string; label: string; secret: boolean }[] }[];
+	/** il metodo con cui il backend è connesso, o null. */
+	auth_active?: string | null;
 	/** storage backend dei topic (provider 'storage'): adapter attivo + versioning. */
 	builtin?: boolean;
 	backend?: string;
@@ -2447,6 +2451,25 @@ export async function completeMcpOAuth(
 	opts: RequestOptions = {}
 ): Promise<{ connected: boolean; server: string; detail?: string }> {
 	return apiPost(`/tools/mcp/${encodeURIComponent(name)}/oauth/complete`, body, opts);
+}
+
+/** POST `/tools/mcp/{name}/connect` — «Connetti» con una credenziale inserita
+ *  (clodia-platform#565). Il gateway prova i valori con `list_tools` e li mette
+ *  nel vault SOLO se il backend risponde; la risposta non li contiene mai. */
+export async function connectMcp(
+	name: string,
+	fields: Record<string, string>,
+	opts: RequestOptions = {}
+): Promise<{ connected: boolean; server: string; method: string; detail?: string }> {
+	return apiPost(`/tools/mcp/${encodeURIComponent(name)}/connect`, { fields }, opts);
+}
+
+/** POST `/tools/mcp/{name}/disconnect` — cancella dal vault credenziale e token OAuth. */
+export async function disconnectMcp(
+	name: string,
+	opts: RequestOptions = {}
+): Promise<{ disconnected: boolean; server: string; removed: string[] }> {
+	return apiPost(`/tools/mcp/${encodeURIComponent(name)}/disconnect`, {}, opts);
 }
 
 // ─── Providers (motori di inferenza, backend clodia-logic) ───────────────────
