@@ -274,6 +274,7 @@ import type {
 	ChatsListResponse,
 	DatabasesInventory,
 	InstanceProfile,
+	AvailablePack,
 	Pack,
 	PackDrift,
 	PackUpdateAllResult,
@@ -1956,6 +1957,23 @@ export async function importPackZip(
 /** DELETE `/clodia/packs/{name}` — rimuove un pack (plugin + agenti + manifest). */
 export async function deletePack(name: string, opts: RequestOptions = {}): Promise<void> {
 	await apiDelete(`/clodia/packs/${encodeURIComponent(name)}`, opts);
+}
+
+/** GET `/clodia/packs/available` — i pack ufficiali (di prima parte) non installati,
+ * reinstallabili dal loro upstream (clodia-platform#562). Solo admin. */
+export async function listAvailablePacks(
+	opts: RequestOptions = {}
+): Promise<AvailablePack[]> {
+	return apiGet<AvailablePack[]>('/clodia/packs/available', opts);
+}
+
+/** POST `/clodia/packs/{name}/install` — reinstalla un pack ufficiale rimosso
+ * (stesso percorso fidato dell'Update; clodia-platform#562). */
+export async function installPack(
+	name: string,
+	opts: RequestOptions = {}
+): Promise<{ installed: string; version: string; agents_restarted: number }> {
+	return apiPost(`/clodia/packs/${encodeURIComponent(name)}/install`, {}, opts);
 }
 
 /** POST `/clodia/packs/{name}/check-update` — controlla su GitHub se c'è una versione più recente. */

@@ -698,6 +698,16 @@ export interface PackProvider {
 	};
 }
 
+/** Un pack ufficiale (di prima parte, bundled) NON installato: da
+ * `GET /clodia/packs/available`, reinstallabile con `installPack`
+ * (clodia-platform#562). */
+export interface AvailablePack {
+	readonly name: string;
+	readonly description: string;
+	readonly version: string;
+	readonly first_party: true;
+}
+
 export interface Pack {
 	readonly name: string;
 	readonly description: string;

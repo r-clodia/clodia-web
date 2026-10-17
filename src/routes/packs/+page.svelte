@@ -8,13 +8,15 @@
 		importPackUrl,
 		importPackZip,
 		deletePack,
+		installPack as apiInstallPack,
+		listAvailablePacks,
 		deletePlugin,
 		updatePack as apiUpdatePack,
 		updateAllPacks as apiUpdateAllPacks,
 		checkPackUpdate as apiCheckPackUpdate,
 		checkPackDrift as apiCheckPackDrift
 	} from '$lib/api/client';
-	import type { Pack, PackDrift, PackDriftAgent, PackUpdateAllResult, Plugin } from '$lib/api/types';
+	import type { AvailablePack, Pack, PackDrift, PackDriftAgent, PackUpdateAllResult, Plugin } from '$lib/api/types';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import PluginNode from '$lib/components/PluginNode.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
@@ -177,10 +179,41 @@
 		return { message: String(err) };
 	}
 
+	// Pack ufficiali rimossi, reinstallabili (clodia-platform#562). Endpoint
+	// admin-only: per chi non è admin la lista resta vuota, senza errore.
+	let available: AvailablePack[] = [];
+	let installing: string | null = null;
+
+	async function loadAvailable() {
+		if (!$isAdmin) {
+			available = [];
+			return;
+		}
+		try {
+			available = await listAvailablePacks();
+		} catch {
+			available = [];
+		}
+	}
+
+	async function installPack(p: AvailablePack) {
+		if (installing) return;
+		installing = p.name;
+		try {
+			const r = await apiInstallPack(p.name);
+			toastSuccess(`${p.name} reinstallato (v${r.version}) · ${r.agents_restarted} agenti riavviati`);
+			await load();
+		} catch (err) {
+			toastError('Installazione fallita', errorMessage(err).message);
+		} finally {
+			installing = null;
+		}
+	}
+
 	async function load() {
 		state = { kind: 'loading' };
 		try {
-			const [packs, plugins] = await Promise.all([listPacks(), listPlugins()]);
+			const [packs, plugins] = await Promise.all([listPacks(), listPlugins(), loadAvailable()]);
 			state = { kind: 'ok', packs, plugins };
 		} catch (err) {
 			state = { kind: 'error', ...errorMessage(err) };
@@ -425,7 +458,11 @@
 	open={pendingDelete !== null}
 	title={`Rimuovere ${pendingDelete?.kind === 'pack' ? 'il pack' : 'il plugin'} "${pendingDelete?.item.name ?? ''}"?`}
 	message={pendingDelete?.kind === 'pack'
-		? 'Verranno rimossi i plugin del pack e i suoi agenti (non nativi). L\'azione non è reversibile.'
+		? pendingDelete.item.first_party
+			? 'Verranno rimossi i plugin del pack e i suoi agenti, che vengono archiviati, non cancellati. ' +
+				'I connettori del pack si chiudono: i suoi verbi e i suoi bottoni nei topic non sono più disponibili. ' +
+				'Potrai reinstallarlo da «Pack ufficiali disponibili».'
+			: 'Verranno rimossi i plugin del pack e i suoi agenti (non nativi). L\'azione non è reversibile.'
 		: 'Verranno rimosse tutte le skill, rule e configurazioni MCP del plugin. L\'azione non è reversibile.'}
 	confirmLabel="Rimuovi"
 	destructive
@@ -564,6 +601,25 @@
 							{/if}
 						</div>
 					{/if}
+				</div>
+			{/each}
+		</div>
+	{/if}
+
+	{#if available.length}
+		<div class="section-label">Pack ufficiali disponibili</div>
+		<div class="tree available">
+			{#each available as a (a.name)}
+				<div class="pack">
+					<div class="pack-head">
+						<span class="pack-name">{a.name}</span>
+						{#if a.version}<span class="version">v{a.version}</span>{/if}
+						<button type="button" class="update-btn" disabled={installing === a.name}
+							on:click={() => installPack(a)}>
+							{installing === a.name ? 'Installo…' : 'Installa'}
+						</button>
+					</div>
+					{#if a.description}<div class="pack-desc">{a.description}</div>{/if}
 				</div>
 			{/each}
 		</div>
