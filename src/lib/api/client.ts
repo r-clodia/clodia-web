@@ -663,7 +663,8 @@ export interface ChannelInfo {
 		schema_version?: number;
 		/** Cartelle condivise Mac↔container agganciate a questo topic (20 set
 		 *  2026): a differenza di Drive un BIND filesystem reale, non uno
-		 *  specchio — appaiono come local/<name>/. */
+		 *  specchio — nel topic è il mount `shared/` (#571), sul Mac
+		 *  `ClodiaShared/<name>/`. Al più una. */
 		local_folders?: { name: string }[];
 		/** Obiettivo del canale (clodia-platform#457): assente finché l'owner
 		 *  non ne fissa uno. Sta nel meta e non fra i messaggi perché è un
