@@ -1426,6 +1426,8 @@
 				const existing = info.meta.local_folders ?? [];
 				info = { ...info, meta: { ...info.meta, local_folders: [...existing, r.local_folder] } };
 			}
+			// `shared/` is a new mount at the root of the file tree (#571).
+			void loadFiles(true);
 		} catch (e) {
 			localFolderErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
@@ -1442,6 +1444,7 @@
 				const existing = info.meta.local_folders ?? [];
 				info = { ...info, meta: { ...info.meta, local_folders: existing.filter((f) => f.name !== mount) } };
 			}
+			void loadFiles(true);
 		} catch (e) {
 			localFolderErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
@@ -3209,8 +3212,12 @@
 								     reale (`meta.local_folders`). Nessuna grammatica del
 								     manifest la descrive, e inventarne una per un caso solo
 								     sarebbe peggio del cablaggio. -->
-								<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
-									on:click={openLocalFolderDialog}>🗂️ Cartella Mac</button>
+								<!-- One per topic (#571): the topic sees it as `shared/`, a
+								     fixed name, so the button goes once one is attached. -->
+								{#if (info?.meta.local_folders ?? []).length === 0}
+									<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
+										on:click={openLocalFolderDialog}>🗂️ Cartella Mac</button>
+								{/if}
 							</div>
 							{#if azioneDelleCaselle && mailboxCollegate.length > 0}
 								<ul class="egress-list">
@@ -3238,7 +3245,7 @@
 								<ul class="egress-list">
 									{#each info?.meta.local_folders ?? [] as f (f.name)}
 										<li>
-											<code>local/{f.name}/</code>
+											<code>shared/</code> <span class="muted">↔ Mac <code>ClodiaShared/{f.name}/</code></span>
 											<button type="button" class="egress-remove" disabled={localFolderBusy}
 												title="Sgancia (il contenuto reale resta sul Mac)"
 												on:click={() => confirmRemoveLocalFolder(f.name)}>✕</button>
@@ -3401,19 +3408,19 @@
 
 <!-- Cartella condivisa Mac↔container (20 set 2026): a differenza del dialog
      sopra non scrive una whitelist, dichiara un BIND filesystem reale su una
-     radice unica del gateway — il nome scelto qui è insieme il mount
-     (local/<nome>/) e la sottocartella condivisa sul Mac. -->
+     radice unica del gateway — il nome scelto qui è la sottocartella sul Mac;
+     nel topic la cartella è sempre `shared/` (#571). -->
 <Modal open={localFolderDialogOpen} dismissable={!localFolderBusy} maxWidth={380}
 	on:close={() => (localFolderDialogOpen = false)}>
 	<h2 slot="title">🗂️ Aggancia cartella condivisa</h2>
 	<p class="meta-note">
 		Precompilato col codename del topic — consigliato lasciarlo così: si
 		riconosce a colpo d'occhio su <code>ClodiaShared/</code> di quale topic
-		è quella cartella. Diventa sia la sottocartella su
-		<code>ClodiaShared/</code> sul Mac sia il mount
-		<code>local/{localFolderValue.trim() || '&lt;nome&gt;'}/</code> nel topic.
-		Bind reale, non uno specchio: scrivere da un lato si vede
-		immediatamente dall'altro.
+		è quella cartella. Sul Mac diventa
+		<code>ClodiaShared/{localFolderValue.trim() || '&lt;nome&gt;'}/</code>;
+		nel topic compare come <code>shared/</code>, accanto a
+		<code>local/</code>. Una sola per topic. Bind reale, non uno
+		specchio: scrivere da un lato si vede immediatamente dall'altro.
 	</p>
 	<input type="text" class="egress-quick-input" placeholder="tomato-amministrazione"
 		bind:value={localFolderValue} disabled={localFolderBusy}
