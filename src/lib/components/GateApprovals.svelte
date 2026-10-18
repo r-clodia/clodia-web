@@ -152,14 +152,14 @@
 					<button class="btn deny" on:click={() => deny(q)} disabled={busy === q.id}>Nega</button>
 					{#if isDestinationGate(q.verb) && q.scope}
 						<button class="btn ok" on:click={() => approve(q, 'topic')} disabled={busy === q.id}
-							title="Aggiunge questa destinazione alla whitelist di {q.scope}">Sempre qui</button>
+							title="Aggiunge questa destinazione (o fonte) alla lista di {q.scope}">Approva sempre</button>
 					{/if}
 					{#if isDestinationGate(q.verb) && q.decided_by === 'admin'}
 						<button class="btn ok" on:click={() => approve(q, 'global')} disabled={busy === q.id}
 							title="Aggiunge questa destinazione alla whitelist dell'intera istanza">Ovunque</button>
 					{/if}
 					<button class="btn ok" on:click={() => approve(q)} disabled={busy === q.id}>
-						{busy === q.id ? '…' : 'Approva'}
+						{busy === q.id ? '…' : isDestinationGate(q.verb) ? 'Approva ora' : 'Approva'}
 					</button>
 				</div>
 			</div>

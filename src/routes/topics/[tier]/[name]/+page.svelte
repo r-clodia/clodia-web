@@ -2697,7 +2697,7 @@
 										<span class="jobprop-q">🛡️ <b>{g.agent}</b> {gateLabel(g.verb).azione} <code>{gateLabel(g.verb).oggetto}</code> — approvi?</span>
 									{/if}
 									<button type="button" class="jobprop-ok" disabled={gateDeciding}
-										on:click={() => decideGate(m.id, g, true)}>{gateDeciding ? '…' : '✓ Approva'}</button>
+										on:click={() => decideGate(m.id, g, true)}>{gateDeciding ? '…' : isDestinationGate(g.verb) ? '✓ Approva ora' : '✓ Approva'}</button>
 									{#if !isDestinationGate(g.verb) && gateInfo[g.id]?.editable}
 										<!-- Approve WITH CORRECTIONS (clodia-platform#448): only on a verb
 										     gate. On a destination gate the destination IS the question,
@@ -2731,8 +2731,10 @@
 										     può usarlo: offrirlo a chi verrà rifiutato è insegnare a
 										     ignorare i bottoni. -->
 										<button type="button" class="jobprop-ok" disabled={gateDeciding}
-											title="Aggiunge questa destinazione alla whitelist di questa stanza: non verrà più chiesto qui"
-											on:click={() => decideGate(m.id, g, true, 'topic')}>✓ Sempre qui</button>
+											title={g.verb.startsWith('ingress:')
+												? 'Aggiunge questo sito alle fonti di questa stanza: non verrà più chiesto qui e ciò che arriva da lì non contaminerà più la conversazione'
+												: 'Aggiunge questa destinazione alla whitelist di questa stanza: non verrà più chiesto qui'}
+											on:click={() => decideGate(m.id, g, true, 'topic')}>✓ Approva sempre</button>
 										{#if $isAdmin}
 											<button type="button" class="jobprop-ok" disabled={gateDeciding}
 												title="Aggiunge questa destinazione alla whitelist dell'INTERA istanza, tutte le stanze comprese"
