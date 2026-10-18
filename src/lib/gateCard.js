@@ -128,7 +128,10 @@ export function recordDecision(decisi, msg, esito) {
 export function gateDestination(verb) {
 	const m = /^(egress|ingress):([^:]+):(.+)$/.exec(verb || '');
 	if (!m) return null;
-	return { direzione: m[1], canale: m[2], dest: m[3] };
+	// `ingress:web:<sito>|<chat>` (clodia-platform#569): il suffisso dice la
+	// stanza a cui vale il consenso, non fa parte del sito.
+	const dest = m[1] === 'ingress' && m[2] === 'web' ? m[3].replace(/\|[^|]*$/, '') : m[3];
+	return { direzione: m[1], canale: m[2], dest };
 }
 
 /**

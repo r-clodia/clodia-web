@@ -152,7 +152,9 @@
 					<button class="btn deny" on:click={() => deny(q)} disabled={busy === q.id}>Nega</button>
 					{#if isDestinationGate(q.verb) && q.scope}
 						<button class="btn ok" on:click={() => approve(q, 'topic')} disabled={busy === q.id}
-							title="Aggiunge questa destinazione (o fonte) alla lista di {q.scope}">Approva sempre</button>
+							title={q.verb.startsWith('ingress:')
+								? `Rende questo sito una fonte fidata di ${q.scope}: non verrà più chiesto e ciò che arriva da lì non contaminerà più la conversazione`
+								: `Aggiunge questa destinazione alla whitelist di ${q.scope}`}>Approva sempre</button>
 					{/if}
 					{#if isDestinationGate(q.verb) && q.decided_by === 'admin'}
 						<button class="btn ok" on:click={() => approve(q, 'global')} disabled={busy === q.id}
