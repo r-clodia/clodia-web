@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
+	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError, type McpTestVerb } from '$lib/api/client';
+	import McpVerbsDialog from '$lib/components/McpVerbsDialog.svelte';
 	import type { ConnectorIssue, MailboxStatus, ConnectorRegistry } from '$lib/api/client';
 	import { cardsDiTools, serviziDiPack } from '$lib/connettori';
 	import { isAdmin } from '$lib/stores/capabilities';
@@ -85,12 +86,21 @@
 
 	let testResult: Record<string, { ok: boolean | null; detail: string }> = {};
 	let testing: Record<string, boolean> = {};
+	// #575: the verbs of a tested MCP backend, shown in a dialog.
+	let verbsOpen = false;
+	let verbsBackend = '';
+	let verbsList: McpTestVerb[] = [];
 
 	async function testConn(id: string) {
 		testing = { ...testing, [id]: true };
 		try {
 			const r = await testConnector(id);
 			testResult = { ...testResult, [id]: r };
+			if (r.ok === true && Array.isArray(r.verbs)) {
+				verbsBackend = id;
+				verbsList = r.verbs;
+				verbsOpen = true;
+			}
 			if (r.ok === true) toastSuccess(`${id}: ${r.detail}`);
 			else if (r.ok === false) toastError(`${id}: ${r.detail}`);
 			else toastInfo(`${id}: ${r.detail}`);
@@ -661,6 +671,8 @@
 		</ul>
 	</section>
 {/if}
+
+<McpVerbsDialog open={verbsOpen} backend={verbsBackend} verbs={verbsList} on:close={() => (verbsOpen = false)} />
 
 {#if modalOpen}
 	<div class="overlay" on:click|self={closeModal} role="presentation">
