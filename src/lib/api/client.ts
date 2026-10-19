@@ -2376,12 +2376,22 @@ export async function removeMailbox(account: string, opts: RequestOptions = {}):
 }
 
 
+/** A verb of a tested MCP backend (#575): its gateway name, the backend's
+ *  description (untrusted text), and whether the gateway lets it through. */
+export interface McpTestVerb {
+	name: string;
+	description: string;
+	enabled: boolean;
+	reason?: string;
+}
+
 /** POST `/tools/{id}/test` — verifica REALE della connessione (chiamata al
- *  provider). {ok: bool|null, detail}. ok=null → non testabile. */
+ *  provider). {ok: bool|null, detail}. ok=null → non testabile. Per un
+ *  backend MCP riuscito anche `verbs` (#575). */
 export async function testConnector(
 	id: string,
 	opts: RequestOptions = {}
-): Promise<{ ok: boolean | null; detail: string }> {
+): Promise<{ ok: boolean | null; detail: string; verbs?: McpTestVerb[] }> {
 	return apiPost(`/tools/${encodeURIComponent(id)}/test`, {}, opts);
 }
 
