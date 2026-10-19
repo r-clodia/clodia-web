@@ -2291,64 +2291,40 @@ export async function restoreTest(opts: RequestOptions = {}): Promise<{ ok: bool
 	return apiPost('/tools/backup/restore-test', {}, opts);
 }
 
-/** GET `/tools/google/app` — l'app OAuth Google (client_id/secret) è configurata? */
+/** The Google OAuth flow is google-pack's gateway component's: its routes
+ *  `/tools/google-pack/{app,auth,connect}` (clodia-platform#558), reached
+ *  directly since the gateway's `/tools/google/*` aliases were removed
+ *  (#526). The component authenticates (a human admin) and audits. */
+const GOOGLE_PACK = '/tools/google-pack';
+
+/** GET `…/app` — l'app OAuth Google (client_id/secret) è configurata? */
 export async function getGoogleAppStatus(
 	opts: RequestOptions = {}
 ): Promise<{ configured: boolean; redirect_uri: string }> {
-	return apiGet('/tools/google/app', opts);
+	return apiGet(`${GOOGLE_PACK}/app`, opts);
 }
 
-/** POST `/tools/google/app` — deposita la credenziale d'app OAuth Google. */
+/** POST `…/app` — deposita la credenziale d'app OAuth Google. */
 export async function configureGoogleApp(
 	body: { client_json?: string; client_id?: string; client_secret?: string; redirect_uri?: string },
 	opts: RequestOptions = {}
 ): Promise<{ configured: boolean; redirect_uri: string }> {
-	return apiPost('/tools/google/app', body, opts);
+	return apiPost(`${GOOGLE_PACK}/app`, body, opts);
 }
 
-/** GET `/tools/gmail/auth` — URL di consenso Google (selettore account) + state. */
-export async function getGmailAuth(
-	opts: RequestOptions = {}
-): Promise<{ auth_url: string; state: string; redirect_uri: string }> {
-	return apiGet('/tools/gmail/auth', opts);
-}
-
-/** POST `/tools/gmail/connect` — scambia il code, ricava l'account dal profilo e lo deposita. */
-export async function gmailConnect(
-	body: { code: string; state: string },
-	opts: RequestOptions = {}
-): Promise<{ connected: boolean; account: string; email: string }> {
-	return apiPost('/tools/gmail/connect', body, opts);
-}
-
-/** GET `/tools/google/auth` — URL del consenso Google UNIFICATO (Gmail + Drive + Docs + Calendar). */
+/** GET `…/auth` — URL del consenso Google UNIFICATO (Gmail + Drive + Docs + Calendar). */
 export async function getGoogleAuth(
 	opts: RequestOptions = {}
 ): Promise<{ auth_url: string; state: string; redirect_uri: string }> {
-	return apiGet('/tools/google/auth', opts);
+	return apiGet(`${GOOGLE_PACK}/auth`, opts);
 }
 
-/** POST `/tools/google/connect` — scambia il code del consenso unificato → google_<account>. */
+/** POST `…/connect` — scambia il code del consenso unificato → google_<account>. */
 export async function googleConnect(
 	body: { code: string; state: string },
 	opts: RequestOptions = {}
 ): Promise<{ connected: boolean; account: string; email: string }> {
-	return apiPost('/tools/google/connect', body, opts);
-}
-
-/** GET `/tools/gworkspace/auth` — URL di consenso Google Workspace (Drive · Docs · Calendar) + state. */
-export async function getWorkspaceAuth(
-	opts: RequestOptions = {}
-): Promise<{ auth_url: string; state: string; redirect_uri: string }> {
-	return apiGet('/tools/gworkspace/auth', opts);
-}
-
-/** POST `/tools/gworkspace/connect` — scambia il code, ricava l'account da userinfo e lo deposita. */
-export async function workspaceConnect(
-	body: { code: string; state: string },
-	opts: RequestOptions = {}
-): Promise<{ connected: boolean; account: string; email: string }> {
-	return apiPost('/tools/gworkspace/connect', body, opts);
+	return apiPost(`${GOOGLE_PACK}/connect`, body, opts);
 }
 
 /** POST `/clodia/cert-request` — un nuovo utente chiede all'admin di emettere il
@@ -2400,8 +2376,6 @@ export async function removeMailbox(account: string, opts: RequestOptions = {}):
 }
 
 
-/** POST `/tools/github/connect` — deposita il PAT GitHub nel vault e registra il
- *  backend MCP ufficiale. PAT vuoto → disconnette. */
 /** POST `/tools/{id}/test` — verifica REALE della connessione (chiamata al
  *  provider). {ok: bool|null, detail}. ok=null → non testabile. */
 export async function testConnector(
@@ -2409,14 +2383,6 @@ export async function testConnector(
 	opts: RequestOptions = {}
 ): Promise<{ ok: boolean | null; detail: string }> {
 	return apiPost(`/tools/${encodeURIComponent(id)}/test`, {}, opts);
-}
-
-/** GET `/tools/telegram/status` — stato non sensibile (configured, @username,
- *  chat note/attive, ultimo errore). Mai il token. */
-export async function getTelegramStatus(
-	opts: RequestOptions = {}
-): Promise<{ configured: boolean; bot_username?: string; known_chats?: number; active_chats?: number; last_error?: string }> {
-	return apiGet('/tools/telegram/status', opts);
 }
 
 /** POST `/tools/mcp` — registra uno o più MCP server da mcp.json. I valori in
@@ -2730,11 +2696,8 @@ export async function removeLocalFolder(tier: string, name: string, mount: strin
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/local-folder`, { action: 'remove', mount }, opts);
 }
 
-/** GET/POST `/api/topics/{tier}/{name}/tg-link` — connetti/disconnetti la
- *  chat Telegram del topic (23 set 2026): a differenza dell'icona rapida
- *  Telegram di sola whitelist, qui l'azione fa ANCHE il binding vero
- *  (l'equivalente di `telegram.listen`/`unlisten`) — senza il quale il
- *  messaggero non riporta nulla anche con la whitelist già scritta. */
+/** Il cap SEAL di un'azione che aggancia un canale (il bottone Telegram del
+ *  topic, `ConnectorActionState.seal`, clodia-platform#405). */
 export interface TelegramSealState {
 	/** Tier del topic, come lo vede il server. */
 	tier: string;
@@ -2746,16 +2709,6 @@ export interface TelegramSealState {
 	requires_ack: boolean;
 	/** La presa d'atto registrata (chi/quando/per quale tier), o null. */
 	ack: { channel: string; tier: string; cap: string; by: string; at: string } | null;
-}
-
-export interface TelegramLinkStatus {
-	connected: boolean;
-	chat_id: string | null;
-	/** clodia-platform#405 — dove sta il cap SEAL su QUESTO topic. Arriva dal
-	 *  server apposta: la regola («telegram cappa a SEAL-1») vive in un posto
-	 *  solo, se no un giorno la UI e il gateway diranno cose diverse e quella
-	 *  che conta non sarà quella che l'owner ha letto. */
-	seal?: TelegramSealState;
 }
 
 /** GET/POST `/api/topics/{tier}/{name}/mailbox-link` — connettore «Mailbox»
@@ -2785,7 +2738,7 @@ export async function getTopicMailboxes(tier: string, name: string, opts: Reques
 
 /** Lo stato di UNA azione di connettore su un topic (clodia-platform#520).
  *
- *  La forma generica di `tg-link` e `mailbox-link`: i campi da riempire li
+ *  La forma generica dei bottoni di un topic: i campi da riempire li
  *  dichiara il manifest del connettore, i valori offerti li risolve il gateway
  *  (una casella si SCEGLIE fra quelle di sistema, non si digita — un indirizzo
  *  scritto a mano finirebbe in whitelist senza una credenziale dietro), e

@@ -120,7 +120,7 @@ const RISERVATO = {
 
 const REGISTRY = { connectors: [PACK, VOCABOLARIO, RISERVATO] };
 
-const cards = cardsDiTools(REGISTRY, [], {});
+const cards = cardsDiTools(REGISTRY, []);
 const card = cards.find((c) => c.id === 'sms');
 if (!card) {
 	guasti.push(
@@ -146,12 +146,22 @@ if (cards.some((c) => c.id === 'vocabolario')) {
 const conVivo = cardsDiTools(REGISTRY, [
 	{ id: 'sms', connected: true, accounts: ['acme'], operational: true },
 	{ id: 'un-mcp', label: 'Un MCP', provider: 'mcp', connected: true, transport: 'stdio' }
-], {});
+]);
 if (!conVivo.find((c) => c.id === 'sms')?.connected) {
 	guasti.push('lo stato vivo di `GET /tools` non si innesta sulla card del registry');
 }
 if (!conVivo.some((c) => c.id === 'un-mcp')) {
 	guasti.push('un backend montato senza manifest sparisce dalla pagina');
+}
+if (conVivo.filter((c) => c.id === 'sms').length !== 1) {
+	// clodia-platform#526: a live row and the registry card of the same id are
+	// ONE card (the mailbox row used to be `mailboxes` beside `mail`: drawn twice).
+	guasti.push('una riga di `GET /tools` con l\'id di una card del registry produce due card');
+}
+// The edition is the gateway's (#526): the page no longer filters on the
+// profile's names, which are not the registry's ids.
+if (cardsDiTools(REGISTRY, [], { ammessi: [] }).length === 0) {
+	guasti.push('la pagina Tools filtra ancora le card sul profilo: lo fa il gateway');
 }
 
 const azioni = azioniDiTopic(REGISTRY, { isAdmin: false });

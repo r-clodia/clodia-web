@@ -51,7 +51,7 @@ const [card] = cardsDiTools(null, [{
 	auth: 'oauth', authorized: false, auth_active: null,
 	auth_methods: [{ type: 'oauth', scope: 'invoicetronic:read' },
 		{ type: 'credential', fields: [{ name: 'APIKEY', label: 'API key', secret: true }] }]
-}], { ammessi: null });
+}]);
 if (!card) guasti.push('connettori.js: il backend MCP non produce una card');
 else {
 	if (card.connected) guasti.push('connettori.js: backend con metodi e senza connessione risulta connesso');
@@ -60,10 +60,10 @@ else {
 }
 // Gateway vecchio (< 2.112.0): OAuth autorizzato → attivo «oauth», niente «Disconnetti».
 const [vecchio] = cardsDiTools(null, [{ id: 'old', provider: 'mcp', transport: 'http',
-	connected: true, auth: 'oauth', authorized: true }], { ammessi: null });
+	connected: true, auth: 'oauth', authorized: true }]);
 if (vecchio?.authActive !== 'oauth') guasti.push('connettori.js: su un gateway vecchio l\'OAuth autorizzato non risulta attivo');
 if (vecchio?.canDisconnect) guasti.push('connettori.js: su un gateway vecchio «Disconnetti» porterebbe a un 404');
-const [semplice] = cardsDiTools(null, [{ id: 'plain', provider: 'mcp', transport: 'stdio' }], { ammessi: null });
+const [semplice] = cardsDiTools(null, [{ id: 'plain', provider: 'mcp', transport: 'stdio' }]);
 if (!semplice?.connected) guasti.push('connettori.js: un backend senza metodi deve restare «montato» (connesso)');
 
 if (guasti.length) {
