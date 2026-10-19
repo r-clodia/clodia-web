@@ -10,12 +10,10 @@
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
 
 	// Sezione Tools — l'owner connette qui i tool esterni del pacchetto base.
-	// Gmail è cablato sul backend del gateway clodia-tools (wire diretto):
-	//   GET  /tools                → stato connettori
-	//   GET  /tools/gmail/auth      → URL di consenso Google + state
-	//   POST /tools/gmail/connect   → exchange code → deposito nella vault
+	// Le card vengono dal registry dei connettori del gateway (GET /tools,
+	// /tools/connectors), già filtrato per edizione. Il consenso Google passa
+	// dalle rotte del componente di google-pack: /tools/google-pack/{app,auth,connect}.
 	// Il token finale è custodito nella vault del gateway, non in secrets/.
-	// Drive/Calendar: in arrivo (stesso meccanismo, backend non ancora esposto).
 
 	// Il modello di una card. Non lo costruisce più questa pagina: lo deriva
 	// `$lib/connettori.js` dal registry dei connettori installati, unito allo
