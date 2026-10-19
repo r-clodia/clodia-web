@@ -25,13 +25,18 @@
 		<span class="count">{abilitati.length} abilitati su {verbs.length}</span>
 	</h2>
 
+	<p class="scope">
+		Abilitato = il gateway lo lascia passare su questa istanza. Quale agente può
+		usarlo dipende dai suoi permessi.
+	</p>
+
 	{#if !verbs.length}
 		<p class="empty">Il backend non espone nessun verbo.</p>
 	{/if}
 
 	{#if abilitati.length}
 		<ul class="verbs">
-			{#each abilitati as v (v.name)}
+			{#each abilitati as v, i (i)}
 				<li>
 					<code class="name">{v.name}</code>
 					{#if v.description}<p class="desc">{v.description}</p>{/if}
@@ -43,7 +48,7 @@
 	{#if esclusi.length}
 		<h3 class="sub">Non abilitati</h3>
 		<ul class="verbs off">
-			{#each esclusi as v (v.name)}
+			{#each esclusi as v, i (i)}
 				<li>
 					<code class="name">{v.name}</code>
 					{#if v.reason}<p class="reason">{v.reason}</p>{/if}
@@ -64,6 +69,12 @@
 		font-size: 12.5px;
 		font-weight: 400;
 		color: var(--fg-muted);
+	}
+	.scope {
+		margin: 0 0 12px;
+		color: var(--fg-muted);
+		font-size: 12.5px;
+		line-height: 1.45;
 	}
 	.empty {
 		margin: 0;
