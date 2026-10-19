@@ -66,7 +66,7 @@ if (pagina !== null) {
 // consenso NON è connesso. Un `connected: true` costante rimetterebbe
 // esattamente il difetto — verde a prescindere dal consenso, e ogni chiamata
 // che fallisce con 401 senza che nessuno sappia perché.
-const mcp = (riga) => cardsDiTools({ connectors: [] }, [riga], {})[0];
+const mcp = (riga) => cardsDiTools({ connectors: [] }, [riga])[0];
 const senzaConsenso = mcp({
 	id: 'remoto', label: 'Remoto', provider: 'mcp', transport: 'http',
 	auth: 'oauth', authorized: false, connected: false

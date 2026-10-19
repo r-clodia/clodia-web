@@ -66,10 +66,13 @@ function elenco(registry) {
  *          builtin?: boolean, backend?: string, versioning?: string,
  *          transport?: string, auth?: string, authorized?: boolean,
  *          bot_username?: string}[]} live righe di `GET /tools`
- * @param {{ammessi?: string[] | null}} [opzioni] profilo d'istanza
+ *
+ * The edition's `integrations.connectors` is not applied here: the gateway
+ * filters both sources with one decision (clodia-platform#526), and the
+ * profile speaks other names than the registry (`mailboxes` is `mail`).
+ * The two sources share the registry's ids, so a row and its card are one.
  */
-export function cardsDiTools(registry, live, opzioni = {}) {
-	const ammessi = opzioni.ammessi ?? null;
+export function cardsDiTools(registry, live) {
 	const vivi = Array.isArray(live) ? live : [];
 	const perId = new Map(vivi.filter((r) => r && r.id).map((r) => [String(r.id), r]));
 	/** @type {Record<string, unknown>[]} */
@@ -115,11 +118,7 @@ export function cardsDiTools(registry, live, opzioni = {}) {
 		cards.push(cardSenzaManifest(r));
 	}
 
-	return ammessi === null
-		? cards
-		: cards.filter(
-				(c) => c.provider === 'mcp' || c.builtin === true || ammessi.includes(String(c.id))
-			);
+	return cards;
 }
 
 /**

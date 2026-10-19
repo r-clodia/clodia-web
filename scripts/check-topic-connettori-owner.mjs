@@ -68,7 +68,7 @@ const carta = (docs_url) => ({
 		}
 	]
 });
-const malevola = cardsDiTools(carta('javascript:alert(1)'), [], {}).find((c) => c.id === 'p');
+const malevola = cardsDiTools(carta('javascript:alert(1)'), []).find((c) => c.id === 'p');
 if (!malevola) {
 	guasti.push('cardsDiTools non produce la card di prova');
 } else {
@@ -77,7 +77,7 @@ if (!malevola) {
 		guasti.push('il docs_url non https resta nella card come TESTO (docsUrl), non sparisce');
 	}
 }
-const buona = cardsDiTools(carta('https://example.com/docs'), [], {}).find((c) => c.id === 'p');
+const buona = cardsDiTools(carta('https://example.com/docs'), []).find((c) => c.id === 'p');
 if (buona?.docsHref !== 'https://example.com/docs') {
 	guasti.push('una card con docs_url https:// non porta il suo href');
 }

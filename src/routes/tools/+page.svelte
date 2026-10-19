@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getConnectorRegistry, connectConnector, getGmailAuth, gmailConnect, getWorkspaceAuth, workspaceConnect, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
+	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError } from '$lib/api/client';
 	import type { ConnectorIssue, MailboxStatus, ConnectorRegistry } from '$lib/api/client';
 	import { cardsDiTools, serviziDiPack } from '$lib/connettori';
 	import { isAdmin } from '$lib/stores/capabilities';
@@ -10,12 +10,10 @@
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
 
 	// Sezione Tools — l'owner connette qui i tool esterni del pacchetto base.
-	// Gmail è cablato sul backend del gateway clodia-tools (wire diretto):
-	//   GET  /tools                → stato connettori
-	//   GET  /tools/gmail/auth      → URL di consenso Google + state
-	//   POST /tools/gmail/connect   → exchange code → deposito nella vault
+	// Le card vengono dal registry dei connettori del gateway (GET /tools,
+	// /tools/connectors), già filtrato per edizione. Il consenso Google passa
+	// dalle rotte del componente di google-pack: /tools/google-pack/{app,auth,connect}.
 	// Il token finale è custodito nella vault del gateway, non in secrets/.
-	// Drive/Calendar: in arrivo (stesso meccanismo, backend non ancora esposto).
 
 	// Il modello di una card. Non lo costruisce più questa pagina: lo deriva
 	// `$lib/connettori.js` dal registry dei connettori installati, unito allo
@@ -59,9 +57,8 @@
 
 	let cards: CardModel[] = [];
 	let registry: ConnectorRegistry | null = null;
-	// Edizione (Modular Distro): se il profilo dichiara i connettori nativi,
-	// le card fuori lista non esistono (l'enforcement vero è nel gateway).
-	$: allowedConnectors = $instanceProfile.integrations?.connectors ?? null;
+	// Edizione (Modular Distro): le card fuori lista non arrivano proprio — il
+	// gateway filtra snapshot e registry (clodia-platform#526).
 	$: visibleCards = cards;
 	// I servizi lungo-vivi dei pack (#515): il campo arriva con
 	// clodia-tools#362 e finché non c'è la sezione semplicemente non compare.
@@ -69,10 +66,9 @@
 	let loading = true;
 	let loadError = '';
 
-	// ─── Modale di connessione OAuth Google (Gmail o Workspace) ───
+	// ─── Modale di connessione OAuth Google (consenso unificato) ───
 	let modalOpen = false;
-	let connectKind: 'gmail' | 'gworkspace' | 'google' = 'google';
-	$: connectLabel = connectKind === 'google' ? 'Google' : connectKind === 'gworkspace' ? 'Google Workspace' : 'Gmail';
+	const connectLabel = 'Google';
 	let step: 'intro' | 'code' | 'app-config' = 'intro';
 	let code = '';
 	let clientJson = '';
@@ -133,9 +129,10 @@
 			}
 			mailboxes = boxes;
 			mailboxStatuses = statuses;
-			cards = cardsDiTools(registry, tools.connectors, {
-				ammessi: allowedConnectors ? [...allowedConnectors] : null
-			}) as unknown as CardModel[];
+			// The edition's `integrations.connectors` is applied by the gateway
+			// to both sources (clodia-platform#526): filtering again here, on
+			// the profile's names, dropped the cards whose registry id differs.
+			cards = cardsDiTools(registry, tools.connectors) as unknown as CardModel[];
 		} catch (err) {
 			loadError = err instanceof ApiError ? err.message : String(err);
 		} finally {
@@ -143,8 +140,7 @@
 		}
 	}
 
-	function openConnect(kind: 'gmail' | 'gworkspace' | 'google' = 'google') {
-		connectKind = kind;
+	function openConnect() {
 		step = 'intro';
 		code = '';
 		authState = '';
@@ -162,8 +158,7 @@
 		busy = true;
 		modalError = '';
 		try {
-			const { auth_url, state, redirect_uri } =
-				connectKind === 'google' ? await getGoogleAuth() : connectKind === 'gworkspace' ? await getWorkspaceAuth() : await getGmailAuth();
+			const { auth_url, state, redirect_uri } = await getGoogleAuth();
 			authState = state;
 			redirectUri = redirect_uri;
 			window.open(auth_url, '_blank', 'noopener');
@@ -208,11 +203,7 @@
 		modalError = '';
 		try {
 			const body = { code: code.trim(), state: authState };
-			const res = connectKind === 'google'
-				? await googleConnect(body)
-				: connectKind === 'gworkspace'
-				? await workspaceConnect(body)
-				: await gmailConnect(body);
+			const res = await googleConnect(body);
 			toastSuccess(`${connectLabel} connesso`, res.email);
 			closeModal();
 			await load();
@@ -289,7 +280,7 @@
 
 	function connetti(c: CardModel) {
 		if (c.gestisce.includes('mailboxes')) return openMailboxes();
-		if (c.credenziale?.kind === 'oauth') return openConnect('google');
+		if (c.credenziale?.kind === 'oauth') return openConnect();
 		if (c.credenziale) return openCredential(c);
 	}
 
