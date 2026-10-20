@@ -1307,60 +1307,118 @@ export interface SSEEvent {
 
 /**
  * Open an SSE connection to `<base>/<path>` and call `onEvent` for each
- * event. Returns a cleanup function that closes the underlying EventSource.
+ * event. Returns a cleanup function that closes the connection.
  *
  * Notes:
- *  - Uses the browser-native `EventSource`. In SSR (Node) it will no-op and
- *    return a cleanup that does nothing.
- *  - `onError` is optional; when omitted, errors are logged to console.
+ *  - A `fetch()` reader, not `EventSource` (clodia-platform#511): `EventSource`
+ *    cannot send headers, so the session token travelled in the query string
+ *    and every access log kept it in clear. Here it goes in `Authorization`,
+ *    and the server refuses a token passed as a query parameter.
+ *  - In SSR (Node) it no-ops and returns a cleanup that does nothing.
+ *  - `onError` is called once when the stream fails or ends: the caller
+ *    decides whether to reconnect (EventSource used to retry on its own).
  */
 export function apiSSE(
 	path: string,
 	onEvent: (ev: SSEEvent) => void,
 	onError?: (err: Event) => void
 ): () => void {
-	if (typeof window === 'undefined' || typeof EventSource === 'undefined') {
-		// SSR or unsupported environment — return a noop closer.
+	if (typeof window === 'undefined' || typeof fetch === 'undefined'
+		|| typeof AbortController === 'undefined') {
 		return () => {};
 	}
 
-	// `EventSource` non sa mandare header, quindi il token viaggia in query.
-	// Non è una scorciatoia: senza questa via l'endpoint resterebbe aperto —
-	// ed è com'era, mentre gli eventi trasportavano il testo dei messaggi.
-	const tok = authToken();
-	const base = joinUrl(path);
-	const url = tok
-		? `${base}${base.includes('?') ? '&' : '?'}token=${encodeURIComponent(tok)}`
-		: base;
-	const es = new EventSource(url, { withCredentials: false });
+	const ctrl = new AbortController();
+	let closed = false;
+	const fail = (why: string, status?: number) => {
+		if (closed) return;
+		closed = true;
+		// `status` travels on the event: 401/403 mean "log in again", not
+		// "retry in 5 s" (review of #248).
+		const e = Object.assign(new Event('error'), { status });
+		if (onError) onError(e);
+		else console.error('[apiSSE] error', why);
+	};
 
-	const wrap = (event: string) => (e: MessageEvent) => {
-		const data = typeof e.data === 'string' ? e.data : String(e.data ?? '');
+	const headers: Record<string, string> = { Accept: 'text/event-stream' };
+	const tok = authToken();
+	if (tok) headers.Authorization = `Bearer ${tok}`;
+
+	const emit = (event: string, dataLines: string[], id: string | undefined) => {
+		if (!dataLines.length) return;
+		const data = dataLines.join('\n');
 		let json: unknown = undefined;
 		try {
 			json = JSON.parse(data);
 		} catch {
 			/* not JSON — that's fine */
 		}
-		onEvent({ event, data, id: (e as MessageEvent).lastEventId || undefined, json });
+		onEvent({ event: event || 'message', data, id, json });
 	};
 
-	// The default `message` channel.
-	es.onmessage = wrap('message');
-
-	// We can't enumerate custom event names ahead of time. Consumers who need
-	// named events should subscribe via the returned EventSource — for now we
-	// expose the most common case (the default channel). To keep the surface
-	// minimal and predictable we don't attach listeners for arbitrary names.
-
-	es.onerror = (e) => {
-		if (onError) onError(e);
-		else console.error('[apiSSE] error', e);
-	};
+	(async () => {
+		let res: Response;
+		try {
+			res = await fetch(joinUrl(path), { headers, signal: ctrl.signal, cache: 'no-store' });
+		} catch (err) {
+			if (!ctrl.signal.aborted) fail(String(err));
+			return;
+		}
+		if (!res.ok || !res.body) {
+			try {
+				await res.body?.cancel();
+			} catch {
+				/* ignore */
+			}
+			fail(`HTTP ${res.status}`, res.status);
+			return;
+		}
+		const reader = res.body.getReader();
+		const decoder = new TextDecoder();
+		let buf = '';
+		let event = '';
+		let id: string | undefined;
+		let dataLines: string[] = [];
+		try {
+			for (;;) {
+				const { value, done } = await reader.read();
+				if (done) break;
+				buf += decoder.decode(value, { stream: true });
+				let nl: number;
+				while ((nl = buf.search(/\r\n|\n|\r/)) >= 0) {
+					// A CRLF split across two chunks: wait for the `\n`, or the
+					// lone `\r` would end a line and the next `\n` an empty one.
+					if (buf[nl] === '\r' && nl === buf.length - 1) break;
+					const line = buf.slice(0, nl);
+					buf = buf.slice(nl + (buf.startsWith('\r\n', nl) ? 2 : 1));
+					if (line === '') {
+						emit(event, dataLines, id);
+						event = '';
+						dataLines = [];
+						continue;
+					}
+					if (line.startsWith(':')) continue; // comment / keep-alive
+					const colon = line.indexOf(':');
+					const field = colon < 0 ? line : line.slice(0, colon);
+					let val = colon < 0 ? '' : line.slice(colon + 1);
+					if (val.startsWith(' ')) val = val.slice(1);
+					if (field === 'data') dataLines.push(val);
+					else if (field === 'event') event = val;
+					else if (field === 'id') id = val;
+				}
+			}
+		} catch (err) {
+			if (!ctrl.signal.aborted) fail(String(err));
+			return;
+		}
+		// The server closed the stream: same as an EventSource error.
+		if (!ctrl.signal.aborted) fail('stream ended');
+	})();
 
 	return () => {
+		closed = true;
 		try {
-			es.close();
+			ctrl.abort();
 		} catch {
 			/* ignore */
 		}
