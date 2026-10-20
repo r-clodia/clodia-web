@@ -103,7 +103,14 @@ function openConnection() {
 	_cleanup = apiSSE(
 		STREAM_PATH,
 		(raw) => fanOut(raw),
-		(_err) => {
+		(err) => {
+			// Refused (expired or missing session): retrying every 5 s cannot
+			// help. The next subscriber (a navigation, a new login) reopens.
+			const status = (err as Event & { status?: number }).status;
+			if (status === 401 || status === 403) {
+				closeConnection();
+				return;
+			}
 			const now = Date.now();
 			if (now - _lastErrorAt < 500) return;
 			_lastErrorAt = now;
@@ -150,7 +157,9 @@ function scheduleRetry() {
 export function startEventStream(): () => void {
 	if (!isBrowser()) return () => {};
 	_refCount += 1;
-	if (_refCount === 1) openConnection();
+	// Also when others hold a lease: after a 401/403 the stream stays closed
+	// until someone subscribes again (a navigation, a new login).
+	if (!_cleanup && !_retryTimer) openConnection();
 	let released = false;
 	return () => {
 		if (released) return;

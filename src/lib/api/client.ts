@@ -1330,10 +1330,12 @@ export function apiSSE(
 
 	const ctrl = new AbortController();
 	let closed = false;
-	const fail = (why: string) => {
+	const fail = (why: string, status?: number) => {
 		if (closed) return;
 		closed = true;
-		const e = new Event('error');
+		// `status` travels on the event: 401/403 mean "log in again", not
+		// "retry in 5 s" (review of #248).
+		const e = Object.assign(new Event('error'), { status });
 		if (onError) onError(e);
 		else console.error('[apiSSE] error', why);
 	};
@@ -1363,7 +1365,12 @@ export function apiSSE(
 			return;
 		}
 		if (!res.ok || !res.body) {
-			fail(`HTTP ${res.status}`);
+			try {
+				await res.body?.cancel();
+			} catch {
+				/* ignore */
+			}
+			fail(`HTTP ${res.status}`, res.status);
 			return;
 		}
 		const reader = res.body.getReader();
