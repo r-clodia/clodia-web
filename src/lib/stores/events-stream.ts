@@ -10,7 +10,7 @@
  *     `thinking_chunk`, `task_progress`, `usage`, `status`, `interrupted`,
  *     `error` → in-chat streaming events (consumed by /chats/+page.svelte)
  *
- * This module opens ONE EventSource for the lifetime of the SPA the first
+ * This module opens ONE stream (a `fetch` reader, #511) for the lifetime of the SPA the first
  * time `startEventStream()` is called, and reference-counts subscribers so
  * the connection stays open while at least one page wants it.
  *
@@ -21,9 +21,9 @@
  *      every time an `agent_activity` event arrives, useful as a "refresh
  *      now" signal for pollers (jobs list, activity log, ...).
  *
- * Reconnect: the browser-native EventSource auto-reconnects on transient
- * drops, but to recover from a server restart cleanly we tear down and
- * reopen with a simple 1s/2s/5s backoff on `onerror`.
+ * Reconnect: the stream is a `fetch` reader (#511), which does not retry by
+ * itself: on `onerror` (failure or end of stream) we tear down and reopen
+ * with a simple 1s/2s/5s backoff.
  */
 
 import { writable, type Readable } from 'svelte/store';
@@ -64,7 +64,7 @@ const _chatLifecycleTick = writable<number>(0);
 export const chatLifecycleTick: Readable<number> = { subscribe: _chatLifecycleTick.subscribe };
 
 function isBrowser(): boolean {
-	return typeof window !== 'undefined' && typeof EventSource !== 'undefined';
+	return typeof window !== 'undefined' && typeof fetch !== 'undefined';
 }
 
 function fanOut(raw: SSEEvent) {
