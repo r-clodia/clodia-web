@@ -64,7 +64,7 @@
 	} from '$lib/api/client';
 	import { getTopicAgentsMd, saveTopicAgentsMd, type TopicAgentsMd } from '$lib/api/client';
 	import { openSignedFile } from '$lib/download';
-	import { toastSuccess } from '$lib/stores/toasts';
+	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
 	import { gateLabel } from '$lib/gateLabel';
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
@@ -1504,6 +1504,16 @@
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
 			metaBusy = false;
+		}
+	}
+
+	async function copiaMessageBox(addr: string) {
+		if (!addr) return;
+		try {
+			await navigator.clipboard.writeText(addr);
+			toastSuccess('Indirizzo copiato');
+		} catch {
+			toastError('Copia non riuscita: seleziona l’indirizzo a mano');
 		}
 	}
 
@@ -3181,6 +3191,22 @@
 								<p class="muted">Nessuna voce locale.</p>
 							{/if}
 						</div>
+						{#if info?.message_box}
+							<!-- The topic's message box (#583): mail to this address
+							     from a sender declared with mailfrom: reaches the channel. -->
+							<p class="message-box">
+								📮 Message box:
+								{#if info.message_box.address}
+									<code>{info.message_box.address}</code>
+									<button type="button" class="egress-remove" title="Copia l'indirizzo"
+										on:click={() => copiaMessageBox(info?.message_box?.address ?? '')}>⧉</button>
+									<br /><span class="muted">Arriva qui la posta inviata a questo indirizzo dai mittenti dichiarati con <code>mailfrom:</code>.</span>
+								{:else}
+									<code>{info.message_box.code}</code>
+									<span class="muted"> · la casella della colonia non è impostata: l'indirizzo non è ancora attivo.</span>
+								{/if}
+							</p>
+						{/if}
 						{#if isOwner}
 							<div class="egress-quick-row">
 								<!-- Un bottone per ogni azione che i connettori INSTALLATI
@@ -4142,5 +4168,10 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+	.message-box {
+		margin: 8px 0;
+		font-size: 13px;
+		overflow-wrap: anywhere;
 	}
 </style>

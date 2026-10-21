@@ -643,6 +643,9 @@ export interface ChannelMessage {
 export interface ChannelInfo {
 	tier: string;
 	name: string;
+	/** The topic's message box (clodia-platform#583): its code, and the address
+	 *  that reaches it ("" while the colony mailbox is not set). */
+	message_box?: { code: string; address: string };
 	meta: {
 		title?: string;
 		owner?: string;
