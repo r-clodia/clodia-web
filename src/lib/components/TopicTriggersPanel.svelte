@@ -25,6 +25,8 @@
 	let legacyCron = '';
 	let prompt = '';
 	let agent = '';
+	/** Fire only when new mail reached local/mailbox (clodia-platform#586). */
+	let onlyIfNewMail = false;
 	let loading = true;
 	let busy = false;
 
@@ -40,6 +42,7 @@
 		repeatCount = isLegacy ? 0 : (value?.repeat_count ?? 0);
 		prompt = value?.prompt ?? '';
 		agent = value?.agent ?? '';
+		onlyIfNewMail = value?.only_if_new_mail ?? false;
 	}
 
 	/** Riepilogo in chiaro di ciò che si sta per salvare: due numeri si
@@ -96,7 +99,8 @@
 				interval_minutes: minuti,
 				repeat_count: volte,
 				prompt: text,
-				agent: agent || null
+				agent: agent || null,
+				only_if_new_mail: onlyIfNewMail
 			});
 			applyTrigger(result.trigger);
 			toastSuccess(wasConfigured ? 'Trigger cron aggiornato' : 'Trigger cron attivato');
@@ -202,6 +206,17 @@
 						{/each}
 					</select>
 				</label>
+				<label class="check">
+					<span>Posta</span>
+					<span class="numero">
+						<input type="checkbox" bind:checked={onlyIfNewMail} disabled={busy} />
+						<em>Solo se è arrivata posta nuova</em>
+					</span>
+				</label>
+				<p class="hint">
+					Il trigger parte solo se nella message box del topic (local/mailbox) sono
+					arrivate mail dall'ultimo giro: nessun turno a vuoto.
+				</p>
 				<div class="actions">
 					<button class="save" type="submit" disabled={busy}>
 						{busy ? '…' : trigger ? 'Aggiorna' : 'Attiva'}
@@ -263,6 +278,8 @@
 		font-size: 11px; line-height: 1.4;
 	}
 	.legacy code { color: var(--fg); font-size: 11px; }
+	.check input { width: auto; margin: 0; }
+	.hint { margin: 0; color: var(--fg-muted); font-size: 11px; line-height: 1.4; }
 	.riepilogo { margin: 0; color: var(--fg); font-size: 11px; }
 	.muted, .status { margin: 7px 0 0; color: var(--fg-muted); font-size: 11px; }
 	.status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
