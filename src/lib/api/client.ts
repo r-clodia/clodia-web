@@ -669,6 +669,9 @@ export interface ChannelInfo {
 		 *  specchio — nel topic è il mount `shared/` (#571), sul Mac
 		 *  `ClodiaShared/<name>/`. Al più una. */
 		local_folders?: { name: string }[];
+		/** Datastores and RAG collections the topic imports, with per-agent
+		 *  grants (clodia-platform#590). */
+		data?: TopicDataImport[];
 		/** Obiettivo del canale (clodia-platform#457): assente finché l'owner
 		 *  non ne fissa uno. Sta nel meta e non fra i messaggi perché è un
 		 *  requisito che deve restare leggibile quando la chat è andata avanti. */
@@ -1969,6 +1972,147 @@ export async function purgeArchivedDatastore(
 	opts: RequestOptions = {}
 ): Promise<void> {
 	await apiDelete(`/clodia/datastores/archived/${encodeURIComponent(archiveDir)}`, opts);
+}
+
+// ---------------------------------------------------------------------------
+// TOPIC DATA (clodia-platform#590) — instance data catalog, imports into a
+// topic, per-agent grants inside the topic, migration from seed grants.
+// ---------------------------------------------------------------------------
+
+export type DataKind = 'datastore' | 'rag';
+export type DataGrantMode = 'read' | 'write';
+export type DataAccessMode = 'legacy' | 'topic';
+
+/** One resource of the instance data catalog. */
+export interface DataCatalogEntry {
+	key: string;
+	kind: DataKind;
+	name: string;
+	tier: string;
+	owner: string;
+	/** Who may import it into a topic; `"@admin"` = any admin. */
+	importers: string[];
+	created_at: string;
+	source: string;
+}
+
+export interface DataCatalog {
+	entries: DataCatalogEntry[];
+	data_access: DataAccessMode;
+}
+
+/** A resource imported by a topic (`meta.data`), with its per-agent grants. */
+export interface TopicDataImport {
+	kind: DataKind;
+	name: string;
+	grants?: Record<string, DataGrantMode>;
+}
+
+export interface DataMigrationItem {
+	/** `"SEAL-2/name"`. */
+	topic: string;
+	kind: DataKind;
+	name: string;
+	tier: string;
+	grants: Record<string, DataGrantMode>;
+	status: 'ok' | 'already' | 'skipped';
+	reason?: string;
+}
+
+export interface DataMigrationPlan {
+	items: DataMigrationItem[];
+	notes: string[];
+	counts: { ok: number; already: number; skipped: number };
+}
+
+/** The `detail` of a FastAPI error body (Italian, for the user), else the message. */
+export function apiErrorDetail(err: unknown): string {
+	if (err instanceof ApiError) {
+		try {
+			const d = (JSON.parse(err.body) as { detail?: unknown }).detail;
+			if (typeof d === 'string' && d) return d;
+		} catch {
+			// not JSON: fall back to the message
+		}
+		return err.message;
+	}
+	return err instanceof Error ? err.message : String(err);
+}
+
+/** GET `/clodia/data-catalog` — non-admins receive only what they may import. */
+export async function getDataCatalog(opts: RequestOptions = {}): Promise<DataCatalog> {
+	return apiGet<DataCatalog>('/clodia/data-catalog', opts);
+}
+
+function postDataCatalog<T>(body: Record<string, unknown>, opts: RequestOptions): Promise<T> {
+	return apiPost<T>('/clodia/data-catalog', body, opts);
+}
+
+/** Admin: change a catalog entry's tier and/or importers. */
+export async function updateDataCatalogEntry(
+	kind: DataKind,
+	resource: string,
+	patch: { tier?: string; importers?: string[] },
+	opts: RequestOptions = {}
+): Promise<DataCatalogEntry> {
+	return postDataCatalog({ action: 'update', kind, resource, ...patch }, opts);
+}
+
+/** Admin: drop a resource from the catalog (the data is not deleted). */
+export async function retireDataCatalogEntry(
+	kind: DataKind, resource: string, opts: RequestOptions = {}
+): Promise<{ retired: boolean }> {
+	return postDataCatalog({ action: 'retire', kind, resource }, opts);
+}
+
+/** Admin: register the datastores and collections not yet in the catalog. */
+export async function syncDataCatalog(opts: RequestOptions = {}): Promise<{ added: number }> {
+	return postDataCatalog({ action: 'sync' }, opts);
+}
+
+/** Admin: compute the migration from seed grants to topic imports (read-only). */
+export async function getDataMigrationPlan(opts: RequestOptions = {}): Promise<DataMigrationPlan> {
+	return postDataCatalog({ action: 'migration_plan' }, opts);
+}
+
+/** Admin: apply the approved items of the migration plan. */
+export async function applyDataMigration(
+	items: DataMigrationItem[], opts: RequestOptions = {}
+): Promise<{ applied: string[]; failed: { item: unknown; error: string }[] }> {
+	return postDataCatalog({ action: 'migration_apply', items }, opts);
+}
+
+/** Admin: switch the instance between seed grants (`legacy`) and topic imports. */
+export async function setDataAccessMode(
+	mode: DataAccessMode, opts: RequestOptions = {}
+): Promise<{ data_access: DataAccessMode }> {
+	return postDataCatalog({ action: 'set_mode', mode }, opts);
+}
+
+function topicDataPath(tier: string, name: string): string {
+	return `/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/data`;
+}
+
+/** Topic owner: import a catalog resource into the topic. */
+export async function importTopicData(
+	tier: string, name: string, kind: DataKind, resource: string, opts: RequestOptions = {}
+): Promise<{ ok: boolean; imported?: boolean; already?: boolean }> {
+	return apiPost(topicDataPath(tier, name), { action: 'import', kind, resource }, opts);
+}
+
+/** Topic owner: remove an imported resource from the topic. */
+export async function removeTopicData(
+	tier: string, name: string, kind: DataKind, resource: string, opts: RequestOptions = {}
+): Promise<{ ok: boolean; removed: boolean }> {
+	return apiPost(topicDataPath(tier, name), { action: 'remove', kind, resource }, opts);
+}
+
+/** Topic owner: set an agent's access to an imported resource (`null` revokes). */
+export async function grantTopicData(
+	tier: string, name: string, kind: DataKind, resource: string,
+	agent: string, mode: DataGrantMode | null, opts: RequestOptions = {}
+): Promise<{ ok: boolean; grants: Record<string, DataGrantMode> }> {
+	return apiPost(topicDataPath(tier, name), { action: 'grant', kind, resource, agent, mode }, opts);
 }
 
 /** GET `/clodia/packs` — pack (aggregati di agent seeds + plugins). */

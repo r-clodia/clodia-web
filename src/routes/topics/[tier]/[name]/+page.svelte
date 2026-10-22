@@ -9,6 +9,7 @@
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import ArtifactCanvas from '$lib/components/ArtifactCanvas.svelte';
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
+	import TopicDataPanel from '$lib/components/TopicDataPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
 	import TopicMark from '$lib/components/TopicMark.svelte';
 	import Modal from '$lib/components/Modal.svelte';
@@ -3090,6 +3091,19 @@
 						{/key}
 					</details>
 				{/if}
+				<!-- Datastores and RAG collections the topic imports, with each agent's
+				     access inside this topic (clodia-platform#595). -->
+				<details class="side-section">
+					<summary>
+						<span>Dati</span>
+						<span class="section-count">{(info?.meta?.data ?? []).length}</span>
+					</summary>
+					{#key `${tier}/${name}`}
+						<TopicDataPanel {tier} {name}
+							imports={info?.meta?.data ?? []} agents={triggerAgents}
+							canEdit={isOwner || $isAdmin} on:changed={refreshInfo} />
+					{/key}
+				</details>
 				<details class="side-section">
 					<summary>
 						<span>File</span>
