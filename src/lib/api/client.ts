@@ -1999,6 +1999,25 @@ export interface DataCatalogEntry {
 	source: string;
 	/** Topics that import it, as `"SEAL-2/name"`; absent on older backends. */
 	importing_topics?: string[];
+	/** For a topic's own RAG index: its topic as `"SEAL-2/name"` (admins only). */
+	topic?: string;
+}
+
+/**
+ * Human-readable label of a catalog resource: a topic's own index reads as
+ * "Indice · <slug>" (the raw `topic-…` id stays for tooltips); anything
+ * else, or an entry without `topic`, keeps its name.
+ */
+export function catalogLabel(entry: { name: string; topic?: string }): string {
+	if (!entry.topic) return entry.name;
+	const i = entry.topic.indexOf('/');
+	return `Indice · ${i >= 0 ? entry.topic.slice(i + 1) : entry.topic}`;
+}
+
+/** Tier part of a topic index's `topic` (`"SEAL-2/name"` → `"SEAL-2"`). */
+export function catalogTopicTier(entry: { topic?: string }): string {
+	const i = entry.topic?.indexOf('/') ?? -1;
+	return i > 0 ? entry.topic!.slice(0, i) : '';
 }
 
 export interface DataCatalog {

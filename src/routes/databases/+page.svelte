@@ -4,6 +4,8 @@
 		ApiError,
 		apiErrorDetail,
 		applyDataMigration,
+		catalogLabel,
+		catalogTopicTier,
 		getDataCatalog,
 		getDataMigrationPlan,
 		listDatabases,
@@ -419,7 +421,10 @@
 					{#each catalog.entries as e (e.key)}
 						<div class="row">
 							<span class="badge kind-{e.kind}">{e.kind === 'rag' ? 'RAG' : 'DB'}</span>
-							<span class="cell name">{e.name}</span>
+							<span class="cell name" title={e.name}>
+								{catalogLabel(e)}
+								{#if catalogTopicTier(e)}<span class="topic-tier">{catalogTopicTier(e)}</span>{/if}
+							</span>
 							{#if $isAdmin}
 								<select class="cat-tier" bind:value={draftTier[e.key]} disabled={catalogBusy}>
 									{#each TIERS as t}<option value={t}>{t}</option>{/each}
@@ -669,6 +674,11 @@
 	.cell.name {
 		font-family: var(--mono);
 		color: var(--fg-muted);
+	}
+	.topic-tier {
+		font-size: 10px;
+		opacity: 0.8;
+		margin-left: 4px;
 	}
 	.cell.purpose {
 		color: var(--fg-muted);
