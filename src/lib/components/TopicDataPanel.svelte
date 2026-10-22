@@ -15,9 +15,11 @@
 		grantTopicData,
 		importTopicData,
 		removeTopicData,
+		setTopicIndex,
 		type DataCatalogEntry,
 		type DataGrantMode,
-		type TopicDataImport
+		type TopicDataImport,
+		type TopicIndexMeta
 	} from '$lib/api/client';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
@@ -26,6 +28,8 @@
 	export let name: string;
 	/** `meta.data` of the topic. */
 	export let imports: TopicDataImport[] = [];
+	/** `meta.index`: the topic's own RAG collection (clodia-platform#599). */
+	export let topicIndex: TopicIndexMeta | undefined = undefined;
 	/** The channel's AI participants (humans have no grants here). */
 	export let agents: string[] = [];
 	/** Owner or admin: may import, remove and grant. */
@@ -38,6 +42,13 @@
 	let busy = false;
 	let pick = '';
 	let pendingRemove: TopicDataImport | null = null;
+	let confirmIndexOff = false;
+
+	// Absent `meta.index` = not indexed yet: enabled, collection unknown.
+	$: indexEnabled = topicIndex?.enabled !== false;
+	$: indexCollection = topicIndex?.collection ?? '';
+	const isOwnIndex = (imp: TopicDataImport) =>
+		imp.kind === 'rag' && !!indexCollection && imp.name === indexCollection;
 
 	/** SEAL rank; legacy P0..P3 map to SEAL-0..3. Unknown → -1. */
 	function rank(t: string | undefined): number {
@@ -96,6 +107,18 @@
 		void run('', () => grantTopicData(tier, name, imp.kind, imp.name, agent, mode));
 	}
 
+	function switchIndex(enabled: boolean) {
+		return run(
+			enabled ? 'Indicizzazione riattivata' : 'Indicizzazione disattivata',
+			() => setTopicIndex(tier, name, enabled)
+		);
+	}
+
+	async function confirmIndexDisable() {
+		await switchIndex(false);
+		confirmIndexOff = false;
+	}
+
 	async function confirmRemove() {
 		const imp = pendingRemove;
 		if (!imp) return;
@@ -103,6 +126,26 @@
 		pendingRemove = null;
 	}
 </script>
+
+<div class="topic-index">
+	<div class="data-head">
+		<span class="kind kind-rag">RAG</span>
+		<span class="index-label">Indice RAG del topic</span>
+		<span class="index-state" class:off={!indexEnabled}>{indexEnabled ? 'attivo' : 'disattivato'}</span>
+	</div>
+	<p class="muted">
+		{#if indexCollection}<code title={indexCollection}>{indexCollection}</code>{:else}in preparazione{/if}
+	</p>
+	{#if canEdit}
+		{#if indexEnabled}
+			<button type="button" class="link-btn" disabled={busy}
+				on:click={() => (confirmIndexOff = true)}>Disattiva indicizzazione</button>
+		{:else}
+			<button type="button" class="link-btn" disabled={busy}
+				on:click={() => void switchIndex(true)}>{busy ? '…' : 'Riattiva indicizzazione'}</button>
+		{/if}
+	{/if}
+</div>
 
 {#if imports.length === 0}
 	<p class="muted">Nessun dato importato in questo topic.</p>
@@ -113,6 +156,9 @@
 				<div class="data-head">
 					<span class="kind kind-{imp.kind}">{imp.kind === 'rag' ? 'RAG' : 'DB'}</span>
 					<code class="data-name" title={imp.name}>{imp.name}</code>
+					{#if isOwnIndex(imp)}
+						<span class="own-index">indice del topic</span>
+					{/if}
 					{#if tierOf[key(imp.kind, imp.name)]}
 						<span class="muted">{tierOf[key(imp.kind, imp.name)]}</span>
 					{/if}
@@ -176,6 +222,17 @@
 {/if}
 
 <ConfirmDialog
+	open={confirmIndexOff}
+	title="Disattivare l'indicizzazione?"
+	message="L'indice delle conversazioni e dei file di questo topic verrà cancellato e gli agenti non potranno più cercarvi. Se la riattivi, l'indice viene ricostruito da zero nei cicli successivi."
+	confirmLabel="Disattiva"
+	destructive
+	loading={busy}
+	on:confirm={confirmIndexDisable}
+	on:cancel={() => (confirmIndexOff = false)}
+/>
+
+<ConfirmDialog
 	open={pendingRemove !== null}
 	title="Togliere dal topic?"
 	message={pendingRemove
@@ -200,6 +257,17 @@
 	}
 	.kind-rag { color: #a855f7; border-color: rgba(168, 85, 247, 0.5); }
 	.kind-datastore { color: #0ea5e9; border-color: rgba(14, 165, 233, 0.5); }
+	.topic-index {
+		margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+	}
+	.topic-index code { overflow-wrap: anywhere; }
+	.index-label { flex: 1; min-width: 0; }
+	.index-state { font-size: 10px; color: #16a34a; white-space: nowrap; }
+	.index-state.off { color: var(--fg-muted); }
+	.own-index {
+		font-size: 9px; padding: 1px 5px; border-radius: 999px; white-space: nowrap; flex-shrink: 0;
+		color: var(--fg-muted); border: 1px dashed var(--border);
+	}
 	.data-remove {
 		background: transparent; border: none; color: var(--fg-muted); cursor: pointer;
 		font-size: 11px; padding: 0 2px; flex-shrink: 0;
