@@ -139,7 +139,15 @@
 		}
 	}
 
-	function parseImporters(v: string): string[] {
+	/** `"SEAL-2/name"` → `/topics/SEAL-2/name`, each segment encoded. */
+	function topicHref(t: string): string {
+		const i = t.indexOf('/');
+		return i < 0
+			? `/topics/${encodeURIComponent(t)}`
+			: `/topics/${encodeURIComponent(t.slice(0, i))}/${encodeURIComponent(t.slice(i + 1))}`;
+	}
+
+		function parseImporters(v: string): string[] {
 		return v.split(',').map((x) => x.trim()).filter(Boolean);
 	}
 
@@ -429,6 +437,16 @@
 								</span>
 							{/if}
 							<span class="cell counts" title={`creata ${e.created_at} · ${e.source}`}>{e.owner}</span>
+							{#if e.importing_topics}
+								<div class="importing">
+									<span class="axis-label">Importata da</span>
+									{#each e.importing_topics as t (t)}
+										<a class="seed" href={topicHref(t)}>{t}</a>
+									{:else}
+										<span class="none">nessuno</span>
+									{/each}
+								</div>
+							{/if}
 						</div>
 					{/each}
 				</div>
@@ -794,7 +812,22 @@
 	tr.st-skipped {
 		opacity: 0.6;
 	}
-	.apply-result {
+	.importing {
+		flex-basis: 100%;
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
+		flex-wrap: wrap;
+		font-size: 11px;
+	}
+	a.seed {
+		color: var(--fg);
+		text-decoration: none;
+	}
+	a.seed:hover {
+		border-color: var(--fg-muted);
+	}
+		.apply-result {
 		margin-top: 10px;
 		font-size: 12px;
 	}

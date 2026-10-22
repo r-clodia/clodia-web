@@ -1994,6 +1994,8 @@ export interface DataCatalogEntry {
 	importers: string[];
 	created_at: string;
 	source: string;
+	/** Topics that import it, as `"SEAL-2/name"`; absent on older backends. */
+	importing_topics?: string[];
 }
 
 export interface DataCatalog {
