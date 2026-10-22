@@ -11,6 +11,7 @@
 	import { createEventDispatcher, onMount } from 'svelte';
 	import {
 		apiErrorDetail,
+		catalogLabel,
 		getDataCatalog,
 		grantTopicData,
 		importTopicData,
@@ -59,6 +60,12 @@
 	const key = (kind: string, n: string) => `${kind}:${n}`;
 
 	$: tierOf = Object.fromEntries((catalog ?? []).map((e) => [key(e.kind, e.name), e.tier]));
+	$: entryOf = Object.fromEntries((catalog ?? []).map((e) => [key(e.kind, e.name), e]));
+	// Imports carry only {kind, name}: the topic of an index comes from the catalog.
+	$: importLabel = (imp: TopicDataImport) =>
+		imp.kind === 'rag' && !!indexCollection && imp.name === indexCollection
+			? 'Indice di questo topic'
+			: catalogLabel(entryOf[key(imp.kind, imp.name)] ?? imp);
 	$: importedKeys = new Set(imports.map((i) => key(i.kind, i.name)));
 	// Data never moves down a level: only resources at or below the topic tier.
 	$: importable = (catalog ?? []).filter(
@@ -96,7 +103,7 @@
 	function doImport() {
 		const entry = importable.find((e) => key(e.kind, e.name) === pick);
 		if (!entry) return;
-		void run(`Importato: ${entry.name}`, async () => {
+		void run(`Importato: ${catalogLabel(entry)}`, async () => {
 			await importTopicData(tier, name, entry.kind, entry.name);
 			pick = '';
 		});
@@ -122,7 +129,7 @@
 	async function confirmRemove() {
 		const imp = pendingRemove;
 		if (!imp) return;
-		await run(`Rimosso: ${imp.name}`, () => removeTopicData(tier, name, imp.kind, imp.name));
+		await run(`Rimosso: ${importLabel(imp)}`, () => removeTopicData(tier, name, imp.kind, imp.name));
 		pendingRemove = null;
 	}
 </script>
@@ -155,7 +162,7 @@
 			<li>
 				<div class="data-head">
 					<span class="kind kind-{imp.kind}">{imp.kind === 'rag' ? 'RAG' : 'DB'}</span>
-					<code class="data-name" title={imp.name}>{imp.name}</code>
+					<code class="data-name" title={imp.name}>{importLabel(imp)}</code>
 					{#if isOwnIndex(imp)}
 						<span class="own-index">indice del topic</span>
 					{/if}
@@ -205,8 +212,8 @@
 					{importable.length ? 'scegli dal catalogo…' : 'nulla da importare'}
 				</option>
 				{#each importable as e (key(e.kind, e.name))}
-					<option value={key(e.kind, e.name)}>
-						{e.kind === 'rag' ? 'RAG' : 'DB'} · {e.name} · {e.tier}
+					<option value={key(e.kind, e.name)} title={e.name}>
+						{e.kind === 'rag' ? 'RAG' : 'DB'} · {catalogLabel(e)} · {e.tier}
 					</option>
 				{/each}
 			</select>
@@ -236,7 +243,7 @@
 	open={pendingRemove !== null}
 	title="Togliere dal topic?"
 	message={pendingRemove
-		? `«${pendingRemove.name}» non sarà più importato in questo topic e gli agenti perderanno l'accesso da qui. I dati non vengono cancellati.`
+		? `«${importLabel(pendingRemove)}» non sarà più importato in questo topic e gli agenti perderanno l'accesso da qui. I dati non vengono cancellati.`
 		: ''}
 	confirmLabel="Togli"
 	destructive
