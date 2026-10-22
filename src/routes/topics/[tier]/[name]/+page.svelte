@@ -3100,7 +3100,8 @@
 					</summary>
 					{#key `${tier}/${name}`}
 						<TopicDataPanel {tier} {name}
-							imports={info?.meta?.data ?? []} agents={triggerAgents}
+							imports={info?.meta?.data ?? []} topicIndex={info?.meta?.index}
+							agents={triggerAgents}
 							canEdit={isOwner || $isAdmin} on:changed={refreshInfo} />
 					{/key}
 				</details>

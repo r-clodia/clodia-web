@@ -672,6 +672,9 @@ export interface ChannelInfo {
 		/** Datastores and RAG collections the topic imports, with per-agent
 		 *  grants (clodia-platform#590). */
 		data?: TopicDataImport[];
+		/** The topic's own RAG collection (clodia-platform#599); absent until
+		 *  the topic is indexed (then: enabled, collection unknown). */
+		index?: TopicIndexMeta;
 		/** Obiettivo del canale (clodia-platform#457): assente finché l'owner
 		 *  non ne fissa uno. Sta nel meta e non fra i messaggi perché è un
 		 *  requisito che deve restare leggibile quando la chat è andata avanti. */
@@ -2115,6 +2118,23 @@ export async function grantTopicData(
 	agent: string, mode: DataGrantMode | null, opts: RequestOptions = {}
 ): Promise<{ ok: boolean; grants: Record<string, DataGrantMode> }> {
 	return apiPost(topicDataPath(tier, name), { action: 'grant', kind, resource, agent, mode }, opts);
+}
+
+/** The topic's own RAG index (`meta.index`, clodia-platform#599). */
+export interface TopicIndexMeta {
+	collection?: string;
+	enabled?: boolean;
+}
+
+/** Topic owner or admin: switch the topic's RAG index on or off.
+ *  Switching it off drops the collection's documents. */
+export async function setTopicIndex(
+	tier: string, name: string, enabled: boolean, opts: RequestOptions = {}
+): Promise<{ enabled: boolean; collection: string }> {
+	return apiPost(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/index`,
+		{ enabled }, opts
+	);
 }
 
 /** GET `/clodia/packs` — pack (aggregati di agent seeds + plugins). */
