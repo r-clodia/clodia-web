@@ -7,6 +7,9 @@
  *  - `error`   — surfaces an API failure inline; auto-dismiss after 8s but
  *                the user can also click × to drop it sooner.
  *  - `info`    — neutral note ("Run started", "Polling resumed").
+ *  - `warning` — something the user should be careful about (e.g. a topic
+ *                channel reaching trifecta 3/3); not an error, but louder
+ *                than `info`.
  *
  * The store keeps a single, ordered array (newest first) and exposes a
  * dismiss helper. Toasts auto-expire on a timer; clearing the timer on
@@ -19,7 +22,7 @@
 
 import { writable, type Readable } from 'svelte/store';
 
-export type ToastKind = 'success' | 'error' | 'info';
+export type ToastKind = 'success' | 'error' | 'info' | 'warning';
 
 export interface Toast {
 	readonly id: string;
@@ -34,6 +37,7 @@ export interface Toast {
 const DEFAULT_TTL: Record<ToastKind, number> = {
 	success: 3500,
 	info: 4500,
+	warning: 8000,
 	// Errors stay longer — the user often wants to read the message before it goes.
 	error: 8000
 };

@@ -16,12 +16,13 @@
 	import { toasts, dismissToast, type Toast } from '$lib/stores/toasts';
 
 	function ariaRoleFor(t: Toast): 'alert' | 'status' {
-		return t.kind === 'error' ? 'alert' : 'status';
+		return t.kind === 'error' || t.kind === 'warning' ? 'alert' : 'status';
 	}
 
 	function iconFor(t: Toast): string {
 		if (t.kind === 'success') return '✓';
 		if (t.kind === 'error') return '!';
+		if (t.kind === 'warning') return '⚠';
 		return 'i';
 	}
 </script>
@@ -113,6 +114,14 @@
 	}
 	.toast-error {
 		border-color: rgba(232, 93, 117, 0.55);
+	}
+
+	.toast-warning .icon {
+		background: rgba(224, 168, 0, 0.18);
+		color: var(--warn, #e0a800);
+	}
+	.toast-warning {
+		border-color: rgba(224, 168, 0, 0.55);
 	}
 
 	.toast-info .icon {
