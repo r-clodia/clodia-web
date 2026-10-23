@@ -11,6 +11,7 @@
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TopicDataPanel from '$lib/components/TopicDataPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
+	import { pushToast } from '$lib/stores/toasts';
 	import TopicMark from '$lib/components/TopicMark.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import { topicLogoUrl as logoObjectUrl, dimenticaLogo } from '$lib/topicLogo';
@@ -116,6 +117,29 @@
 	onDestroy(() => activeTopic.set(null));
 
 	let info: ChannelInfo | null = null;
+
+	// Transient warning when the channel's trifecta reaches 3/3 (untrusted input
+	// in, private data reachable, a way out). Shown once when the page opens on a
+	// 3/3 channel and again only on a real < 3 → 3 transition — never on every
+	// poll. `_trifectaSeen` is the last score seen for the CURRENT topic in this
+	// page session; the topic-switch block resets it, so it is per-topic (a
+	// «reset trifecta» reload keeps it).
+	const TRIFECTA_WARN_TTL_MS = 15000;
+	let _trifectaSeen: number | null = null;
+	function checkTrifecta(next: ChannelInfo | null) {
+		const score = next?.trifecta?.score;
+		if (typeof score !== 'number') return; // not readable: keep the last value
+		const prev = _trifectaSeen;
+		_trifectaSeen = score;
+		if (score >= 3 && (prev === null || prev < 3)) {
+			pushToast({
+				kind: 'warning',
+				message:
+					'Trifecta 3/3 in questo canale: è entrato contenuto non fidato, ci sono dati raggiungibili e un\'uscita possibile. Controlla le azioni verso l\'esterno prima di confermarle.',
+				ttlMs: TRIFECTA_WARN_TTL_MS
+			});
+		}
+	}
 	let messages: ChannelMessage[] = [];
 	let files: ChannelFile[] = [];
 	const BOTTOM_THRESHOLD_PX = 64;
@@ -1772,6 +1796,7 @@
 				getChannelMessagesAndPresence(t, n),
 				getChannelFiles(t, n)
 			]);
+			if (t === tier && n === name) checkTrifecta(info);
 			messages = _mp.messages;
 			presenza = _mp.presence;
 			_lastMsgId = messages[messages.length - 1]?.id ?? '';
@@ -1801,7 +1826,11 @@
 
 	async function refreshInfo() {
 		try {
-			info = await getChannel(tier, name);
+			const t = tier, n = name;
+			const fresh = await getChannel(t, n);
+			if (t !== tier || n !== name) return; // topic changed mid-poll
+			info = fresh;
+			checkTrifecta(info);
 			// tiene vivo l'indicatore "sta lavorando" durante turni lunghi/silenziosi
 			// (es. tool-call senza chunk SSE) e lo spegne quando il turno finisce.
 			workingResponders = info?.active_responders ?? [];
@@ -2155,6 +2184,7 @@
 
 	$: if (tier && name && `${tier}/${name}` !== loadedKey) {
 		loadedKey = `${tier}/${name}`;
+		_trifectaSeen = null; // the 3/3 warning is per-topic
 		void loadAll(tier, name);
 	}
 
