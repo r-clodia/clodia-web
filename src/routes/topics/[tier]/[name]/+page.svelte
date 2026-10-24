@@ -10,6 +10,7 @@
 	import ArtifactCanvas from '$lib/components/ArtifactCanvas.svelte';
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TopicDataPanel from '$lib/components/TopicDataPanel.svelte';
+	import TopicToolsPanel from '$lib/components/TopicToolsPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
 	import { pushToast } from '$lib/stores/toasts';
 	import TopicMark from '$lib/components/TopicMark.svelte';
@@ -3132,6 +3133,22 @@
 							canEdit={isOwner || $isAdmin} on:changed={refreshInfo} />
 					{/key}
 				</details>
+				<!-- The MCP/connector verbs this room enables for every participant,
+				     and the per-agent exceptions (clodia-platform#609, epic #604).
+				     Owner or admin: the agent-server refuses the read to anyone
+				     else, so the section is not even offered. -->
+				{#if isOwner || $isAdmin}
+					<details class="side-section">
+						<summary>
+							<span>Strumenti</span>
+							<span class="section-count">{(info?.meta?.tools?.enabled ?? []).length}</span>
+						</summary>
+						{#key `${tier}/${name}`}
+							<TopicToolsPanel {tier} {name} agents={triggerAgents}
+								canEdit={isOwner || $isAdmin} />
+						{/key}
+					</details>
+				{/if}
 				<details class="side-section">
 					<summary>
 						<span>File</span>
