@@ -1,6 +1,7 @@
 <script lang="ts">
 	import DelegationsPanel from '$lib/components/DelegationsPanel.svelte';
 	import EgressWhitelistPanel from '$lib/components/EgressWhitelistPanel.svelte';
+	import DmToolboxPanel from '$lib/components/DmToolboxPanel.svelte';
 	import AuditTrailPanel from '$lib/components/AuditTrailPanel.svelte';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { onMount } from 'svelte';
@@ -236,6 +237,13 @@
 
 <section class="card">
 	<EgressWhitelistPanel />
+</section>
+
+<!-- The verbs enabled outside a room (clodia-platform#609, decision 5 of #604):
+     visible to anyone, changed by an admin — the agent-server refuses the write
+     to everyone else, so the control is simply not offered. -->
+<section class="card">
+	<DmToolboxPanel canEdit={$isAdmin} />
 </section>
 
 {#if $isAdmin}

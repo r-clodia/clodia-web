@@ -675,6 +675,12 @@ export interface ChannelInfo {
 		/** The topic's own RAG collection (clodia-platform#599); absent until
 		 *  the topic is indexed (then: enabled, collection unknown). */
 		index?: TopicIndexMeta;
+		/** The verbs this room enables for every participant, and the per-agent
+		 *  exceptions (clodia-platform#605). Absent in a room where the owner
+		 *  has enabled nothing — which is every NEW room (decision 8 of #604).
+		 *  The panel reads the full payload from `/tools`: here there is only
+		 *  what the topic's meta already carries, for the section's count. */
+		tools?: { enabled?: string[]; except?: Record<string, string[]> };
 		/** Obiettivo del canale (clodia-platform#457): assente finché l'owner
 		 *  non ne fissa uno. Sta nel meta e non fra i messaggi perché è un
 		 *  requisito che deve restare leggibile quando la chat è andata avanti. */
@@ -2155,6 +2161,69 @@ export async function setTopicIndex(
 		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/index`,
 		{ enabled }, opts
 	);
+}
+
+/** The toolbox of a room (clodia-platform#605/#609): the MCP/connector verbs
+ *  every participant may use here, and the per-agent exceptions.
+ *  `enablable` is the catalogue the gateway derives (namespace → verbs; an
+ *  EMPTY list means «namespace known, verbs not enumerable from here», e.g. a
+ *  mounted MCP backend: only `ns.*` can be offered). `gated` are the offered
+ *  verbs that still ask for confirmation — included ≠ ungated. */
+export interface RoomToolbox {
+	enabled: string[];
+	except: Record<string, string[]>;
+	enablable: Record<string, string[]>;
+	gated: string[];
+}
+
+/** The verbs enabled OUTSIDE a room (a DM, a job not bound to a topic). */
+export interface DmToolbox {
+	enabled: string[];
+	enablable: Record<string, string[]>;
+	gated: string[];
+}
+
+function topicToolsPath(tier: string, name: string): string {
+	return `/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tools`;
+}
+
+/** Topic owner or admin: the room's toolbox and what may be enabled in it. */
+export async function getChannelTools(
+	tier: string, name: string, opts: RequestOptions = {}
+): Promise<RoomToolbox> {
+	return apiGet<RoomToolbox>(topicToolsPath(tier, name), opts);
+}
+
+/** Topic owner or admin: enable or disable a verb (or `ns.*`) in the room. */
+export async function setChannelTool(
+	tier: string, name: string, verb: string, on: boolean, opts: RequestOptions = {}
+): Promise<{ ok: boolean; enabled: string[] }> {
+	return apiPost(topicToolsPath(tier, name), { action: on ? 'enable' : 'disable', verb }, opts);
+}
+
+/** Topic owner or admin: «everyone but this agent, for this verb».
+ *  It subtracts from what the ROOM gives, not from the agent's seed. */
+export async function setChannelToolException(
+	tier: string, name: string, agent: string, verb: string, on: boolean,
+	opts: RequestOptions = {}
+): Promise<{ ok: boolean; except: Record<string, string[]> }> {
+	return apiPost(
+		topicToolsPath(tier, name),
+		{ action: on ? 'except' : 'unexcept', agent, verb },
+		opts
+	);
+}
+
+/** GET `/clodia/dm-tools` — the instance's toolbox outside a room. */
+export async function getDmTools(opts: RequestOptions = {}): Promise<DmToolbox> {
+	return apiGet<DmToolbox>('/clodia/dm-tools', opts);
+}
+
+/** Admin: enable or disable a verb outside a room. */
+export async function setDmTool(
+	verb: string, on: boolean, opts: RequestOptions = {}
+): Promise<{ ok: boolean; dm_tools: string[] }> {
+	return apiPost('/clodia/dm-tools', { action: on ? 'enable' : 'disable', verb }, opts);
 }
 
 /** GET `/clodia/packs` — pack (aggregati di agent seeds + plugins). */
