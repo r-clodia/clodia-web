@@ -1127,8 +1127,9 @@ export async function getChannelReasoning(
 }
 
 /** Ruolo di un ospite nello scope. `owner` non si assegna invitando: è la
- *  proprietà del topic, non un grado di accesso. */
-export type ScopeRole = 'contributor' | 'reader';
+ *  proprietà del topic, non un grado di accesso. `reader` è abolito dal
+ *  24 ott 2026 (epic #604): ogni partecipante ha gli stessi verbi. */
+export type ScopeRole = 'contributor';
 
 /** Invita, rimuove, o cambia il ruolo di chi è già dentro. Il cambio passa da
  *  qui e non da togli-e-rimetti: quello farebbe uscire la persona dal canale e

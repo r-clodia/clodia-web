@@ -1633,12 +1633,9 @@
 	$: participants = Array.isArray(participantsRaw)
 		? participantsRaw
 		: Object.keys(participantsRaw ?? {});
-	$: roleOf = (p: string): string =>
-		p === info?.meta?.owner
-			? 'owner'
-			: Array.isArray(participantsRaw)
-				? 'contributor'
-				: ((participantsRaw as Record<string, string>)?.[p] || 'contributor');
+	// Il ruolo `reader` è abolito (24 ott 2026, epic #604): chi non è owner è
+	// contributor, anche se nel meta è rimasto scritto `reader`.
+	$: roleOf = (p: string): string => (p === info?.meta?.owner ? 'owner' : 'contributor');
 	// I partecipanti si mostrano TUTTI: la lista è la composizione del canale, e
 	// l'idoneità la governa il backend all'ingresso (409) e alla riconciliazione
 	// (uscita annunciata nel canale). Qui non si nasconde nessuno — nascondere
@@ -3079,8 +3076,8 @@
 								     select che lo cambiava a mano non l'ha usata nessuno, e
 								     ogni partecipante è di fatto `contributor`, il default
 								     del server quando si invita senza ruolo. Il modello
-								     owner/contributor/reader resta intero lato server e via
-								     API — qui sparisce solo il controllo manuale. -->
+								     owner/contributor resta lato server e via API (`reader`
+								     è abolito dal 24 ott 2026, epic #604). -->
 								<span class="role-fixed">{roleOf(p)}</span>
 								{#if isOwner}
 									<button class="x" type="button" on:click={() => removeParticipant(p)} aria-label="Rimuovi">×</button>
