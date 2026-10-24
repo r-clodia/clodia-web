@@ -2157,6 +2157,55 @@ export async function setTopicIndex(
 	);
 }
 
+/** The room's toolbox (clodia-platform#605/#609): the MCP/connector verbs a
+ *  room enables for every participant, per-agent exceptions, what may be
+ *  enabled (by namespace; an empty list = a backend whose verbs are named by
+ *  the backend) and which verbs still ask for confirmation. */
+export interface Toolbox {
+	enabled: string[];
+	except?: Record<string, string[]>;
+	enablable: Record<string, string[]>;
+	gated?: string[];
+}
+
+export type ToolboxAction = 'enable' | 'disable' | 'except' | 'unexcept';
+
+/** May using `entry` ask for confirmation? For `ns.*`: if any verb of the
+ *  namespace may. «May», not «will»: a push toward an approved repository,
+ *  for one, does not ask (clodia-platform#609). */
+export function toolMayAsk(entry: string, gated: readonly string[] = []): boolean {
+	if (entry.endsWith('.*')) {
+		const prefix = entry.slice(0, -1);
+		return gated.some((g) => g.startsWith(prefix));
+	}
+	return gated.includes(entry);
+}
+
+const channelToolsPath = (tier: string, name: string) =>
+	`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/tools`;
+
+export async function getChannelTools(tier: string, name: string, opts: RequestOptions = {}): Promise<Toolbox> {
+	return apiGet<Toolbox>(channelToolsPath(tier, name), opts);
+}
+
+/** Owner or admin: enable/disable a verb in the room, or add/remove an exception. */
+export async function setChannelTool(
+	tier: string, name: string, action: ToolboxAction, verb: string, agent?: string,
+	opts: RequestOptions = {}
+): Promise<unknown> {
+	return apiPost(channelToolsPath(tier, name), { action, verb, ...(agent ? { agent } : {}) }, opts);
+}
+
+/** The verbs enabled outside a room (DMs, jobs not bound to a topic). */
+export async function getDmTools(opts: RequestOptions = {}): Promise<Toolbox> {
+	return apiGet<Toolbox>('/clodia/dm-tools', opts);
+}
+
+/** Admin: enable or disable a verb outside rooms. */
+export async function setDmTool(action: 'enable' | 'disable', verb: string, opts: RequestOptions = {}): Promise<unknown> {
+	return apiPost('/clodia/dm-tools', { action, verb }, opts);
+}
+
 /** GET `/clodia/packs` — pack (aggregati di agent seeds + plugins). */
 export async function listPacks(opts: RequestOptions = {}): Promise<ReadonlyArray<Pack>> {
 	const raw = await apiGet<unknown>('/clodia/packs', { cache: true, ...opts });

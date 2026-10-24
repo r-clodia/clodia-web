@@ -10,6 +10,7 @@
 	import ArtifactCanvas from '$lib/components/ArtifactCanvas.svelte';
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TopicDataPanel from '$lib/components/TopicDataPanel.svelte';
+	import TopicToolsPanel from '$lib/components/TopicToolsPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
 	import { pushToast } from '$lib/stores/toasts';
 	import TopicMark from '$lib/components/TopicMark.svelte';
@@ -2051,6 +2052,9 @@
 	let allAgents: string[] = [];
 	let aiAgents: string[] = [];
 	$: triggerAgents = participants.filter((participant) => aiAgents.includes(participant));
+	/** Verbs enabled in this room (#609), once the Strumenti panel has loaded. */
+	let toolsCount: number | null = null;
+	$: (tier, name), (toolsCount = null);
 	// Non proporre agent il cui tier è insufficiente per il topic (eligible=false).
 	// Gli agent senza record di idoneità (es. umani) restano proponibili.
 	$: inviteMatches = newParticipant.trim()
@@ -3130,6 +3134,18 @@
 							imports={info?.meta?.data ?? []} topicIndex={info?.meta?.index}
 							agents={triggerAgents}
 							canEdit={isOwner || $isAdmin} on:changed={refreshInfo} />
+					{/key}
+				</details>
+				<!-- MCP/connector verbs this room enables for every participant, with
+				     per-agent exceptions (clodia-platform#609, epic #604). -->
+				<details class="side-section">
+					<summary>
+						<span>Strumenti</span>
+						<span class="section-count">{toolsCount ?? '·'}</span>
+					</summary>
+					{#key `${tier}/${name}`}
+						<TopicToolsPanel {tier} {name} agents={triggerAgents}
+							canEdit={isOwner || $isAdmin} on:count={(e) => (toolsCount = e.detail)} />
 					{/key}
 				</details>
 				<details class="side-section">

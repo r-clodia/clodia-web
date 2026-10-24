@@ -1,6 +1,7 @@
 <script lang="ts">
 	import DelegationsPanel from '$lib/components/DelegationsPanel.svelte';
 	import EgressWhitelistPanel from '$lib/components/EgressWhitelistPanel.svelte';
+	import DmToolsPanel from '$lib/components/DmToolsPanel.svelte';
 	import AuditTrailPanel from '$lib/components/AuditTrailPanel.svelte';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { onMount } from 'svelte';
@@ -236,6 +237,10 @@
 
 <section class="card">
 	<EgressWhitelistPanel />
+</section>
+
+<section class="card">
+	<DmToolsPanel />
 </section>
 
 {#if $isAdmin}
