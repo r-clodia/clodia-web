@@ -38,6 +38,22 @@
 			busy = false;
 		}
 	}
+
+	async function enableMany(verbs: string[]) {
+		if (busy || verbs.length === 0) return;
+		busy = true;
+		const falliti: string[] = [];
+		for (const v of verbs) {
+			try {
+				await setDmTool('enable', v);
+			} catch (e) {
+				falliti.push(`${v}: ${apiErrorDetail(e)}`);
+			}
+		}
+		await load();
+		busy = false;
+		if (falliti.length) toastError('Strumenti fuori dai canali', falliti.join(' · '));
+	}
 </script>
 
 <div class="head">
@@ -69,8 +85,8 @@
 		</ul>
 	{/if}
 	{#if $isAdmin}
-		<ToolboxPicker enablable={box.enablable} disabled={busy}
-			on:pick={(e) => void act('enable', e.detail)} />
+		<ToolboxPicker enablable={box.enablable} enabled={box.enabled} gated={box.gated ?? []}
+			disabled={busy} on:pick={(e) => void enableMany(e.detail)} />
 	{/if}
 {/if}
 

@@ -70,6 +70,23 @@
 		}
 	}
 
+	/** Several verbs at once from the picker: one call each, then one reload. */
+	async function enableMany(verbs: string[]) {
+		if (busy || verbs.length === 0) return;
+		busy = true;
+		const falliti: string[] = [];
+		for (const v of verbs) {
+			try {
+				await setChannelTool(tier, name, 'enable', v);
+			} catch (e) {
+				falliti.push(`${v}: ${apiErrorDetail(e)}`);
+			}
+		}
+		await load();
+		busy = false;
+		if (falliti.length) toastError('Strumenti del canale', falliti.join(' · '));
+	}
+
 	function addException() {
 		if (!excAgent || !excVerb) return;
 		void act('except', excVerb, excAgent).then((ok) => {
@@ -106,8 +123,8 @@
 	{/if}
 
 	{#if canEdit}
-		<ToolboxPicker enablable={box.enablable} disabled={busy}
-			on:pick={(e) => void act('enable', e.detail)} />
+		<ToolboxPicker enablable={box.enablable} enabled={box.enabled} gated={box.gated ?? []}
+			disabled={busy} on:pick={(e) => void enableMany(e.detail)} />
 	{/if}
 
 	<h4>Eccezioni</h4>
