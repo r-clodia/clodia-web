@@ -11,6 +11,7 @@
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TopicDataPanel from '$lib/components/TopicDataPanel.svelte';
 	import TopicToolsPanel from '$lib/components/TopicToolsPanel.svelte';
+	import { bannerCoordinatore } from '$lib/coordinatore';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
 	import { pushToast } from '$lib/stores/toasts';
 	import TopicMark from '$lib/components/TopicMark.svelte';
@@ -118,6 +119,10 @@
 	onDestroy(() => activeTopic.set(null));
 
 	let info: ChannelInfo | null = null;
+
+	// Stanza senza coordinatore (#607): derivato dal payload, non da un {#if}
+	// scritto a mano — l'assenza del campo non è un allarme.
+	$: bannerCoord = bannerCoordinatore(info?.coordinator);
 
 	// Transient warning when the channel's trifecta reaches 3/3 (untrusted input
 	// in, private data reachable, a way out). Shown once when the page opens on a
@@ -2452,6 +2457,21 @@
 
 	{#if loadErr}<div class="err">{loadErr}</div>{/if}
 
+	<!-- Stanza senza coordinatore (clodia-platform#607): nessun coordinatore
+	     dichiarato ha un provider al tier del topic, quindi i messaggi non
+	     mentionati non li prende nessuno. Si vedeva solo scrivendo e non
+	     ricevendo risposta. Il campo può mancare (agent-server precedente):
+	     `bannerCoordinatore` distingue «non so» da «non c'è». -->
+	{#if bannerCoord}
+		<div class="coord-warn" role="status">
+			<span class="coord-icon" aria-hidden="true">⚠️</span>
+			<div>
+				<strong>{bannerCoord.titolo}</strong>
+				<p>{#each bannerCoord.segmenti as s, i (i)}{#if s.forte}<strong>{s.testo}</strong>{:else}{s.testo}{/if}{/each}</p>
+			</div>
+		</div>
+	{/if}
+
 	{#if retierOpen}
 		<RetierDialog tier={info?.tier || tier} {name}
 			on:close={() => (retierOpen = false)}
@@ -3867,6 +3887,21 @@
 	.remote-actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 	.remote-actions button:disabled { opacity: .5; cursor: default; }
 	.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; margin-bottom: 6px; font-size: 11.5px; }
+	.coord-warn {
+		display: flex;
+		gap: 9px;
+		align-items: flex-start;
+		margin: 0 0 10px;
+		padding: 9px 11px;
+		border: 1px solid var(--warn, #e0a800);
+		border-left-width: 4px;
+		border-radius: 6px;
+		background: color-mix(in srgb, var(--warn, #e0a800) 8%, transparent);
+		font-size: 12.5px;
+		line-height: 1.45;
+	}
+	.coord-warn p { margin: 2px 0 0; }
+	.coord-icon { flex: none; }
 	.files-error {
 		margin: 6px 0 8px;
 		padding: 7px 9px;

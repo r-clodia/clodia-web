@@ -694,6 +694,12 @@ export interface ChannelInfo {
 	/** Responder con un turno ATTUALMENTE in corso (dal backend): la UI mostra
 	 *  l'indicatore di attività anche riaprendo il topic a metà turno. */
 	active_responders?: string[];
+	/** Chi coordina questa stanza adesso (clodia-platform#607). `available:
+	 *  false` = nessun coordinatore dichiarato ha un provider al tier del
+	 *  topic, quindi nessuno può prenderne i turni; `reason` lo spiega.
+	 *  **Assente** su un agent-server che non lo manda ancora: assenza ≠
+	 *  «non c'è coordinatore», e la UI non deve trattarle allo stesso modo. */
+	coordinator?: { name: string | null; available: boolean; reason: string | null };
 	/** Istanze vive di ogni partecipante, per seed (agents-notebook A13).
 	 *
 	 *  Un seed multi-spawn è un SUPER-NODO: si disegna il seed e sotto una riga
