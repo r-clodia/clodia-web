@@ -18,6 +18,7 @@
 		setChannelMcp,
 		setChannelTool,
 		toolMayAsk,
+		type ConnectorActionState,
 		type McpEffect,
 		type McpInfo,
 		type McpToolAction,
@@ -28,14 +29,70 @@
 	import McpMailboxes from '$lib/components/McpMailboxes.svelte';
 	import McpResources from '$lib/components/McpResources.svelte';
 	import ToolboxPicker from '$lib/components/ToolboxPicker.svelte';
-	import { toastError } from '$lib/stores/toasts';
+	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
+	import { toastError, toastSuccess } from '$lib/stores/toasts';
 
 	export let tier: string;
 	export let name: string;
 	/** Owner or admin. */
 	export let canEdit = false;
 
-	const dispatch = createEventDispatcher<{ count: number }>();
+	/** The connectors' topic actions (`azioniDiTopic`): linking a Telegram chat,
+	 *  a Drive folder… They used to be buttons in the sidebar; since 26 Oct 2026
+	 *  they live in the card of their MCP. The dialog and its logic stay in the
+	 *  topic page: this panel only shows the buttons and hands the click back. */
+	type Azione = {
+		connettore: string; namespace?: string; azione: string; chiave: string;
+		etichetta: string; nome: string; icona: string; binding: string;
+		campi: { options?: unknown }[];
+	};
+	export let azioni: Azione[] = [];
+	/** The state of the actions that bind a CHANNEL (connected or not). */
+	export let statiCanale: Record<string, ConnectorActionState> = {};
+	export let azioneBusy = false;
+
+	const dispatch = createEventDispatcher<{ count: number; azione: Azione }>();
+
+	// A mailbox is linked from the Email card (McpMailboxes): not repeated here.
+	const isMailbox = (a: Azione) => a.campi.some((f) => f.options === 'mailboxes');
+	function mcpOf(a: Azione): string {
+		const ns = a.namespace || '';
+		const hit = Object.values(box?.mcp_catalogue ?? {}).find((m) => ns && m.namespaces.includes(ns));
+		return hit ? hit.id : a.connettore;
+	}
+	$: linkActions = azioni.filter((a) => !isMailbox(a));
+	// `box` in the dependencies: `mcpOf` reads the catalogue it carries.
+	$: actionsFor = box && ((id: string) => linkActions.filter((a) => mcpOf(a) === id));
+	$: unauthorisedActions = linkActions.filter((a) => !authorised.includes(mcpOf(a)));
+	function actionTitle(a: Azione): string {
+		const st = statiCanale[a.chiave];
+		if (st?.connected) return `Collegato a ${st.bound} — clic per scollegare`;
+		if (st?.suggestions?.length) return `Il bot è entrato in «${st.suggestions[0].label}» — clic per approvare`;
+		return a.etichetta;
+	}
+
+	/** Linking implies authorising (owner, 26 Oct 2026): after a successful
+	 *  link, the MCP of that connector is authorised in the room if it is not
+	 *  yet. A failure leaves the link in place and says so. */
+	export async function afterLink(connettore: string) {
+		await load();
+		const a = linkActions.find((x) => x.connettore === connettore);
+		if (!a || !box?.mcp_catalogue) return;
+		const id = mcpOf(a);
+		const label = box.mcp_catalogue[id]?.label ?? id;
+		if (!box.mcp_catalogue[id] || box.mcp?.[id]) return;
+		try {
+			await setChannelMcp(tier, name, { action: 'enable_mcp', mcp: id });
+			toastSuccess(`${label} autorizzato nella stanza`);
+		} catch (e) {
+			toastError(`Collegato, ma ${label} non è stato autorizzato`, apiErrorDetail(e));
+		}
+		await load();
+	}
+
+	export function reload() {
+		return load();
+	}
 
 	let box: Toolbox | null = null;
 	let err = '';
@@ -178,6 +235,23 @@
 							{/if}
 						</summary>
 						<div class="mcp-body">
+							{#each actionsFor ? actionsFor(id) : [] as a (a.chiave)}
+								<div class="link-row">
+									{#if statiCanale[a.chiave]?.connected}
+										<span class="muted">Collegato a <code>{statiCanale[a.chiave]?.bound}</code></span>
+									{/if}
+									{#if canEdit}
+										<button type="button" class="link-btn"
+											class:connected={statiCanale[a.chiave]?.connected}
+											class:pending={!statiCanale[a.chiave]?.connected && (statiCanale[a.chiave]?.suggestions?.length ?? 0) > 0}
+											disabled={azioneBusy} title={actionTitle(a)}
+											on:click={() => dispatch('azione', a)}>
+											{#if a.icona}<ConnectorIcon name={a.icona} size={12} />{/if}
+											{statiCanale[a.chiave]?.connected ? 'Scollega' : a.etichetta}
+										</button>
+									{/if}
+								</div>
+							{/each}
 							<McpResources mcp={m} rows={box.mcp?.[id]?.resources ?? []}
 								linked={id === 'google' ? (box.linked_folders ?? []) : []} {canEdit} {busy}
 								on:set={(e) => void mcpAct({ action: 'set_resource', mcp: id, uri: e.detail.uri, effect: e.detail.effect })}
@@ -215,6 +289,22 @@
 				</li>
 			{/each}
 		</ul>
+	{/if}
+
+	{#if canEdit && unauthorisedActions.length > 0}
+		<!-- Linking an MCP not yet authorised: the link authorises it too. -->
+		<div class="link-row">
+			<span class="muted">Collega:</span>
+			{#each unauthorisedActions as a (a.chiave)}
+				<button type="button" class="link-btn"
+					class:pending={(statiCanale[a.chiave]?.suggestions?.length ?? 0) > 0}
+					disabled={azioneBusy} title="{actionTitle(a)} — autorizza anche {catalogue[mcpOf(a)]?.label ?? a.nome}"
+					on:click={() => dispatch('azione', a)}>
+					{#if a.icona}<ConnectorIcon name={a.icona} size={12} />{/if}
+					{a.etichetta}
+				</button>
+			{/each}
+		</div>
 	{/if}
 
 	{#if canEdit}
@@ -271,6 +361,13 @@
 	.list li { display: flex; align-items: center; gap: 6px; font-size: 11px; min-width: 0; }
 	.list code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.gated { color: #d97706; }
+	.link-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+	.link-btn { font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer; display: inline-flex;
+		align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 4px;
+		background: transparent; color: inherit; }
+	.link-btn:hover:not(:disabled) { border-color: var(--accent); }
+	.link-btn.connected { border-color: #16a34a; }
+	.link-btn.pending { border-color: #d97706; }
 	.x {
 		background: transparent; border: none; color: var(--fg-muted); cursor: pointer;
 		font-size: 11px; padding: 0 2px; flex-shrink: 0;

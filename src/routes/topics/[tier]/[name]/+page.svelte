@@ -55,7 +55,6 @@
 		setTopicGoal,
 		addLocalFolder,
 		removeLocalFolder,
-		getTopicMailboxes,
 		getTopicConnectors,
 		getConnectorAction,
 		applyConnectorAction,
@@ -63,7 +62,6 @@
 		type ChannelInfo,
 		type ChannelMessage,
 		type ChannelFile,
-		type TopicMailbox,
 	} from '$lib/api/client';
 	import { getTopicAgentsMd, saveTopicAgentsMd, type TopicAgentsMd } from '$lib/api/client';
 	import { openSignedFile } from '$lib/download';
@@ -1302,6 +1300,8 @@
 	// gateway serves that to admins only, and a non-admin owner of this topic
 	// would lose its buttons with a silent 401 (review of #242).
 	let registry: TopicConnectors | null = null;
+	/** The Strumenti panel: the connector actions live in its MCP cards. */
+	let toolsPanel: TopicToolsPanel | undefined;
 	$: azioniTopic = azioniDiTopic(registry, { isAdmin: $isAdmin });
 	/** Lo stato delle azioni che agganciano un CANALE: è l'unico caso in cui
 	 *  «collegato» è una proprietà dell'azione e non delle voci in lista, ed è
@@ -1387,7 +1387,9 @@
 			});
 			if (st.binding === 'channel') statiCanale = { ...statiCanale, [`${a.connettore}/${a.azione}`]: st };
 			chiudiAzione();
-			await Promise.all([loadEgressScope(), loadMailboxes()]);
+			await loadEgressScope();
+			// Linking implies authorising its MCP in the room (owner, 26 Oct 2026).
+			await toolsPanel?.afterLink(a.connettore);
 		} catch (e) {
 			azioneErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
@@ -1402,9 +1404,12 @@
 		try {
 			const st = await applyConnectorAction(tier, name, a.connettore, a.azione, 'disconnect', campi);
 			if (st.binding === 'channel') statiCanale = { ...statiCanale, [`${a.connettore}/${a.azione}`]: st };
-			await Promise.all([loadEgressScope(), loadMailboxes()]);
+			await loadEgressScope();
+			void toolsPanel?.reload();
 		} catch (e) {
 			azioneErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+			// The button lives in the Strumenti card now: say it there too.
+			toastError('Scollegamento non riuscito', azioneErr);
 		} finally {
 			azioneBusy = false;
 		}
@@ -1478,38 +1483,8 @@
 		}
 	}
 
-	// Le caselle collegate a questa stanza. Non è più un connettore cablato: è
-	// il pannello che mostra i valori di un INSIEME che il gateway amministra
-	// (`options: mailboxes`), e compare solo se un'azione installata punta su
-	// quell'insieme. La chiave è il nome dell'insieme — un elenco chiuso del
-	// gateway — non il nome di un connettore: un altro connettore che puntasse
-	// lo stesso insieme erediterebbe questo elenco senza collegarlo a mano.
-	let mailboxes: TopicMailbox[] = [];
-	/** Errore di CARICAMENTO dell'elenco: distinto da «nessuna casella». Un 403 o
-	 *  un gateway giù non devono diventare «Nessuna casella configurata», che
-	 *  manda a cercare nelle Integrazioni un problema che non c'è. */
-	let mailboxLoadErr = '';
-
-	$: azioneDelleCaselle = azioniTopic.find((a) =>
-		a.campi.some((f) => f.options === 'mailboxes')
-	);
-	$: mailboxCollegate = mailboxes.filter((m) => m.inbox || m.outbox);
-
-	async function loadMailboxes() {
-		// La rotta è solo per gli admin: per chi non lo è non la si chiede
-		// nemmeno, e il pannello non compare.
-		if (!$isAdmin) {
-			mailboxes = [];
-			return;
-		}
-		try {
-			mailboxes = await getTopicMailboxes(tier, name);
-			mailboxLoadErr = '';
-		} catch (e) {
-			mailboxes = [];
-			mailboxLoadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		}
-	}
+	// The mailboxes linked to this room are shown and linked in the Email card
+	// of the Strumenti panel (McpMailboxes) since 26 Oct 2026.
 
 	function normalizeTopicStatus(status?: string | null): string {
 		const raw = String(status ?? 'active').trim().toLowerCase().replace(/[\s-]+/g, '_');
@@ -2233,7 +2208,6 @@
 		programmaPoll();
 		void refreshGateInfo();
 		void loadConnettori();
-		void loadMailboxes();
 		getAgents()
 			.then((as) => {
 				allAgents = as.map((a) => a.name);
@@ -3144,8 +3118,10 @@
 						<span class="section-count">{toolsCount ?? '·'}</span>
 					</summary>
 					{#key `${tier}/${name}`}
-						<TopicToolsPanel {tier} {name}
-							canEdit={isOwner || $isAdmin} on:count={(e) => (toolsCount = e.detail)} />
+						<TopicToolsPanel {tier} {name} bind:this={toolsPanel}
+							canEdit={isOwner || $isAdmin} on:count={(e) => (toolsCount = e.detail)}
+							azioni={azioniTopic} {statiCanale} {azioneBusy}
+							on:azione={(e) => onAzioneClick(e.detail)} />
 					{/key}
 				</details>
 				<details class="side-section">
@@ -3153,6 +3129,22 @@
 						<span>File</span>
 						<span class="section-count">{files.length}</span>
 					</summary>
+					{#if isOwner}
+						<!-- The Mac-shared folder (#571): part of the topic's files, not
+						     a connector — moved here from the connectors row (26 Oct 2026).
+						     One per topic: the topic sees it as `shared/`. -->
+						<div class="shared-folder">
+							{#each info?.meta.local_folders ?? [] as f (f.name)}
+								<span class="muted"><code>shared/</code> ↔ Mac <code>ClodiaShared/{f.name}/</code></span>
+								<button type="button" class="egress-remove" disabled={localFolderBusy}
+									title="Sgancia (il contenuto reale resta sul Mac)"
+									on:click={() => confirmRemoveLocalFolder(f.name)}>✕</button>
+							{:else}
+								<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
+									on:click={openLocalFolderDialog}>🗂️ Cartella Mac</button>
+							{/each}
+						</div>
+					{/if}
 					<nav class="crumbs" aria-label="Percorso file">
 					<button type="button" class="crumb" on:click={() => gotoCrumb(-1)}>/</button>
 					{#each crumbs as seg, i}
@@ -3266,77 +3258,6 @@
 							</p>
 						{/if}
 						{#if isOwner}
-							<div class="egress-quick-row">
-								<!-- Un bottone per ogni azione che i connettori INSTALLATI
-								     dichiarano (clodia-platform#520). `admin_only` lo dice il
-								     manifest: una casella di sistema è posta che non è
-								     dell'owner della stanza, e quella regola viveva in un
-								     `{#if $isAdmin}` attorno a un bottone scritto a mano. -->
-								{#each azioniTopic as a (a.chiave)}
-									<button type="button" class="egress-quick-btn"
-										class:egress-quick-btn-connected={statiCanale[a.chiave]?.connected}
-										class:egress-quick-btn-pending={!statiCanale[a.chiave]?.connected &&
-											(statiCanale[a.chiave]?.suggestions?.length ?? 0) > 0}
-										disabled={azioneBusy}
-										title={statiCanale[a.chiave]?.connected
-											? `Collegato a ${statiCanale[a.chiave]?.bound} — clic per scollegare`
-											: statiCanale[a.chiave]?.suggestions?.length
-												? `Il bot è entrato in «${statiCanale[a.chiave]?.suggestions?.[0].label}» — clic per approvare`
-												: a.etichetta}
-										on:click={() => onAzioneClick(a)}>
-										{#if a.icona}
-											<span class="brand-icon"><ConnectorIcon name={a.icona} size={14} /></span>
-										{/if}
-										{a.nome}
-									</button>
-								{/each}
-								<!-- La cartella condivisa Mac↔container NON è un connettore e
-								     resta cablata: non ha uno schema, non ha un verbo e non
-								     scrive nessuna whitelist — dichiara un bind di filesystem
-								     reale (`meta.local_folders`). Nessuna grammatica del
-								     manifest la descrive, e inventarne una per un caso solo
-								     sarebbe peggio del cablaggio. -->
-								<!-- One per topic (#571): the topic sees it as `shared/`, a
-								     fixed name, so the button goes once one is attached. -->
-								{#if (info?.meta.local_folders ?? []).length === 0}
-									<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
-										on:click={openLocalFolderDialog}>🗂️ Cartella Mac</button>
-								{/if}
-							</div>
-							{#if azioneDelleCaselle && mailboxCollegate.length > 0}
-								<ul class="egress-list">
-									{#each mailboxCollegate as m (m.account)}
-										<li>
-											<code>{m.email}</code>
-											{#if m.send_only}<span class="muted"> · solo invio</span>{/if}
-											{#if !m.local}
-												<!-- Autorizzata dalla lista GLOBALE: da qui non si toglie,
-												     e un ✕ che non cambia nulla sarebbe peggio di nessun ✕. -->
-												<span class="muted"> · globale</span>
-											{:else}
-												<button type="button" class="egress-remove" disabled={azioneBusy}
-													title="Scollega da questo topic (la casella resta configurata nel sistema)"
-													on:click={() => staccaAzione(azioneDelleCaselle, { account: m.account })}>✕</button>
-											{/if}
-										</li>
-									{/each}
-								</ul>
-							{/if}
-							{#if azioneErr || ($isAdmin && mailboxLoadErr)}
-								<p class="cred-hint" role="alert">{azioneErr || mailboxLoadErr}</p>
-							{/if}
-							{#if (info?.meta.local_folders ?? []).length > 0}
-								<ul class="egress-list">
-									{#each info?.meta.local_folders ?? [] as f (f.name)}
-										<li>
-											<code>shared/</code> <span class="muted">↔ Mac <code>ClodiaShared/{f.name}/</code></span>
-											<button type="button" class="egress-remove" disabled={localFolderBusy}
-												title="Sgancia (il contenuto reale resta sul Mac)"
-												on:click={() => confirmRemoveLocalFolder(f.name)}>✕</button>
-										</li>
-									{/each}
-								</ul>
-							{/if}
 							<form class="egress-add-form" on:submit|preventDefault={addEgressScope}>
 								<select bind:value={egressNewDir} disabled={egressBusy}>
 									<option value="egress">Egress</option>
@@ -4180,6 +4101,7 @@
 		padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px;
 		background: var(--bg); color: var(--fg); }
 	.egress-quick-row { display: flex; gap: 6px; margin-top: 8px; }
+	.shared-folder { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0; font-size: 11px; }
 	.egress-quick-btn { font: inherit; font-size: 12px; padding: 4px 10px; cursor: pointer;
 		border: 1px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--fg);
 		display: inline-flex; align-items: center; gap: 5px; }

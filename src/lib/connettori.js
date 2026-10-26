@@ -236,6 +236,7 @@ export function azioniDiTopic(registry, opzioni = {}) {
 			if (a.admin_only && !isAdmin) continue;
 			out.push({
 				connettore: c.id,
+				namespace: c.namespace || '',
 				azione: a.id,
 				chiave: `${c.id}/${a.id}`,
 				etichetta: a.label || c.label || c.id,
