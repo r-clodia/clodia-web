@@ -2166,7 +2166,48 @@ export interface Toolbox {
 	except?: Record<string, string[]>;
 	enablable: Record<string, string[]>;
 	gated?: string[];
+	/** The MCP form (clodia-platform#620). Absent on a gateway before 2.138.0:
+	 *  the panel then falls back to the per-verb toolbox. */
+	mcp_catalogue?: Record<string, McpInfo>;
+	mcp?: Record<string, { resources: McpResource[] }>;
+	except_mcp?: Record<string, Record<string, 'read' | 'none'>>;
+	/** Drive folders linked to the room: Google resources, read only here. */
+	linked_folders?: string[];
 }
+
+/** One MCP a room can authorise (#620): a pack connector family (Google is
+ *  one), a mounted MCP backend or a native namespace. */
+export interface McpInfo {
+	id: string;
+	label: string;
+	kind: string;
+	namespaces: string[];
+	verbs: string[];
+	/** The verbs that write or leave (what «solo lettura» takes away). */
+	write: string[];
+	/** The resource kinds its verbs reach, from the connector manifests. */
+	schemes: { scheme: string; direction: string; verbs: string[] }[];
+	/** False when the backend names its own verbs and discovery has not listed
+	 *  them: «solo lettura» then takes the whole MCP away. */
+	enumerable: boolean;
+}
+
+export type McpEffect = 'allow' | 'ask' | 'deny';
+export type McpLevel = 'all' | 'read' | 'none';
+
+export interface McpResource {
+	uri: string;
+	effect: McpEffect;
+	verbs?: string[];
+}
+
+/** Owner or admin: the MCP actions of the room's tools (#620). The gateway
+ *  validates every field and canonicalises the URI. */
+export type McpToolAction =
+	| { action: 'enable_mcp' | 'disable_mcp'; mcp: string }
+	| { action: 'set_resource'; mcp: string; uri: string; effect: McpEffect; verbs?: string[] }
+	| { action: 'unset_resource'; mcp: string; uri: string }
+	| { action: 'except_mcp'; mcp: string; agent: string; level: McpLevel };
 
 export type ToolboxAction = 'enable' | 'disable' | 'except' | 'unexcept';
 
@@ -2194,6 +2235,12 @@ export async function setChannelTool(
 	opts: RequestOptions = {}
 ): Promise<unknown> {
 	return apiPost(channelToolsPath(tier, name), { action, verb, ...(agent ? { agent } : {}) }, opts);
+}
+
+export async function setChannelMcp(
+	tier: string, name: string, body: McpToolAction, opts: RequestOptions = {}
+): Promise<unknown> {
+	return apiPost(channelToolsPath(tier, name), body, opts);
 }
 
 /** The verbs enabled outside a room (DMs, jobs not bound to a topic). */
