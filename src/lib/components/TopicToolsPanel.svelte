@@ -26,6 +26,7 @@
 		type ToolboxAction
 	} from '$lib/api/client';
 	import McpPicker from '$lib/components/McpPicker.svelte';
+	import McpMailboxes from '$lib/components/McpMailboxes.svelte';
 	import McpResources from '$lib/components/McpResources.svelte';
 	import ToolboxPicker from '$lib/components/ToolboxPicker.svelte';
 	import { toastError } from '$lib/stores/toasts';
@@ -216,6 +217,9 @@
 								linked={id === 'google' ? (box.linked_folders ?? []) : []} {canEdit} {busy}
 								on:set={(e) => void mcpAct({ action: 'set_resource', mcp: id, uri: e.detail.uri, effect: e.detail.effect })}
 								on:unset={(e) => void mcpAct({ action: 'unset_resource', mcp: id, uri: e.detail.uri })} />
+							{#if id === 'email'}
+								<McpMailboxes {tier} {name} {canEdit} />
+							{/if}
 							<details class="writes">
 								<summary>Cosa scrive questa scelta</summary>
 								<ul>
