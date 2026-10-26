@@ -23,6 +23,7 @@
 		type TopicIndexMeta
 	} from '$lib/api/client';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import DataPicker from '$lib/components/DataPicker.svelte';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
 
 	export let tier: string;
@@ -41,7 +42,6 @@
 	let catalog: DataCatalogEntry[] | null = null;
 	let catalogErr = '';
 	let busy = false;
-	let pick = '';
 	let pendingRemove: TopicDataImport | null = null;
 	let confirmIndexOff = false;
 
@@ -68,10 +68,14 @@
 			: catalogLabel(entryOf[key(imp.kind, imp.name)] ?? imp);
 	$: importedKeys = new Set(imports.map((i) => key(i.kind, i.name)));
 	// Data never moves down a level: only resources at or below the topic tier.
+	// Not offered: what is already imported, this topic's own index, and the
+	// index of an archived topic (owner, 26 Oct 2026).
 	$: importable = (catalog ?? []).filter(
-		(e) => !importedKeys.has(key(e.kind, e.name)) && rank(e.tier) >= 0 && rank(e.tier) <= rank(tier)
+		(e) => !importedKeys.has(key(e.kind, e.name))
+			&& !(e.kind === 'rag' && !!indexCollection && e.name === indexCollection)
+			&& e.topic_status !== 'archived'
+			&& rank(e.tier) >= 0 && rank(e.tier) <= rank(tier)
 	);
-	$: if (pick && !importable.some((e) => key(e.kind, e.name) === pick)) pick = '';
 
 	async function loadCatalog() {
 		catalogErr = '';
@@ -100,12 +104,14 @@
 		}
 	}
 
-	function doImport() {
-		const entry = importable.find((e) => key(e.kind, e.name) === pick);
-		if (!entry) return;
-		void run(`Importato: ${catalogLabel(entry)}`, async () => {
-			await importTopicData(tier, name, entry.kind, entry.name);
-			pick = '';
+	/** One import call per picked resource; the first failure stops and is shown. */
+	function doImport(picked: DataCatalogEntry[]) {
+		if (!picked.length) return;
+		const label = picked.length === 1
+			? `Importato: ${catalogLabel(picked[0])}`
+			: `Importate ${picked.length} risorse`;
+		void run(label, async () => {
+			for (const e of picked) await importTopicData(tier, name, e.kind, e.name);
 		});
 	}
 
@@ -206,21 +212,7 @@
 	{#if catalogErr}
 		<p class="err" role="alert">{catalogErr}</p>
 	{:else if catalog}
-		<form class="data-import" on:submit|preventDefault={doImport}>
-			<select bind:value={pick} disabled={busy || importable.length === 0}>
-				<option value="">
-					{importable.length ? 'scegli dal catalogo…' : 'nulla da importare'}
-				</option>
-				{#each importable as e (key(e.kind, e.name))}
-					<option value={key(e.kind, e.name)} title={e.name}>
-						{e.kind === 'rag' ? 'RAG' : 'DB'} · {catalogLabel(e)} · {e.tier}
-					</option>
-				{/each}
-			</select>
-			<button type="submit" class="link-btn" disabled={busy || !pick}>
-				{busy ? '…' : 'Importa'}
-			</button>
-		</form>
+		<DataPicker entries={importable} disabled={busy} on:pick={(ev) => doImport(ev.detail)} />
 		<p class="muted">
 			Solo le risorse con tier ≤ {tier} che puoi importare. Gli agenti accedono ai dati
 			solo con il permesso dato qui.
@@ -283,12 +275,10 @@
 	.grants { list-style: none; margin: 4px 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 3px; }
 	.grants li { display: flex; align-items: center; gap: 6px; font-size: 11px; min-width: 0; }
 	.agent { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.grants select, .data-import select {
+	.grants select {
 		font-size: 11px; padding: 2px 4px; border-radius: 4px;
 		border: 1px solid var(--border); background: var(--bg); color: var(--fg);
 	}
-	.data-import { display: flex; gap: 6px; margin-top: 8px; }
-	.data-import select { flex: 1; min-width: 0; }
 	.link-btn {
 		font-size: 11px; background: transparent; border: 1px solid var(--border);
 		border-radius: 4px; color: var(--fg); cursor: pointer; padding: 2px 8px; white-space: nowrap;

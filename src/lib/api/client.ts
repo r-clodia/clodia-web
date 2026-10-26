@@ -2002,6 +2002,8 @@ export interface DataCatalogEntry {
 	importing_topics?: string[];
 	/** For a topic's own RAG index: its topic as `"SEAL-2/name"` (admins only). */
 	topic?: string;
+	/** Status of that topic (`active`, `archived`, …): archived ones are not offered. */
+	topic_status?: string;
 }
 
 /**
