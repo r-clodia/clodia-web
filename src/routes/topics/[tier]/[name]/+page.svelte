@@ -3144,7 +3144,7 @@
 						<span class="section-count">{toolsCount ?? '·'}</span>
 					</summary>
 					{#key `${tier}/${name}`}
-						<TopicToolsPanel {tier} {name} agents={triggerAgents}
+						<TopicToolsPanel {tier} {name}
 							canEdit={isOwner || $isAdmin} on:count={(e) => (toolsCount = e.detail)} />
 					{/key}
 				</details>

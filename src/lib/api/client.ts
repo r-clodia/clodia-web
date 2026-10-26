@@ -2158,11 +2158,13 @@ export async function setTopicIndex(
 }
 
 /** The room's toolbox (clodia-platform#605/#609): the MCP/connector verbs a
- *  room enables for every participant, per-agent exceptions, what may be
+ *  room enables for every participant, what may be
  *  enabled (by namespace; an empty list = a backend whose verbs are named by
  *  the backend) and which verbs still ask for confirmation. */
 export interface Toolbox {
 	enabled: string[];
+	/** Per-agent exceptions: dropped from the UI (owner's decision, 26 Oct
+	 *  2026). A gateway may still send them; ignored here. */
 	except?: Record<string, string[]>;
 	enablable: Record<string, string[]>;
 	gated?: string[];
@@ -2170,7 +2172,8 @@ export interface Toolbox {
 	 *  the panel then falls back to the per-verb toolbox. */
 	mcp_catalogue?: Record<string, McpInfo>;
 	mcp?: Record<string, { resources: McpResource[] }>;
-	except_mcp?: Record<string, Record<string, 'read' | 'none'>>;
+	/** Ignored, like `except`. */
+	except_mcp?: Record<string, Record<string, string>>;
 	/** Drive folders linked to the room: Google resources, read only here. */
 	linked_folders?: string[];
 }
@@ -2183,17 +2186,16 @@ export interface McpInfo {
 	kind: string;
 	namespaces: string[];
 	verbs: string[];
-	/** The verbs that write or leave (what «solo lettura» takes away). */
+	/** The verbs that write or leave. */
 	write: string[];
 	/** The resource kinds its verbs reach, from the connector manifests. */
 	schemes: { scheme: string; direction: string; verbs: string[] }[];
-	/** False when the backend names its own verbs and discovery has not listed
-	 *  them: «solo lettura» then takes the whole MCP away. */
+	/** False when the backend names its own verbs and the gateway cannot list
+	 *  them from here. */
 	enumerable: boolean;
 }
 
 export type McpEffect = 'allow' | 'ask' | 'deny';
-export type McpLevel = 'all' | 'read' | 'none';
 
 export interface McpResource {
 	uri: string;
@@ -2206,10 +2208,9 @@ export interface McpResource {
 export type McpToolAction =
 	| { action: 'enable_mcp' | 'disable_mcp'; mcp: string }
 	| { action: 'set_resource'; mcp: string; uri: string; effect: McpEffect; verbs?: string[] }
-	| { action: 'unset_resource'; mcp: string; uri: string }
-	| { action: 'except_mcp'; mcp: string; agent: string; level: McpLevel };
+	| { action: 'unset_resource'; mcp: string; uri: string };
 
-export type ToolboxAction = 'enable' | 'disable' | 'except' | 'unexcept';
+export type ToolboxAction = 'enable' | 'disable';
 
 /** May using `entry` ask for confirmation? For `ns.*`: if any verb of the
  *  namespace may. «May», not «will»: a push toward an approved repository,
@@ -2229,12 +2230,12 @@ export async function getChannelTools(tier: string, name: string, opts: RequestO
 	return apiGet<Toolbox>(channelToolsPath(tier, name), opts);
 }
 
-/** Owner or admin: enable/disable a verb in the room, or add/remove an exception. */
+/** Owner or admin: enable/disable a verb in the room. */
 export async function setChannelTool(
-	tier: string, name: string, action: ToolboxAction, verb: string, agent?: string,
+	tier: string, name: string, action: ToolboxAction, verb: string,
 	opts: RequestOptions = {}
 ): Promise<unknown> {
-	return apiPost(channelToolsPath(tier, name), { action, verb, ...(agent ? { agent } : {}) }, opts);
+	return apiPost(channelToolsPath(tier, name), { action, verb }, opts);
 }
 
 export async function setChannelMcp(
