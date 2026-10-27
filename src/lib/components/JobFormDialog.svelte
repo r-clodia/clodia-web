@@ -170,15 +170,12 @@
 		agent !== initialSnapshot.agent ||
 		enabled !== initialSnapshot.enabled;
 
-	// Un agent può eseguire un job solo se ha strumenti con cui agire: super
-	// (tool "*") oppure normal con almeno un tool/capability. Sono esclusi i
-	// responder confinati senza tool (es. agent Telegram "privacy shield") e gli
-	// human: un job assegnato a loro morirebbe silenziosamente (nessuno strumento
-	// per leggere posta / inviare email / notificare).
+	// Any non-human seed may run a job (#626): seeds no longer carry verbs —
+	// what a job may do outside a room is decided by the agent's global
+	// A·V·R·Q rules, not by a list in the seed. Humans stay out: a job
+	// assigned to them would die silently.
 	function canRunJob(a: Agent): boolean {
-		if (a.type === 'super') return true;
-		if (a.type !== 'bot' && a.type !== 'normal') return false;
-		return (a.tool_permissions?.length ?? 0) > 0 || (a.capabilities?.length ?? 0) > 0;
+		return a.type === 'super' || a.type === 'bot' || a.type === 'normal';
 	}
 	$: eligibleAgents = agents.filter(canRunJob);
 

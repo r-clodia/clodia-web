@@ -1921,6 +1921,38 @@ export interface AgentVerbs {
 	gated_in_channel?: string[];
 }
 
+/** One clause of an A·V·R·Q rule: what happens on targets matching `match`. */
+export interface AuthzClause {
+	effect: 'allow' | 'ask' | 'deny' | string;
+	match?: string;
+}
+
+/** A global A·V·R·Q tuple (#626): agent · verb · resource · rule. */
+export interface AuthzTuple {
+	id: string;
+	agent: string;
+	verb: string;
+	resource?: string;
+	/** `outside` = only outside rooms (DMs, jobs); absent = everywhere. */
+	where?: string | null;
+	rule: AuthzClause[];
+}
+
+/** GET `/api/agents/{name}/authz` — the agent's global rules and `*`'s
+ *  (#626). Seeds no longer carry verbs: in a room the room decides
+ *  (Strumenti); these are what holds outside rooms and the governance verbs. */
+export interface AgentAuthz {
+	agent: string;
+	mode?: string;
+	tuples: AuthzTuple[];
+	/** Set when the gateway did not answer. */
+	unavailable?: string;
+}
+
+export async function getAgentAuthz(name: string, opts: RequestOptions = {}): Promise<AgentAuthz> {
+	return apiGet<AgentAuthz>(`/api/agents/${encodeURIComponent(name)}/authz`, opts);
+}
+
 export async function getAgentVerbs(name: string, opts: RequestOptions = {}): Promise<AgentVerbs> {
 	return apiGet<AgentVerbs>(`/api/agents/${encodeURIComponent(name)}/verbs`, opts);
 }

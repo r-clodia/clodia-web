@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, getAgentVerbs, type ProfileFile, type AgentProfile, type AgentVerbs, type AgentVerb, type AgentVerbNode } from '$lib/api/client';
+	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, getAgentVerbs, getAgentAuthz, type AgentAuthz, type AuthzTuple, type ProfileFile, type AgentProfile, type AgentVerbs, type AgentVerb, type AgentVerbNode } from '$lib/api/client';
 	import { session } from '$lib/auth/session';
 	import Modal from '$lib/components/Modal.svelte';
 	import type {
@@ -258,6 +258,26 @@
 	}
 	onMount(refetchOnFocus);
 
+	// The agent's global A·V·R·Q rules (#626): seeds no longer carry verbs.
+	let authz: AgentAuthz | null = null;
+	async function loadAuthz(n: string) {
+		authz = null;
+		try {
+			authz = await getAgentAuthz(n);
+		} catch {
+			authz = { agent: n, tuples: [], unavailable: 'non raggiungibile' };
+		}
+	}
+	function ruleText(t: AuthzTuple): string {
+		return (t.rule || [])
+			.map((c) => (c.match && c.match !== '*' ? `${c.effect} ${c.match}` : c.effect))
+			.join(' · ');
+	}
+	$: own = (authz?.tuples ?? []).filter((t) => t.agent !== '*');
+	$: ownEverywhere = own.filter((t) => t.where !== 'outside');
+	$: ownOutside = own.filter((t) => t.where === 'outside');
+	$: forAll = (authz?.tuples ?? []).filter((t) => t.agent === '*');
+
 	async function loadVerbs(n: string) {
 		verbs = null;
 		try {
@@ -273,6 +293,7 @@
 		promptBody = '';
 		promptError = '';
 		void loadVerbs(n);
+		void loadAuthz(n);
 		memories = { kind: 'idle' };   // ricaricata pigramente all'apertura del tab
 		try {
 			const data = await apiGet<Agent>(`/api/agents/${encodeURIComponent(n)}`);
@@ -970,7 +991,58 @@
 				     espone, quindi si guarda `principal_kind` dalla risposta del gateway.
 				     Prima questo blocco non veniva renderizzato affatto per una persona,
 				     e la sua scheda diceva «nessun verbo». -->
-				{#if agent.tool_permissions || verbs?.principal_kind === 'human'}
+				<!-- Not a person: the verbs are the room's (Strumenti) and the global
+				     A·V·R·Q rules (#626). Shown for every agent, also with an empty
+				     `tool_permissions`, which seeds no longer carry. -->
+				{#if verbs?.principal_kind !== 'human'}
+					<dt>Verbi</dt>
+					<dd>
+						<p class="vnote">
+							I verbi li decide la <strong>stanza</strong> (Strumenti di ogni topic);
+							qui sotto le regole globali di questo agente.
+						</p>
+						{#if authz?.unavailable}
+							<p class="vnote">⚠ Regole globali non leggibili dal gateway in questo momento.</p>
+						{:else if authz}
+							<p class="vgroup">Ovunque <span class="muted">(governo e pavimento)</span></p>
+							{#if ownEverywhere.length}
+								<ul class="vrules">
+									{#each ownEverywhere as t (t.id)}
+										<li><code>{t.verb}</code> <span class="veff veff-{t.rule?.[0]?.effect}">{ruleText(t)}</span></li>
+									{/each}
+								</ul>
+							{:else}<p class="vnote">—</p>{/if}
+							<p class="vgroup">Fuori dalle stanze <span class="muted">(DM e job)</span></p>
+							{#if ownOutside.length}
+								<ul class="vrules">
+									{#each ownOutside as t (t.id)}
+										<li><code>{t.verb}</code> <span class="veff veff-{t.rule?.[0]?.effect}">{ruleText(t)}</span></li>
+									{/each}
+								</ul>
+							{:else}<p class="vnote">—</p>{/if}
+							{#if forAll.length}
+								<p class="vnote">
+									Per tutti gli agenti:
+									{#each forAll as t, i (t.id)}<code>{t.verb}</code>{t.where === 'outside' ? ' (fuori stanza)' : ''} {ruleText(t)}{i < forAll.length - 1 ? ' · ' : ''}{/each}
+								</p>
+							{/if}
+						{:else}
+							<p class="vnote">Caricamento…</p>
+						{/if}
+						{#if agent.tool_permissions?.length}
+							<details class="vseed">
+								<summary>{agent.tool_permissions.length} dichiarati nel seed (non più usati per autorizzare)</summary>
+								<ul class="chips">
+									{#each agent.tool_permissions as t}
+										<li><code>{t}</code></li>
+									{/each}
+								</ul>
+							</details>
+						{/if}
+					</dd>
+				{/if}
+
+				{#if verbs?.principal_kind === 'human'}
 					<dt>{verbs?.principal_kind === 'human' ? 'Verbi (matrice)' : 'Tools'}</dt>
 					<dd>
 						{#if verbs?.principal_kind === 'human' && verbs.matrix_declared === false}
@@ -1566,6 +1638,13 @@
 	.grant { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 	.ghint { font-size: 11px; color: var(--fg-muted); }
 	.vnote { font-size: 11px; color: var(--fg-muted); margin: 6px 0 0; line-height: 1.5; }
+	.vgroup { font-size: 12px; font-weight: 600; margin: 10px 0 4px; }
+	.vrules { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 12px; }
+	.veff { font-size: 11px; color: var(--fg-muted); margin-left: 6px; }
+	.veff-deny { color: var(--danger, #b42318); }
+	.veff-ask { color: var(--warning, #b54708); }
+	.vseed { margin-top: 8px; font-size: 11px; color: var(--fg-muted); }
+	.vseed summary { cursor: pointer; }
 	/* L'avviso «nessuna matrice» descrive uno stato APERTO: deve leggersi come
 	   un allarme, non come un'informazione neutra fra le altre. */
 	.vmore { list-style: none; margin-top: 2px; }
