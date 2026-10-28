@@ -9,6 +9,7 @@
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import ArtifactCanvas from '$lib/components/ArtifactCanvas.svelte';
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
+	import TopicMailTriggerPanel from '$lib/components/TopicMailTriggerPanel.svelte';
 	import TopicDataPanel from '$lib/components/TopicDataPanel.svelte';
 	import TopicToolsPanel from '$lib/components/TopicToolsPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
@@ -3088,14 +3089,18 @@
 						</div>
 					{/if}
 				</details>
-				{#if isOwner}
-					<details class="side-section trigger-section">
-						<summary>Trigger</summary>
-						{#key `${tier}/${name}`}
+				<!-- Trigger: the cron one is the owner's (its read is owner-only too);
+				     «incoming mail» (clodia-platform#628) is shown to participants,
+				     edited by the owner. -->
+				<details class="side-section trigger-section">
+					<summary>Trigger</summary>
+					{#key `${tier}/${name}`}
+						{#if isOwner}
 							<TopicTriggersPanel {tier} {name} agents={triggerAgents} />
-						{/key}
-					</details>
-				{/if}
+						{/if}
+						<TopicMailTriggerPanel {tier} {name} agents={triggerAgents} canEdit={isOwner} />
+					{/key}
+				</details>
 				<!-- Datastores and RAG collections the topic imports, with each agent's
 				     access inside this topic (clodia-platform#595). -->
 				<details class="side-section">

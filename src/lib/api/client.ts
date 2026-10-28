@@ -973,6 +973,44 @@ export interface TopicCronTrigger {
 	 *  backends: treat as false. */
 	only_if_new_mail?: boolean;
 }
+/** Channel trigger «incoming mail» (clodia-platform#628): when the mail
+ *  courier delivers mail into the room, ONE turn of `agent` with `prompt`
+ *  plus the list of that mail. At most 12 an hour per room. */
+export interface TopicMailTrigger {
+	tier: string;
+	name: string;
+	agent: string;
+	prompt: string;
+	enabled: boolean;
+	owner?: string;
+	fired_count: number;
+	fires_last_hour?: number;
+	last_run_at: string | null;
+	/** ok | not_started | rate_limited | agent_not_participant | null */
+	last_status: string | null;
+}
+function topicMailTriggerPath(tier: string, name: string): string {
+	return `/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mail-trigger`;
+}
+export async function getTopicMailTrigger(
+	tier: string,
+	name: string
+): Promise<{ trigger: TopicMailTrigger | null }> {
+	return apiGet(topicMailTriggerPath(tier, name));
+}
+export async function putTopicMailTrigger(
+	tier: string,
+	name: string,
+	body: { agent: string; prompt: string; enabled: boolean }
+): Promise<{ trigger: TopicMailTrigger }> {
+	return apiPut(topicMailTriggerPath(tier, name), body);
+}
+export async function deleteTopicMailTrigger(
+	tier: string,
+	name: string
+): Promise<{ deleted: boolean }> {
+	return apiDelete(topicMailTriggerPath(tier, name));
+}
 function topicCronPath(tier: string, name: string): string {
 	return `/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/cron-trigger`;
 }
