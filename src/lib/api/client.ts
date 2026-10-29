@@ -2539,6 +2539,8 @@ export interface ToolConnector {
 	auth_methods?: { type: string; scope?: string; fields?: { name: string; label: string; secret: boolean }[] }[];
 	/** il metodo con cui il backend è connesso, o null. */
 	auth_active?: string | null;
+	/** tool del backend MCP disattivati da un admin (#633). */
+	disabled_tools?: string[];
 	/** storage backend dei topic (provider 'storage'): adapter attivo + versioning. */
 	builtin?: boolean;
 	backend?: string;
@@ -2802,8 +2804,28 @@ export async function removeMailbox(account: string, opts: RequestOptions = {}):
 export interface McpTestVerb {
 	name: string;
 	description: string;
+	/** the gateway's reachability (#575), not the admin's toggle */
 	enabled: boolean;
 	reason?: string;
+	/** the backend's own tool name, without the server prefix (#633) */
+	tool?: string;
+	/** switched off by an admin in this list (#633) */
+	disabled?: boolean;
+	/** not listed at the previous Test (#633) */
+	new?: boolean;
+	/** disabled, and the server no longer lists it (#633) */
+	gone?: boolean;
+}
+
+/** POST `/tools/mcp/{name}/tools` — switch one tool of a mounted MCP server on
+ *  or off for the whole instance (clodia-platform#633). Human admin only. */
+export async function setMcpToolEnabled(
+	name: string,
+	tool: string,
+	enabled: boolean,
+	opts: RequestOptions = {}
+): Promise<{ backend: string; tool: string; enabled: boolean; disabled: string[] }> {
+	return apiPost(`/tools/mcp/${encodeURIComponent(name)}/tools`, { tool, enabled }, opts);
 }
 
 /** POST `/tools/{id}/test` — verifica REALE della connessione (chiamata al

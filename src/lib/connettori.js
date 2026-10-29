@@ -192,7 +192,9 @@ function cardSenzaManifest(r) {
 		// né ha la rotta `disconnect`: per un OAuth di #532 autorizzato l'attivo
 		// è l'OAuth, e «Disconnetti» non si mostra.
 		authActive: typeof r.auth_active === 'string' ? r.auth_active : oauth && r.authorized ? 'oauth' : null,
-		canDisconnect: Array.isArray(r.auth_methods)
+		canDisconnect: Array.isArray(r.auth_methods),
+		// Tool spenti da un admin nella lista del Test (#633).
+		disabledTools: Array.isArray(r.disabled_tools) ? r.disabled_tools.map(String) : []
 	};
 }
 
