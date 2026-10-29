@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, ApiError, type McpTestVerb } from '$lib/api/client';
+	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, setMcpToolEnabled, ApiError, type McpTestVerb } from '$lib/api/client';
 	import McpVerbsDialog from '$lib/components/McpVerbsDialog.svelte';
 	import type { ConnectorIssue, MailboxStatus, ConnectorRegistry } from '$lib/api/client';
 	import { cardsDiTools, serviziDiPack } from '$lib/connettori';
@@ -42,6 +42,8 @@
 		authMethods?: { type: string; scope?: string; fields?: { name: string; label: string; secret: boolean }[] }[];
 		authActive?: string | null;
 		canDisconnect?: boolean;
+		/** Tool spenti da un admin nella lista del Test (#633). */
+		disabledTools?: string[];
 		setupLabel: string;
 		docsUrl: string;
 		docsHref: string;
@@ -90,6 +92,37 @@
 	let verbsOpen = false;
 	let verbsBackend = '';
 	let verbsList: McpTestVerb[] = [];
+
+	// #633: a tick in the Test list switches a tool on or off for the whole
+	// instance. The list is updated from the gateway's answer, not optimistically:
+	// a refused change must not look applied.
+	let toggling: Record<string, boolean> = {};
+	// The dialog's in-flight ticks: only the open server's, by bare tool name.
+	$: busyHere = Object.fromEntries(
+		Object.entries(toggling)
+			.filter(([k]) => k.startsWith(`${verbsBackend}\u0000`))
+			.map(([k, b]) => [k.slice(verbsBackend.length + 1), b])
+	);
+	async function toggleTool(e: CustomEvent<{ tool: string; enabled: boolean }>) {
+		const { tool, enabled } = e.detail;
+		const backend = verbsBackend;
+		const key = `${backend}\u0000${tool}`;
+		toggling = { ...toggling, [key]: true };
+		try {
+			const r = await setMcpToolEnabled(backend, tool, enabled);
+			const off = new Set(r.disabled);
+			// The dialog may show another server by now: only its own list changes.
+			if (verbsBackend === backend) {
+				verbsList = verbsList.map((v) => (v.tool ? { ...v, disabled: off.has(v.tool) } : v));
+			}
+			cards = cards.map((c) => (c.id === backend ? { ...c, disabledTools: [...off] } : c));
+			toastSuccess(`${backend}.${tool} ${enabled ? 'riattivato' : 'disattivato'}`);
+		} catch (err) {
+			toastError(err instanceof ApiError ? err.message : String(err));
+		} finally {
+			toggling = { ...toggling, [key]: false };
+		}
+	}
 
 	async function testConn(id: string) {
 		testing = { ...testing, [id]: true };
@@ -587,6 +620,12 @@
 
 			<p class="blurb">{c.blurb}</p>
 			<div class="scopes"><code class="scope">{c.scope}</code></div>
+			{#if c.mcp && c.disabledTools?.length}
+				<div class="tools-off" title={c.disabledTools.join(', ')}>
+					{c.disabledTools.length === 1 ? '1 tool disattivato' : `${c.disabledTools.length} tool disattivati`} · si cambia dal Test
+				</div>
+			{/if}
+
 			{#if c.issues?.length}
 				<div class="integration-issues">
 					{#each c.issues as issue (issue.account)}
@@ -672,7 +711,7 @@
 	</section>
 {/if}
 
-<McpVerbsDialog open={verbsOpen} backend={verbsBackend} verbs={verbsList} on:close={() => (verbsOpen = false)} />
+<McpVerbsDialog open={verbsOpen} backend={verbsBackend} verbs={verbsList} busy={busyHere} on:toggle={toggleTool} on:close={() => (verbsOpen = false)} />
 
 {#if modalOpen}
 	<div class="overlay" on:click|self={closeModal} role="presentation">
@@ -1004,6 +1043,7 @@
 	.scopes { display: flex; flex-wrap: wrap; gap: 6px; }
 	.scope { font-family: var(--mono); font-size: 11px; color: var(--fg-muted); background: color-mix(in srgb, var(--fg-muted) 10%, transparent); border-radius: 5px; padding: 2px 6px; word-break: break-all; }
 	.integration-issues { color: var(--danger); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
+	.tools-off { color: var(--fg-muted); font-size: 11.5px; line-height: 1.45; }
 	.card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 4px; }
 	.test-badge { font-weight: 700; font-size: 13px; }
 	.test-badge.ok { color: #34c759; }
