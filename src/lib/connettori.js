@@ -36,7 +36,9 @@
  *             builtin: boolean, schemes: Schema[], providers: Provider[],
  *             verbs: {verb: string, dtype: string}[], topic_actions: Azione[],
  *             tools_card: {setup_label: string, blurb: string, scope: string,
- *                          icon: string, docs_url: string} | null}} Connettore */
+ *                          icon: string, docs_url: string} | null,
+ *             pairing?: boolean,
+ *             relay?: {label?: string, attachments?: boolean, schemes?: string[]}}} Connettore */
 
 /** I connettori del payload, in una forma sempre iterabile.
  * @param {unknown} registry */
@@ -106,7 +108,12 @@ export function cardsDiTools(registry, live) {
 			docsUrl: card.docs_url || '',
 			docsHref: linkDocumentazione(card.docs_url),
 			credenziale,
-			gestisce
+			gestisce,
+			// Device pairing step (clodia-platform#639): only a literal `true`
+			// turns the card's «Abbina» on. A gateway without the field draws
+			// the card as before.
+			pairing: c.pairing === true,
+			relay: relayDi(c.relay)
 		});
 	}
 
@@ -140,6 +147,105 @@ export function linkDocumentazione(url) {
 	} catch {
 		return '';
 	}
+}
+
+/**
+ * The relay transport a connector declares (clodia-platform#638), reduced to
+ * what the card shows: the channel's name. `null` when absent or malformed.
+ * @param {unknown} relay
+ * @returns {{label: string, attachments: boolean, schemes: string[]} | null}
+ */
+export function relayDi(relay) {
+	if (!relay || typeof relay !== 'object') return null;
+	const r = /** @type {Record<string, unknown>} */ (relay);
+	return {
+		label: typeof r.label === 'string' ? r.label : '',
+		attachments: r.attachments === true,
+		schemes: Array.isArray(r.schemes) ? r.schemes.map(String) : []
+	};
+}
+
+/** Pairing states after which polling stops (clodia-platform#639): the device
+ * is linked, or the service gave up. */
+const PAIRING_FINALI = new Set(['open', 'logged_out']);
+/** States in which the service is still working on it. */
+const PAIRING_IN_CORSO = new Set(['connecting', 'pairing', 'starting', 'reconnecting']);
+
+/**
+ * Whether polling the pairing status must stop on this answer: a final state
+ * or an error. Pure, so the guard script can execute it.
+ * @param {{state?: unknown, error?: unknown} | null | undefined} stato
+ */
+export function pairingFinito(stato) {
+	if (!stato) return true;
+	const st = String(stato.state ?? '');
+	if (PAIRING_FINALI.has(st)) return true;
+	// A transient `error` while the service is still connecting or pairing is
+	// not the end: it is shown, and polling goes on. An error in any other
+	// state (unknown, unpaired…) has nothing left to wait for.
+	if (stato.error) return !PAIRING_IN_CORSO.has(st);
+	return false;
+}
+
+/**
+ * The pairing payload a 4xx/5xx of the pairing routes carries (the gateway
+ * passes the service's body through: `{state, code?, qr?, me?, error?}`), or
+ * `null` when the body is not that shape.
+ * @param {unknown} body raw response body
+ * @returns {{state: string, me?: string, error?: string} | null}
+ */
+export function pairingDaErrore(body) {
+	if (typeof body !== 'string' || !body) return null;
+	try {
+		const j = JSON.parse(body);
+		if (!j || typeof j !== 'object') return null;
+		const o = /** @type {Record<string, unknown>} */ (j);
+		// FastAPI-style `{detail: {...}}` wraps the same payload.
+		const p = o.detail && typeof o.detail === 'object' ? /** @type {Record<string, unknown>} */ (o.detail) : o;
+		if (typeof p.state !== 'string' && typeof p.error !== 'string') return null;
+		return {
+			state: typeof p.state === 'string' ? p.state : '',
+			...(typeof p.me === 'string' ? { me: p.me } : {}),
+			...(typeof p.error === 'string' ? { error: p.error } : {})
+		};
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * The Italian message for a refused pairing request (409, 412, …).
+ * @param {number} status
+ * @param {{state?: string, me?: string, error?: string} | null} p
+ */
+export function messaggioErrorePairing(status, p) {
+	if (status === 401 || status === 403) return 'Solo un amministratore può abbinare un dispositivo.';
+	if (status === 409 || p?.state === 'open') {
+		return p?.me ? `Già abbinato come ${p.me}.` : 'Il dispositivo è già abbinato.';
+	}
+	if (status === 412) return `Inserisci prima il numero nella scheda del connettore${p?.error ? ` (${p.error})` : ''}.`;
+	if (p?.error) return `Abbinamento non riuscito (${status}): ${p.error}`;
+	return `Abbinamento non riuscito (HTTP ${status}).`;
+}
+
+/**
+ * The Italian label of a pairing state. An unknown state is shown raw: a newer
+ * service must not look like a known one.
+ * @param {unknown} state
+ */
+export function etichettaPairing(state) {
+	const s = String(state ?? '');
+	/** @type {Record<string, string>} */
+	const nomi = {
+		unpaired: 'Non abbinato',
+		starting: 'Avvio…',
+		connecting: 'Connessione…',
+		pairing: 'In abbinamento',
+		open: 'Abbinato',
+		reconnecting: 'Riconnessione…',
+		logged_out: 'Disconnesso dal dispositivo'
+	};
+	return nomi[s] ?? (s || 'sconosciuto');
 }
 
 /** @param {Record<string, unknown>} r */
@@ -246,12 +352,34 @@ export function azioniDiTopic(registry, opzioni = {}) {
 				icona: c.tools_card?.icon || '',
 				binding: a.binding || '',
 				adminOnly: a.admin_only === true,
-				campi: a.fields ?? []
+				campi: a.fields ?? [],
+				// Linking a GROUP chat admits all its members, including the
+				// ones added later (review of clodia-platform#638/#639).
+				gruppi: a.binding === 'channel' && accettaGruppi(c)
 			});
 		}
 	}
 	return out;
 }
+
+/**
+ * Whether a connector's channel link can point at a group chat: a declared
+ * relay transport (clodia-platform#638), or a scheme form whose example is a
+ * `g:` chat. Generic on purpose: no connector is named.
+ * @param {Connettore} c
+ */
+export function accettaGruppi(c) {
+	if (c.relay && typeof c.relay === 'object') return true;
+	for (const s of c.schemes ?? []) {
+		for (const f of s.forms ?? []) {
+			if (typeof f?.example === 'string' && f.example.startsWith('g:')) return true;
+		}
+	}
+	return false;
+}
+
+/** The warning shown next to a channel link that can admit a group. */
+export const AVVISO_GRUPPO = 'Collegare un gruppo ammette tutti i suoi membri, anche quelli aggiunti dopo';
 
 /**
  * Come si riempie un campo di un'azione: scegliendo, o scrivendo.

@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, setMcpToolEnabled, ApiError, type McpTestVerb } from '$lib/api/client';
+	import { onMount, onDestroy } from 'svelte';
+	import QRCode from 'qrcode';
+	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, setMcpToolEnabled, getConnectorPairing, startConnectorPairing, ApiError, type McpTestVerb, type ConnectorPairing } from '$lib/api/client';
 	import McpVerbsDialog from '$lib/components/McpVerbsDialog.svelte';
 	import type { ConnectorIssue, MailboxStatus, ConnectorRegistry } from '$lib/api/client';
-	import { cardsDiTools, serviziDiPack } from '$lib/connettori';
+	import { cardsDiTools, serviziDiPack, pairingFinito, etichettaPairing, pairingDaErrore, messaggioErrorePairing } from '$lib/connettori';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { askWainston } from '$lib/stores/helpdesk';
 	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
@@ -56,6 +57,10 @@
 		} | null;
 		/** Insiemi di valori che questa pagina amministra (oggi: `mailboxes`). */
 		gestisce: string[];
+		/** Device pairing step after the credential (clodia-platform#639). */
+		pairing?: boolean;
+		/** Chat relay transport (clodia-platform#638): its channel name. */
+		relay?: { label: string; attachments: boolean; schemes: string[] } | null;
 	}
 
 	let cards: CardModel[] = [];
@@ -176,6 +181,7 @@
 			// to both sources (clodia-platform#526): filtering again here, on
 			// the profile's names, dropped the cards whose registry id differs.
 			cards = cardsDiTools(registry, tools.connectors) as unknown as CardModel[];
+			void refreshPairingStates();
 		} catch (err) {
 			loadError = err instanceof ApiError ? err.message : String(err);
 		} finally {
@@ -338,6 +344,159 @@
 	// 18/09 una casella si autorizza PER SCOPE (whitelist `inbox:`/`outbox:`),
 	// e il gesto vive nel connettore Mailbox del canale (#406) — dove si sa
 	// anche a quale stanza serve, che è l'informazione che qui mancava.
+
+	// ─── Device pairing of a pack connector (clodia-platform#639) ───
+	//
+	// Some transports need a pairing step after the credential: a linking code
+	// typed on the phone, or a QR to scan. The gateway forwards status/start to
+	// the pack service on loopback (human admin only). The code and the QR are
+	// short-lived secrets: they are rendered as plain text / an image and never
+	// logged, stored on the card, or sent anywhere else.
+	const PAIRING_POLL_MS = 3000;
+	let pairingStates: Record<string, ConnectorPairing> = {};
+	let pairOpen = false;
+	let pairCard: CardModel | null = null;
+	let pairStatus: ConnectorPairing | null = null;
+	let pairQrImg = '';
+	let pairQrFor = '';
+	let pairBusy = false;
+	let pairError = '';
+	let pairCopied = false;
+	let pairTimer: ReturnType<typeof setTimeout> | null = null;
+	// Bumped on every open/close: an answer from an older session is dropped.
+	let pairSession = 0;
+
+	/** The cards' pairing state, read once per load (an error leaves it blank). */
+	async function refreshPairingStates() {
+		const conPairing = cards.filter((c) => c.pairing);
+		const esiti = await Promise.all(
+			conPairing.map(async (c) => {
+				try {
+					return [c.id, await getConnectorPairing(c.id)] as const;
+				} catch {
+					return null;
+				}
+			})
+		);
+		const next: Record<string, ConnectorPairing> = {};
+		for (const e of esiti) if (e) next[e[0]] = { state: e[1].state, me: e[1].me, error: e[1].error };
+		pairingStates = next;
+	}
+
+	function stopPairingPoll() {
+		if (pairTimer) clearTimeout(pairTimer);
+		pairTimer = null;
+	}
+
+	async function applyPairing(c: CardModel, st: ConnectorPairing) {
+		pairStatus = st;
+		// The card keeps the state and the identity, never the code or the QR.
+		pairingStates = { ...pairingStates, [c.id]: { state: st.state, me: st.me, error: st.error } };
+		if (st.state === 'pairing' && st.qr) {
+			if (st.qr !== pairQrFor) {
+				pairQrFor = st.qr;
+				try {
+					pairQrImg = await QRCode.toDataURL(st.qr, {
+						errorCorrectionLevel: 'M',
+						margin: 1,
+						width: 248,
+						color: { dark: '#0b0f14', light: '#ffffff' }
+					});
+				} catch {
+					pairQrImg = '';
+				}
+			}
+		} else {
+			pairQrFor = '';
+			pairQrImg = '';
+		}
+	}
+
+	/** A refused pairing request: the gateway passes the service's 4xx through
+	 *  with the usual `{state, me?, error?}` body (409 already paired, 412 no
+	 *  phone number…). Show what it means, and keep the state it reports. */
+	async function pairingRefused(c: CardModel, err: unknown) {
+		if (err instanceof ApiError) {
+			const p = pairingDaErrore(err.body);
+			if (p?.state) await applyPairing(c, { state: p.state, me: p.me });
+			pairError = messaggioErrorePairing(err.status, p);
+		} else {
+			pairError = String(err);
+		}
+	}
+
+	function schedulePairingPoll(c: CardModel, session: number) {
+		stopPairingPoll();
+		pairTimer = setTimeout(async () => {
+			if (!pairOpen || session !== pairSession) return;
+			try {
+				const st = await getConnectorPairing(c.id);
+				if (!pairOpen || session !== pairSession) return;
+				await applyPairing(c, st);
+				if (pairingFinito(st)) {
+					stopPairingPoll();
+					if (st.state === 'open') toastSuccess(`${c.name} abbinato`, st.me ?? '');
+					return;
+				}
+				schedulePairingPoll(c, session);
+			} catch (err) {
+				// A 4xx/5xx ends polling; a transient `error` field in a 200 does not.
+				stopPairingPoll();
+				if (session !== pairSession) return;
+				await pairingRefused(c, err);
+			}
+		}, PAIRING_POLL_MS);
+	}
+
+	async function openPairing(c: CardModel) {
+		stopPairingPoll();
+		const session = ++pairSession;
+		pairCard = c;
+		pairStatus = null;
+		pairQrImg = '';
+		pairQrFor = '';
+		pairError = '';
+		pairCopied = false;
+		pairOpen = true;
+		pairBusy = true;
+		try {
+			const st = await startConnectorPairing(c.id);
+			if (session !== pairSession) return;
+			await applyPairing(c, st);
+			if (!pairingFinito(st)) schedulePairingPoll(c, session);
+		} catch (err) {
+			if (session !== pairSession) return;
+			await pairingRefused(c, err);
+		} finally {
+			if (session === pairSession) pairBusy = false;
+		}
+	}
+
+	function closePairing() {
+		pairSession++;
+		stopPairingPoll();
+		pairOpen = false;
+		pairBusy = false;
+		pairStatus = null;
+		pairQrImg = '';
+		pairQrFor = '';
+	}
+
+	async function copyPairingCode() {
+		const code = pairStatus?.code;
+		if (!code) return;
+		try {
+			await navigator.clipboard.writeText(code);
+			pairCopied = true;
+		} catch {
+			pairCopied = false;
+		}
+	}
+
+	onDestroy(() => {
+		pairSession++;
+		stopPairingPoll();
+	});
 
 	// ─── Caselle email (IMAP/SMTP) — connettore multi-mailbox ───
 	let mailboxes: string[] = [];
@@ -611,7 +770,7 @@
 				<span class="glyph" aria-hidden="true"><ConnectorIcon name={c.icon} size={26} /></span>
 				<div class="title">
 					<div class="name">{c.name}</div>
-					<div class="provider">{c.mcp ? (c.transport ?? 'mcp') : (c.provider ?? 'google')}</div>
+					<div class="provider">{c.mcp ? (c.transport ?? 'mcp') : (c.provider ?? 'google')}{#if c.relay?.label}<span class="relay-label" title="Canale chat (relay)"> · {c.relay.label}</span>{/if}</div>
 				</div>
 				<span class="pill" class:pill-on={c.connected && c.operational !== false} class:pill-broken={c.operational === false && (c.connected || Boolean(c.issues?.length))}>
 					{c.builtin ? 'Built-in' : c.mcp && c.authMethods?.length && !c.connected ? (c.authMethods.length === 1 && c.auth === 'oauth' ? 'Da autorizzare' : 'Da connettere') : c.mcp && c.authMethods?.length ? 'Connesso' : c.mcp ? 'MCP montato' : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto'}
@@ -623,6 +782,26 @@
 			{#if c.mcp && c.disabledTools?.length}
 				<div class="tools-off" title={c.disabledTools.join(', ')}>
 					{c.disabledTools.length === 1 ? '1 tool disattivato' : `${c.disabledTools.length} tool disattivati`} · si cambia dal Test
+				</div>
+			{/if}
+
+			{#if c.pairing}
+				<!-- Device pairing (clodia-platform#639): state and identity only;
+				     the code and the QR live in the modal, never on the card. -->
+				<div class="pairing-row">
+					<span class="pairing-state" class:pairing-ok={pairingStates[c.id]?.state === 'open'}>
+						{#if pairingStates[c.id]}
+							{pairingStates[c.id].state === 'open' && pairingStates[c.id].me
+								? `Abbinato come ${pairingStates[c.id].me}`
+								: etichettaPairing(pairingStates[c.id].state)}
+						{:else}
+							Abbinamento dispositivo
+						{/if}
+					</span>
+					<!-- No «Abbina» once paired: pairing again could unlink the device. -->
+					{#if pairingStates[c.id]?.state !== 'open'}
+						<button type="button" class="btn ghost sm" on:click={() => openPairing(c)} disabled={!$isAdmin}>Abbina</button>
+					{/if}
 				</div>
 			{/if}
 
@@ -882,6 +1061,50 @@
 	</div>
 {/if}
 
+{#if pairOpen && pairCard}
+	<!-- Device pairing (clodia-platform#639). Plain text only: the code and the
+	     identity come from a pack service. Polled every 3 s while open. -->
+	<div class="overlay" on:click|self={closePairing} role="presentation">
+		<div class="modal" role="dialog" aria-modal="true" aria-label="Abbina {pairCard.name}">
+			<div class="modal-head">
+				<strong>Abbina {pairCard.name}</strong>
+				<button class="x" type="button" on:click={closePairing} aria-label="Chiudi">×</button>
+			</div>
+			{#if pairBusy && !pairStatus}
+				<p class="note">Avvio l’abbinamento…</p>
+			{:else if pairStatus?.state === 'pairing'}
+				{#if pairQrImg}
+					<p class="note">Sul telefono: <strong>Dispositivi collegati → Collega un dispositivo</strong>, poi inquadra il QR.</p>
+					<div class="pair-qr"><img src={pairQrImg} alt="QR di abbinamento" /></div>
+				{/if}
+				{#if pairStatus.code}
+					<p class="note">Sul telefono: <strong>Dispositivi collegati → Collega un dispositivo → Collega con numero di telefono</strong>, poi inserisci questo codice.</p>
+					<div class="pair-code-row">
+						<code class="pair-code" aria-label="Codice di abbinamento">{pairStatus.code}</code>
+						<button type="button" class="btn ghost sm" on:click={copyPairingCode}>{pairCopied ? 'Copiato' : 'Copia'}</button>
+					</div>
+				{/if}
+				{#if !pairQrImg && !pairStatus.code}
+					<p class="note">In attesa del codice dal servizio…</p>
+				{/if}
+				<p class="note">Il codice può cambiare: aggiorno lo stato ogni 3 secondi.</p>
+			{:else if pairStatus?.state === 'open'}
+				<p class="note pair-done">Abbinato come <strong>{pairStatus.me || '—'}</strong>.</p>
+			{:else if pairStatus}
+				<p class="note">Stato: <code>{etichettaPairing(pairStatus.state)}</code></p>
+			{/if}
+			{#if pairStatus?.error}<div class="modal-err">{pairStatus.error}</div>{/if}
+			{#if pairError}<div class="modal-err">{pairError}</div>{/if}
+			<div class="modal-foot">
+				<button type="button" class="btn" on:click={closePairing}>Chiudi</button>
+				{#if pairStatus && pairingFinito(pairStatus) && pairStatus.state !== 'open'}
+					<button type="button" class="btn primary" on:click={() => pairCard && openPairing(pairCard)} disabled={pairBusy}>Riprova</button>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
+
 {#if mbOpen}
 	<div class="overlay" on:click|self={closeMailboxes} role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" aria-label="Caselle email">
@@ -1082,4 +1305,14 @@
 	.mb-row { flex-wrap: wrap; }
 	.mb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0; }
 	.btn.sm { font-size: 11px; padding: 3px 9px; }
+	/* Device pairing (#639) and relay channel name (#638) */
+	.relay-label { text-transform: none; letter-spacing: 0; }
+	.pairing-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--fg-muted); }
+	.pairing-state { min-width: 0; overflow-wrap: anywhere; }
+	.pairing-state.pairing-ok { color: var(--success); }
+	.pair-qr { display: grid; place-items: center; }
+	.pair-qr img { width: 248px; height: 248px; max-width: 100%; border-radius: 8px; background: #fff; padding: 8px; }
+	.pair-code-row { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+	.pair-code { font-family: var(--mono); font-size: 28px; font-weight: 700; letter-spacing: 0.12em; padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--fg); user-select: all; overflow-wrap: anywhere; }
+	.pair-done { color: var(--success); }
 </style>
