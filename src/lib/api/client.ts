@@ -2618,6 +2618,10 @@ export interface RegistryConnector {
 		scope: string;
 		icon: string;
 	} | null;
+	/** The connector has a device pairing step (#639). */
+	pairing?: boolean;
+	/** The connector is a chat relay transport (#638). */
+	relay?: { label?: string; attachments?: boolean; schemes?: string[] };
 }
 
 export interface ConnectorRegistry {
@@ -2681,6 +2685,33 @@ export async function connectConnector(
 	opts: RequestOptions = {}
 ): Promise<{ connected: boolean; connector: string; provider: string }> {
 	return apiPost(`/tools/connectors/${encodeURIComponent(id)}/connect`, { provider, ...fields }, opts);
+}
+
+/** The device pairing state of a pack connector that declares `pairing:`
+ *  (clodia-platform#639). The gateway forwards to the pack service on loopback
+ *  and returns ONLY these fields. `code` and `qr` are short-lived secrets for
+ *  the person in front of the screen: never log them. */
+export interface ConnectorPairing {
+	/** `unpaired` | `connecting` | `pairing` | `open` | `reconnecting` |
+	 *  `logged_out` | `starting`, or anything newer the service reports. */
+	state: string;
+	/** A linking code to type on the device (while `state === 'pairing'`). */
+	code?: string;
+	/** A QR payload to render and scan (while `state === 'pairing'`). */
+	qr?: string;
+	/** The paired identity, for display (when `state === 'open'`). */
+	me?: string;
+	error?: string;
+}
+
+/** GET `/tools/connectors/{id}/pairing` — the pairing status. Human admin only. */
+export async function getConnectorPairing(id: string, opts: RequestOptions = {}): Promise<ConnectorPairing> {
+	return apiGet<ConnectorPairing>(`/tools/connectors/${encodeURIComponent(id)}/pairing`, opts);
+}
+
+/** POST `/tools/connectors/{id}/pairing` — starts pairing. Human admin only. */
+export async function startConnectorPairing(id: string, opts: RequestOptions = {}): Promise<ConnectorPairing> {
+	return apiPost<ConnectorPairing>(`/tools/connectors/${encodeURIComponent(id)}/pairing`, {}, opts);
 }
 
 // ── Backup gestito (ISO 27001 A.8.13) ───────────────────────────────────────

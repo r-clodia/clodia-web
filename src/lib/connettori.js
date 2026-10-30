@@ -36,7 +36,9 @@
  *             builtin: boolean, schemes: Schema[], providers: Provider[],
  *             verbs: {verb: string, dtype: string}[], topic_actions: Azione[],
  *             tools_card: {setup_label: string, blurb: string, scope: string,
- *                          icon: string, docs_url: string} | null}} Connettore */
+ *                          icon: string, docs_url: string} | null,
+ *             pairing?: boolean,
+ *             relay?: {label?: string, attachments?: boolean, schemes?: string[]}}} Connettore */
 
 /** I connettori del payload, in una forma sempre iterabile.
  * @param {unknown} registry */
@@ -106,7 +108,12 @@ export function cardsDiTools(registry, live) {
 			docsUrl: card.docs_url || '',
 			docsHref: linkDocumentazione(card.docs_url),
 			credenziale,
-			gestisce
+			gestisce,
+			// Device pairing step (clodia-platform#639): only a literal `true`
+			// turns the card's «Abbina» on. A gateway without the field draws
+			// the card as before.
+			pairing: c.pairing === true,
+			relay: relayDi(c.relay)
 		});
 	}
 
@@ -140,6 +147,57 @@ export function linkDocumentazione(url) {
 	} catch {
 		return '';
 	}
+}
+
+/**
+ * The relay transport a connector declares (clodia-platform#638), reduced to
+ * what the card shows: the channel's name. `null` when absent or malformed.
+ * @param {unknown} relay
+ * @returns {{label: string, attachments: boolean, schemes: string[]} | null}
+ */
+export function relayDi(relay) {
+	if (!relay || typeof relay !== 'object') return null;
+	const r = /** @type {Record<string, unknown>} */ (relay);
+	return {
+		label: typeof r.label === 'string' ? r.label : '',
+		attachments: r.attachments === true,
+		schemes: Array.isArray(r.schemes) ? r.schemes.map(String) : []
+	};
+}
+
+/** Pairing states after which polling stops (clodia-platform#639): the device
+ * is linked, or the service gave up. */
+const PAIRING_FINALI = new Set(['open', 'logged_out']);
+
+/**
+ * Whether polling the pairing status must stop on this answer: a final state
+ * or an error. Pure, so the guard script can execute it.
+ * @param {{state?: unknown, error?: unknown} | null | undefined} stato
+ */
+export function pairingFinito(stato) {
+	if (!stato) return true;
+	if (stato.error) return true;
+	return PAIRING_FINALI.has(String(stato.state ?? ''));
+}
+
+/**
+ * The Italian label of a pairing state. An unknown state is shown raw: a newer
+ * service must not look like a known one.
+ * @param {unknown} state
+ */
+export function etichettaPairing(state) {
+	const s = String(state ?? '');
+	/** @type {Record<string, string>} */
+	const nomi = {
+		unpaired: 'Non abbinato',
+		starting: 'Avvio…',
+		connecting: 'Connessione…',
+		pairing: 'In abbinamento',
+		open: 'Abbinato',
+		reconnecting: 'Riconnessione…',
+		logged_out: 'Disconnesso dal dispositivo'
+	};
+	return nomi[s] ?? (s || 'sconosciuto');
 }
 
 /** @param {Record<string, unknown>} r */
