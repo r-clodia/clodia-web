@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import QRCode from 'qrcode';
-	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, setMcpToolEnabled, getConnectorPairing, startConnectorPairing, ApiError, type McpTestVerb, type ConnectorPairing } from '$lib/api/client';
+	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, listPacks, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, setMcpToolEnabled, getConnectorPairing, startConnectorPairing, ApiError, type McpTestVerb, type ConnectorPairing } from '$lib/api/client';
 	import McpVerbsDialog from '$lib/components/McpVerbsDialog.svelte';
 	import type { ConnectorIssue, MailboxStatus, ConnectorRegistry } from '$lib/api/client';
+	import { nomiServerMcp, packPerServer, corpoRegistrazione } from '$lib/mcpPack';
+	import type { Pack } from '$lib/api/types';
 	import { cardsDiTools, serviziDiPack, pairingFinito, etichettaPairing, pairingDaErrore, messaggioErrorePairing } from '$lib/connettori';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { askWainston } from '$lib/stores/helpdesk';
@@ -565,6 +567,24 @@
 	let mcpJson = '';
 	let mcpBusy = false;
 	let mcpError = '';
+	// clodia-platform#641: the pack these servers belong to ('' = none). A
+	// zip-imported pack's servers stay `pending` until mounted for it.
+	let mcpPacks: ReadonlyArray<Pack> = [];
+	let mcpPack = '';
+	let mcpPackTouched = false;
+	$: mcpNomi = nomiServerMcp(mcpJson);
+	$: mcpScelta = packPerServer(mcpPacks, mcpNomi);
+	// Preselect the pack that declares every pasted server, until the admin
+	// picks one by hand.
+	$: if (!mcpPackTouched) mcpPack = mcpScelta.preselezione;
+
+	async function loadMcpPacks() {
+		try {
+			mcpPacks = await listPacks();
+		} catch {
+			mcpPacks = []; // the select simply has no packs to offer
+		}
+	}
 
 	// Niente segreti al mount (clodia-platform#565): un placeholder ${NAME} nel
 	// config diventa un campo del «Connetti» della card, che lo prova prima di
@@ -573,7 +593,10 @@
 	function openMcp() {
 		mcpJson = '';
 		mcpError = '';
+		mcpPack = '';
+		mcpPackTouched = false;
 		mcpOpen = true;
+		void loadMcpPacks();
 	}
 	function closeMcp() {
 		mcpOpen = false;
@@ -595,12 +618,16 @@
 		mcpBusy = true;
 		mcpError = '';
 		try {
-			const res = await registerMcp({ config: parsed });
+			const res = await registerMcp(corpoRegistrazione(parsed, mcpPack));
 			toastSuccess('MCP server registrato', (res.registered || []).join(', '));
 			closeMcp();
 			await load();
 		} catch (err) {
 			mcpError = err instanceof ApiError ? err.message : String(err);
+			// Already mounted without the pack's stamp: it cannot be re-stamped.
+			if (err instanceof ApiError && err.status === 409 && mcpPack) {
+				mcpError += ' — Il server è già montato senza il pack: rimuovilo dalla sua card e registralo di nuovo scegliendo il pack.';
+			}
 		} finally {
 			mcpBusy = false;
 		}
@@ -1219,6 +1246,23 @@
 				<textarea bind:value={mcpJson} rows="9" spellcheck="false" class="mono"
 					placeholder={'{\n  "mcpServers": {\n    "github": {\n      "command": "npx",\n      "args": ["-y","@modelcontextprotocol/server-github"],\n      "env": { "GITHUB_TOKEN": "${GH_TOKEN}" }\n    }\n  }\n}'}></textarea>
 			</label>
+			{#if mcpScelta.opzioni.length}
+				<!-- clodia-platform#641: mount for an installed pack that declares
+				     these servers; the gateway checks the manifest. -->
+				<label class="field">
+					<span>Appartiene al pack <small>(opzionale)</small></span>
+					<select bind:value={mcpPack} on:change={() => (mcpPackTouched = true)} disabled={mcpBusy}>
+						<option value="">— nessuno —</option>
+						{#each mcpScelta.opzioni as p (p.name)}
+							<option value={p.name}>{p.name}{p.dichiara.length ? ` (dichiara ${p.dichiara.join(', ')})` : ''}</option>
+						{/each}
+					</select>
+				</label>
+				<p class="note">
+					Un pack importato da zip dichiara i suoi MCP server ma li lascia <em>in attesa</em>:
+					montandoli qui per quel pack, il suo connettore li può usare.
+				</p>
+			{/if}
 			{#if mcpError}<div class="modal-err">{mcpError}</div>{/if}
 			<div class="modal-foot">
 				<button type="button" class="btn" on:click={closeMcp} disabled={mcpBusy}>Annulla</button>
@@ -1287,6 +1331,7 @@
 	.modal-head { display: flex; align-items: center; justify-content: space-between; }
 	.x { background: transparent; border: none; color: var(--fg-muted); font-size: 22px; line-height: 1; cursor: pointer; }
 	.field { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: var(--fg-muted); }
+	.field select { padding: 9px 11px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 13px; }
 	.field input { padding: 9px 11px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 13px; }
 	.note { margin: 0; font-size: 12.5px; color: var(--fg-muted); line-height: 1.5; }
 	.note.tip { margin-top: 10px; padding: 8px 10px; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 7%, transparent); color: var(--fg); }
