@@ -2665,6 +2665,8 @@ export interface TopicConnectors {
 			fields: { name: string; label: string; required: boolean; placeholder: string; options?: string }[];
 		}[];
 		tools_card: { icon: string } | null;
+		/** A chat relay transport (#638): its group links admit every member. */
+		relay?: { label?: string };
 	}[];
 }
 

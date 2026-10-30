@@ -89,7 +89,7 @@
 	import { puoDiventareObiettivo, eObiettivoFissato, statoObiettivo, attendeOwner } from '$lib/goal';
 	import type { TierWarning } from '$lib/api/types';
 	import type { ConnectorActionState, TopicConnectors } from '$lib/api/client';
-	import { azioniDiTopic, esempiPerDirezione, tipoDiCampo } from '$lib/connettori';
+	import { azioniDiTopic, esempiPerDirezione, tipoDiCampo, AVVISO_GRUPPO } from '$lib/connettori';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
 
 	$: params = $page.params as Record<string, string>;
@@ -1310,7 +1310,7 @@
 	 *  due liste qui sopra. */
 	let statiCanale: Record<string, ConnectorActionState> = {};
 
-	let azioneAperta: { connettore: string; azione: string; nome: string } | null = null;
+	let azioneAperta: { connettore: string; azione: string; nome: string; gruppi?: boolean } | null = null;
 	let azioneStato: ConnectorActionState | null = null;
 	let azioneValori: Record<string, string> = {};
 	let azioneBusy = false;
@@ -1337,7 +1337,7 @@
 		statiCanale = { ...statiCanale };
 	}
 
-	async function apriAzione(a: { connettore: string; azione: string; nome: string }) {
+	async function apriAzione(a: { connettore: string; azione: string; nome: string; gruppi?: boolean }) {
 		azioneAperta = a;
 		azioneStato = null;
 		azioneValori = {};
@@ -3346,6 +3346,10 @@
 			Vale <b>solo in questa stanza</b> ({azioneStato.tier}): ciò che l'azione
 			autorizza diventa fonte e destinazione di questo topic, non degli altri.
 		</p>
+		{#if azioneAperta?.gruppi}
+			<!-- #638: a group chat is vetted as a whole, not member by member. -->
+			<p class="meta-note"><b>⚠ {AVVISO_GRUPPO}.</b></p>
+		{/if}
 		{#if azioneStato.suggestions?.length}
 			<!-- clodia-platform#549: groups the bot joined through this topic's
 			     link. The id is Telegram's; approving is the same connect. -->

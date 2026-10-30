@@ -4,7 +4,7 @@
 	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, setMcpToolEnabled, getConnectorPairing, startConnectorPairing, ApiError, type McpTestVerb, type ConnectorPairing } from '$lib/api/client';
 	import McpVerbsDialog from '$lib/components/McpVerbsDialog.svelte';
 	import type { ConnectorIssue, MailboxStatus, ConnectorRegistry } from '$lib/api/client';
-	import { cardsDiTools, serviziDiPack, pairingFinito, etichettaPairing } from '$lib/connettori';
+	import { cardsDiTools, serviziDiPack, pairingFinito, etichettaPairing, pairingDaErrore, messaggioErrorePairing } from '$lib/connettori';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { askWainston } from '$lib/stores/helpdesk';
 	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
@@ -412,6 +412,19 @@
 		}
 	}
 
+	/** A refused pairing request: the gateway passes the service's 4xx through
+	 *  with the usual `{state, me?, error?}` body (409 already paired, 412 no
+	 *  phone number…). Show what it means, and keep the state it reports. */
+	async function pairingRefused(c: CardModel, err: unknown) {
+		if (err instanceof ApiError) {
+			const p = pairingDaErrore(err.body);
+			if (p?.state) await applyPairing(c, { state: p.state, me: p.me });
+			pairError = messaggioErrorePairing(err.status, p);
+		} else {
+			pairError = String(err);
+		}
+	}
+
 	function schedulePairingPoll(c: CardModel, session: number) {
 		stopPairingPoll();
 		pairTimer = setTimeout(async () => {
@@ -427,9 +440,10 @@
 				}
 				schedulePairingPoll(c, session);
 			} catch (err) {
-				if (session !== pairSession) return;
-				pairError = err instanceof ApiError ? err.message : String(err);
+				// A 4xx/5xx ends polling; a transient `error` field in a 200 does not.
 				stopPairingPoll();
+				if (session !== pairSession) return;
+				await pairingRefused(c, err);
 			}
 		}, PAIRING_POLL_MS);
 	}
@@ -452,7 +466,7 @@
 			if (!pairingFinito(st)) schedulePairingPoll(c, session);
 		} catch (err) {
 			if (session !== pairSession) return;
-			pairError = err instanceof ApiError ? err.message : String(err);
+			await pairingRefused(c, err);
 		} finally {
 			if (session === pairSession) pairBusy = false;
 		}
@@ -784,9 +798,10 @@
 							Abbinamento dispositivo
 						{/if}
 					</span>
-					<button type="button" class="btn ghost sm" on:click={() => openPairing(c)} disabled={!$isAdmin}>
-						{pairingStates[c.id]?.state === 'open' ? 'Riabbina' : 'Abbina'}
-					</button>
+					<!-- No «Abbina» once paired: pairing again could unlink the device. -->
+					{#if pairingStates[c.id]?.state !== 'open'}
+						<button type="button" class="btn ghost sm" on:click={() => openPairing(c)} disabled={!$isAdmin}>Abbina</button>
+					{/if}
 				</div>
 			{/if}
 

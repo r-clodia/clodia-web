@@ -30,6 +30,7 @@
 	import McpResources from '$lib/components/McpResources.svelte';
 	import ToolboxPicker from '$lib/components/ToolboxPicker.svelte';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
+	import { AVVISO_GRUPPO } from '$lib/connettori';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
 
 	export let tier: string;
@@ -45,6 +46,8 @@
 		connettore: string; namespace?: string; azione: string; chiave: string;
 		etichetta: string; nome: string; icona: string; binding: string;
 		campi: { options?: unknown }[];
+		/** A channel link that can admit a group chat (#638). */
+		gruppi?: boolean;
 	};
 	export let azioni: Azione[] = [];
 	/** The state of the actions that bind a CHANNEL (connected or not). */
@@ -250,6 +253,9 @@
 											{statiCanale[a.chiave]?.connected ? 'Scollega' : a.etichetta}
 										</button>
 									{/if}
+									{#if a.gruppi && !statiCanale[a.chiave]?.connected}
+										<span class="muted wrap group-hint">{AVVISO_GRUPPO}</span>
+									{/if}
 								</div>
 							{/each}
 							<McpResources mcp={m} rows={box.mcp?.[id]?.resources ?? []}
@@ -304,6 +310,9 @@
 					{a.etichetta}
 				</button>
 			{/each}
+			{#if unauthorisedActions.some((a) => a.gruppi)}
+				<span class="muted wrap group-hint">{AVVISO_GRUPPO}</span>
+			{/if}
 		</div>
 	{/if}
 
@@ -343,6 +352,8 @@
 <style>
 	.muted { color: var(--fg-muted); font-size: 11px; margin: 4px 0; }
 	.wrap { white-space: normal; }
+	/* #638: linking a group admits all its members, present and future. */
+	.group-hint { flex-basis: 100%; color: var(--warning, var(--fg-muted)); }
 	.floor { gap: 8px; }
 	.mcps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 	.mcp { border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
