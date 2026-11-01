@@ -20,7 +20,7 @@
 	export let agents: string[] = [];
 	export let canEdit = false;
 
-	const TITLE = 'Trigger posta in arrivo';
+	const TITLE = 'Trigger onMessageReceived';
 	const STATI: Record<string, string> = {
 		ok: 'turno avviato',
 		not_started: 'turno non avviato',
@@ -68,7 +68,7 @@
 		try {
 			const wasConfigured = trigger !== null;
 			apply((await putTopicMailTrigger(tier, name, { agent, prompt: text, enabled })).trigger);
-			toastSuccess(wasConfigured ? 'Trigger posta aggiornato' : 'Trigger posta attivato');
+			toastSuccess(wasConfigured ? 'Trigger onMessageReceived aggiornato' : 'Trigger onMessageReceived attivato');
 		} catch (error) {
 			toastError(TITLE, error instanceof Error ? error.message : String(error));
 		} finally {
@@ -83,7 +83,7 @@
 		try {
 			await deleteTopicMailTrigger(tier, name);
 			apply(null);
-			toastSuccess('Trigger posta rimosso');
+			toastSuccess('Trigger onMessageReceived rimosso');
 		} catch (error) {
 			toastError(TITLE, error instanceof Error ? error.message : String(error));
 		} finally {
@@ -96,8 +96,8 @@
 
 <section class="trigger-kind mail">
 	<header>
-		<span>Posta in arrivo</span>
-		<button type="button" class="info" aria-label="Informazioni sul trigger posta in arrivo">
+		<span>onMessageReceived</span>
+		<button type="button" class="info" aria-label="Informazioni sul trigger onMessageReceived">
 			<span aria-hidden="true">ⓘ</span>
 			<span class="tooltip" role="tooltip">
 				Parte un turno dell'agente scelto quando il corriere consegna mail in questa
@@ -106,6 +106,10 @@
 			</span>
 		</button>
 	</header>
+	<p class="kind-hint">
+		Quando un messaggio entra nel canale: dall'inbox di canale o da una casella di posta
+		autorizzata.
+	</p>
 
 	{#if loading}
 		<p class="muted">Carico…</p>
@@ -115,7 +119,7 @@
 				{trigger.enabled ? 'Attivo' : 'Disattivato'}: @{trigger.agent} — «{trigger.prompt}»
 			</p>
 		{:else}
-			<p class="muted">Nessun trigger sulla posta in arrivo.</p>
+			<p class="muted">Nessun trigger onMessageReceived.</p>
 		{/if}
 	{:else}
 		<form on:submit|preventDefault={save}>
@@ -165,6 +169,7 @@
 </section>
 
 <style>
+	.kind-hint { margin: 2px 0 8px; font-size: 11px; color: var(--fg-muted); }
 	.trigger-kind { min-width: 0; }
 	header { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; }
 	.info { position: relative; border: 0; padding: 0; background: none; color: var(--fg-muted); cursor: help; font: inherit; line-height: 1; outline: none; }
