@@ -3089,16 +3089,16 @@
 						</div>
 					{/if}
 				</details>
-				<!-- Trigger: the cron one is the owner's (its read is owner-only too);
-				     «incoming mail» (clodia-platform#628) is shown to participants,
-				     edited by the owner. -->
+				<!-- Trigger, two types (clodia-platform#646): onMessageReceived (#628)
+				     is shown to participants and edited by the owner; onCron is the
+				     owner's (its read is owner-only too). One of each per room. -->
 				<details class="side-section trigger-section">
 					<summary>Trigger</summary>
 					{#key `${tier}/${name}`}
+						<TopicMailTriggerPanel {tier} {name} agents={triggerAgents} canEdit={isOwner} />
 						{#if isOwner}
 							<TopicTriggersPanel {tier} {name} agents={triggerAgents} />
 						{/if}
-						<TopicMailTriggerPanel {tier} {name} agents={triggerAgents} canEdit={isOwner} />
 					{/key}
 				</details>
 				<!-- Datastores and RAG collections the topic imports, with each agent's

@@ -968,10 +968,6 @@ export interface TopicCronTrigger {
 	enabled: boolean;
 	last_run_at: string | null;
 	last_status: string | null;
-	/** When true a fire is skipped (no model call) unless new mail reached the
-	 *  topic's local/mailbox since the last dispatched fire. Absent on older
-	 *  backends: treat as false. */
-	only_if_new_mail?: boolean;
 }
 /** Channel trigger «incoming mail» (clodia-platform#628): when the mail
  *  courier delivers mail into the room, ONE turn of `agent` with `prompt`
@@ -1028,7 +1024,6 @@ export async function putTopicCronTrigger(
 		repeat_count: number;
 		prompt: string;
 		agent?: string | null;
-		only_if_new_mail?: boolean;
 	}
 ): Promise<{ trigger: TopicCronTrigger }> {
 	return apiPut(topicCronPath(tier, name), body);

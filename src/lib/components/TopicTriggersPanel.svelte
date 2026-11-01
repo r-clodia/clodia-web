@@ -25,8 +25,6 @@
 	let legacyCron = '';
 	let prompt = '';
 	let agent = '';
-	/** Fire only when new mail reached local/mailbox (clodia-platform#586). */
-	let onlyIfNewMail = false;
 	let loading = true;
 	let busy = false;
 
@@ -42,7 +40,6 @@
 		repeatCount = isLegacy ? 0 : (value?.repeat_count ?? 0);
 		prompt = value?.prompt ?? '';
 		agent = value?.agent ?? '';
-		onlyIfNewMail = value?.only_if_new_mail ?? false;
 	}
 
 	/** Riepilogo in chiaro di ciò che si sta per salvare: due numeri si
@@ -66,7 +63,7 @@
 			const result = await getTopicCronTrigger(tier, name);
 			applyTrigger(result.trigger);
 		} catch (error) {
-			toastError('Trigger cron', error instanceof Error ? error.message : String(error));
+			toastError('Trigger onCron', error instanceof Error ? error.message : String(error));
 		} finally {
 			loading = false;
 		}
@@ -79,17 +76,17 @@
 		const text = prompt.trim();
 		if (!Number.isInteger(minuti) || minuti < MIN_INTERVAL_MINUTES) {
 			toastError(
-				'Trigger cron',
+				'Trigger onCron',
 				`L'intervallo è un numero intero di minuti, almeno ${MIN_INTERVAL_MINUTES}`
 			);
 			return;
 		}
 		if (!Number.isInteger(volte) || volte < 0) {
-			toastError('Trigger cron', 'Le ripetizioni sono un intero ≥ 0 (0 = senza fine)');
+			toastError('Trigger onCron', 'Le ripetizioni sono un intero ≥ 0 (0 = senza fine)');
 			return;
 		}
 		if (!text) {
-			toastError('Trigger cron', 'Il prompt è obbligatorio');
+			toastError('Trigger onCron', 'Il prompt è obbligatorio');
 			return;
 		}
 		busy = true;
@@ -99,27 +96,26 @@
 				interval_minutes: minuti,
 				repeat_count: volte,
 				prompt: text,
-				agent: agent || null,
-				only_if_new_mail: onlyIfNewMail
+				agent: agent || null
 			});
 			applyTrigger(result.trigger);
-			toastSuccess(wasConfigured ? 'Trigger cron aggiornato' : 'Trigger cron attivato');
+			toastSuccess(wasConfigured ? 'Trigger onCron aggiornato' : 'Trigger onCron attivato');
 		} catch (error) {
-			toastError('Trigger cron', error instanceof Error ? error.message : String(error));
+			toastError('Trigger onCron', error instanceof Error ? error.message : String(error));
 		} finally {
 			busy = false;
 		}
 	}
 
 	async function remove() {
-		if (!trigger || busy || !confirm('Rimuovere il trigger cron di questo topic?')) return;
+		if (!trigger || busy || !confirm('Rimuovere il trigger onCron di questo canale?')) return;
 		busy = true;
 		try {
 			await deleteTopicCronTrigger(tier, name);
 			applyTrigger(null);
-			toastSuccess('Trigger cron rimosso');
+			toastSuccess('Trigger onCron rimosso');
 		} catch (error) {
-			toastError('Trigger cron', error instanceof Error ? error.message : String(error));
+			toastError('Trigger onCron', error instanceof Error ? error.message : String(error));
 		} finally {
 			busy = false;
 		}
@@ -131,16 +127,18 @@
 <div class="triggers">
 	<section class="trigger-kind cron">
 		<header>
-			<span>Cron</span>
-			<button type="button" class="info" aria-label="Informazioni sul trigger cron">
+			<span>onCron</span>
+			<button type="button" class="info" aria-label="Informazioni sul trigger onCron">
 				<span aria-hidden="true">ⓘ</span>
 				<span class="tooltip" role="tooltip">
 					Posta il prompt nel topic ogni N minuti, per il numero di ripetizioni
 					indicato (0 = senza fine). Se scegli un agente, il messaggio lo menziona
-					direttamente; altrimenti usa il routing normale.
+					direttamente; altrimenti usa il routing normale. Per reagire alla posta
+					c'è onMessageReceived.
 				</span>
 			</button>
 		</header>
+		<p class="kind-hint">A intervalli: ogni N minuti, per M ripetizioni.</p>
 
 		{#if loading}
 			<p class="muted">Carico…</p>
@@ -206,17 +204,6 @@
 						{/each}
 					</select>
 				</label>
-				<label class="check">
-					<span>Posta</span>
-					<span class="numero">
-						<input type="checkbox" bind:checked={onlyIfNewMail} disabled={busy} />
-						<em>Solo se è arrivata posta nuova</em>
-					</span>
-				</label>
-				<p class="hint">
-					Il trigger parte solo se nella message box del topic (local/mailbox) sono
-					arrivate mail dall'ultimo giro: nessun turno a vuoto.
-				</p>
 				<div class="actions">
 					<button class="save" type="submit" disabled={busy}>
 						{busy ? '…' : trigger ? 'Aggiorna' : 'Attiva'}
@@ -243,6 +230,7 @@
 <style>
 	.triggers { display: flex; min-width: 0; flex-direction: column; gap: 12px; }
 	.trigger-kind { min-width: 0; }
+	.kind-hint { margin: 2px 0 8px; font-size: 11px; color: var(--fg-muted); }
 	header { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; }
 	.info { position: relative; border: 0; padding: 0; background: none; color: var(--fg-muted); cursor: help; font: inherit; line-height: 1; outline: none; }
 	.info:hover, .info:focus { color: var(--accent); }
@@ -278,8 +266,6 @@
 		font-size: 11px; line-height: 1.4;
 	}
 	.legacy code { color: var(--fg); font-size: 11px; }
-	.check input { width: auto; margin: 0; }
-	.hint { margin: 0; color: var(--fg-muted); font-size: 11px; line-height: 1.4; }
 	.riepilogo { margin: 0; color: var(--fg); font-size: 11px; }
 	.muted, .status { margin: 7px 0 0; color: var(--fg-muted); font-size: 11px; }
 	.status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
