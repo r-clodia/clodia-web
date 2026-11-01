@@ -61,7 +61,7 @@ const VIETATI = {
 const RICHIESTI = {
 	[TRIGGERS]: [
 		['putTopicCronTrigger', 'il trigger cron, unico rimasto in colonna'],
-		['class="trigger-kind cron"', 'la sezione Cron della colonna']
+		['putTopicMailTrigger', 'il trigger inbox, nello stesso form (#646)']
 	],
 	[NUOVO_TOPIC]: [
 		['createChannel', 'la creazione del topic dal dialog'],
