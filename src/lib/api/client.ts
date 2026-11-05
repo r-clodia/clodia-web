@@ -2199,14 +2199,6 @@ export async function removeTopicData(
 	return apiPost(topicDataPath(tier, name), { action: 'remove', kind, resource }, opts);
 }
 
-/** Topic owner: set an agent's access to an imported resource (`null` revokes). */
-export async function grantTopicData(
-	tier: string, name: string, kind: DataKind, resource: string,
-	agent: string, mode: DataGrantMode | null, opts: RequestOptions = {}
-): Promise<{ ok: boolean; grants: Record<string, DataGrantMode> }> {
-	return apiPost(topicDataPath(tier, name), { action: 'grant', kind, resource, agent, mode }, opts);
-}
-
 /** The topic's own RAG index (`meta.index`, clodia-platform#599). */
 export interface TopicIndexMeta {
 	collection?: string;

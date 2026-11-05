@@ -14,12 +14,10 @@
 		catalogLabel,
 		getDataCatalog,
 		getTopicIndexStatus,
-		grantTopicData,
 		importTopicData,
 		removeTopicData,
 		setTopicIndex,
 		type DataCatalogEntry,
-		type DataGrantMode,
 		type TopicDataImport,
 		type TopicIndexMeta,
 		type TopicIndexStatus
@@ -34,7 +32,8 @@
 	export let imports: TopicDataImport[] = [];
 	/** `meta.index`: the topic's own RAG collection (clodia-platform#599). */
 	export let topicIndex: TopicIndexMeta | undefined = undefined;
-	/** The channel's AI participants (humans have no grants here). */
+	/** The channel's AI participants: since #653 every one of them reads and
+	 *  writes what is imported here (no per-agent roles). Used for the count. */
 	export let agents: string[] = [];
 	/** Owner or admin: may import, remove and grant. */
 	export let canEdit = false;
@@ -163,11 +162,6 @@
 		});
 	}
 
-	function setGrant(imp: TopicDataImport, agent: string, value: string) {
-		const mode = value === 'read' || value === 'write' ? (value as DataGrantMode) : null;
-		void run('', () => grantTopicData(tier, name, imp.kind, imp.name, agent, mode));
-	}
-
 	async function switchIndex(enabled: boolean) {
 		if (busy || jobRunning) return;
 		busy = true;
@@ -256,28 +250,13 @@
 							on:click={() => (pendingRemove = imp)}>✕</button>
 					{/if}
 				</div>
-				{#if agents.length === 0}
-					<p class="muted">Nessun agente nel canale.</p>
-				{:else}
-					<ul class="grants">
-						{#each agents as a (a)}
-							{@const mode = imp.grants?.[a] ?? ''}
-							<li>
-								<span class="agent" title={a}>{a}</span>
-								{#if canEdit}
-									<select value={mode} disabled={busy}
-										on:change={(e) => setGrant(imp, a, e.currentTarget.value)}>
-										<option value="">nessuno</option>
-										<option value="read">lettura</option>
-										<option value="write">scrittura</option>
-									</select>
-								{:else}
-									<span class="muted">{mode === 'write' ? 'scrittura' : mode === 'read' ? 'lettura' : 'nessuno'}</span>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				{/if}
+				<p class="muted">
+					{#if isOwnIndex(imp)}
+						Gli agenti del canale ({agents.length}) lo leggono; lo scrive solo l'indicizzazione automatica.
+					{:else}
+						Gli agenti del canale ({agents.length}) lo leggono e lo scrivono.
+					{/if}
+				</p>
 			</li>
 		{/each}
 	</ul>
@@ -289,8 +268,8 @@
 	{:else if catalog}
 		<DataPicker entries={importable} disabled={busy} on:pick={(ev) => doImport(ev.detail)} />
 		<p class="muted">
-			Solo le risorse con tier ≤ {tier} che puoi importare. Gli agenti accedono ai dati
-			solo con il permesso dato qui.
+			Solo le risorse con tier ≤ {tier} che puoi importare. Ogni agente del canale
+			li legge e li scrive.
 		</p>
 	{/if}
 {/if}
@@ -357,13 +336,6 @@
 		font-size: 11px; padding: 0 2px; flex-shrink: 0;
 	}
 	.data-remove:hover:not(:disabled) { color: #dc2626; }
-	.grants { list-style: none; margin: 4px 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-	.grants li { display: flex; align-items: center; gap: 6px; font-size: 11px; min-width: 0; }
-	.agent { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-	.grants select {
-		font-size: 11px; padding: 2px 4px; border-radius: 4px;
-		border: 1px solid var(--border); background: var(--bg); color: var(--fg);
-	}
 	.link-btn {
 		font-size: 11px; background: transparent; border: 1px solid var(--border);
 		border-radius: 4px; color: var(--fg); cursor: pointer; padding: 2px 8px; white-space: nowrap;
