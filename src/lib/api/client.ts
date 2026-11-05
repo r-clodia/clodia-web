@@ -2210,14 +2210,45 @@ export async function grantTopicData(
 /** The topic's own RAG index (`meta.index`, clodia-platform#599). */
 export interface TopicIndexMeta {
 	collection?: string;
+	/** The room's toggle (clodia-platform#648): only `true` means on. */
+	on?: boolean;
+	since?: string;
+	/** Pre-#648 opt-out flag: ignored by the gateway since #648. */
 	enabled?: boolean;
 }
 
-/** Topic owner or admin: switch the topic's RAG index on or off.
- *  Switching it off drops the collection's documents. */
+/** The background job of the room's RAG toggle (#648). */
+export interface TopicIndexJob {
+	state: 'idle' | 'indexing' | 'deindexing' | 'done' | 'error';
+	done?: number;
+	total?: number;
+	error?: string | null;
+	started_at?: string;
+	finished_at?: string | null;
+}
+
+export interface TopicIndexStatus {
+	on: boolean;
+	collection: string;
+	since: string;
+	job: TopicIndexJob;
+}
+
+/** Any person of the room: the toggle and its running job (#648). */
+export async function getTopicIndexStatus(
+	tier: string, name: string, opts: RequestOptions = {}
+): Promise<TopicIndexStatus> {
+	return apiGet(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/index`, opts
+	);
+}
+
+/** Topic owner or admin: flip the room's RAG toggle (#648). On: every file of
+ *  the room (Drive included) is indexed now, the chat from now on. Off:
+ *  everything of the room leaves the RAG. Returns at once; poll the status. */
 export async function setTopicIndex(
 	tier: string, name: string, enabled: boolean, opts: RequestOptions = {}
-): Promise<{ enabled: boolean; collection: string }> {
+): Promise<TopicIndexStatus & { enabled: boolean }> {
 	return apiPost(
 		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/index`,
 		{ enabled }, opts

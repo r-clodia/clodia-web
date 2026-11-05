@@ -2029,6 +2029,8 @@
 	$: triggerAgents = participants.filter((participant) => aiAgents.includes(participant));
 	/** Verbs enabled in this room (#609), once the Strumenti panel has loaded. */
 	let toolsCount: number | null = null;
+	/** The room RAG toggle's running job, shown on the «Dati» header (#648). */
+	let indexJobLabel = '';
 	$: (tier, name), (toolsCount = null);
 	// Non proporre agent il cui tier è insufficiente per il topic (eligible=false).
 	// Gli agent senza record di idoneità (es. umani) restano proponibili.
@@ -3102,13 +3104,17 @@
 				<details class="side-section">
 					<summary>
 						<span>Dati</span>
+						{#if indexJobLabel}
+							<span class="section-count index-running" title={indexJobLabel}>RAG…</span>
+						{/if}
 						<span class="section-count">{(info?.meta?.data ?? []).length}</span>
 					</summary>
 					{#key `${tier}/${name}`}
 						<TopicDataPanel {tier} {name}
 							imports={info?.meta?.data ?? []} topicIndex={info?.meta?.index}
 							agents={triggerAgents}
-							canEdit={isOwner || $isAdmin} on:changed={refreshInfo} />
+							canEdit={isOwner || $isAdmin} on:changed={refreshInfo}
+							on:indexjob={(e) => (indexJobLabel = e.detail.running ? e.detail.label : '')} />
 					{/key}
 				</details>
 				<!-- MCP/connector verbs this room enables for every participant, with
@@ -3846,6 +3852,7 @@
 		letter-spacing: 0;
 		text-transform: none;
 	}
+	.section-count.index-running { color: var(--accent); }
 	.topic-meta { display: flex; flex-direction: column; gap: 8px; }
 	.meta-field { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; color: var(--fg-muted); }
 	.meta-field > span:first-child { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }

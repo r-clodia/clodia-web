@@ -8,11 +8,12 @@
 	 * every action the panel fires `changed` and the page reloads the meta,
 	 * so there is one source of truth and no local copy to drift.
 	 */
-	import { createEventDispatcher, onMount } from 'svelte';
+	import { createEventDispatcher, onDestroy, onMount } from 'svelte';
 	import {
 		apiErrorDetail,
 		catalogLabel,
 		getDataCatalog,
+		getTopicIndexStatus,
 		grantTopicData,
 		importTopicData,
 		removeTopicData,
@@ -20,7 +21,8 @@
 		type DataCatalogEntry,
 		type DataGrantMode,
 		type TopicDataImport,
-		type TopicIndexMeta
+		type TopicIndexMeta,
+		type TopicIndexStatus
 	} from '$lib/api/client';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import DataPicker from '$lib/components/DataPicker.svelte';
@@ -37,7 +39,11 @@
 	/** Owner or admin: may import, remove and grant. */
 	export let canEdit = false;
 
-	const dispatch = createEventDispatcher<{ changed: void }>();
+	const dispatch = createEventDispatcher<{
+		changed: void;
+		/** The toggle's job, for the section header (#648). */
+		indexjob: { running: boolean; label: string };
+	}>();
 
 	let catalog: DataCatalogEntry[] | null = null;
 	let catalogErr = '';
@@ -45,9 +51,48 @@
 	let pendingRemove: TopicDataImport | null = null;
 	let confirmIndexOff = false;
 
-	// Absent `meta.index` = not indexed yet: enabled, collection unknown.
-	$: indexEnabled = topicIndex?.enabled !== false;
-	$: indexCollection = topicIndex?.collection ?? '';
+	// The room's toggle (clodia-platform#648): OFF unless `on: true`. The
+	// status (and its job) comes from the gateway; the meta is the fallback
+	// until the first answer.
+	let status: TopicIndexStatus | null = null;
+	let pollTimer: ReturnType<typeof setTimeout> | null = null;
+	let destroyed = false;
+	$: indexEnabled = status ? status.on : topicIndex?.on === true;
+	$: indexCollection = status?.collection || topicIndex?.collection || '';
+	$: job = status?.job;
+	$: jobRunning = job?.state === 'indexing' || job?.state === 'deindexing';
+	$: jobLabel = !jobRunning
+		? ''
+		: `${job?.state === 'indexing' ? 'Indicizzazione' : 'Deindicizzazione'} in corso` +
+			(job?.total ? ` · ${job?.done ?? 0}/${job.total}` : '…');
+	$: dispatch('indexjob', { running: jobRunning, label: jobLabel });
+
+	/** True while this panel has seen a job running: when it ends, the page
+	 *  reloads the meta (the collection may have changed). */
+	let wasRunning = false;
+
+	async function loadStatus() {
+		if (pollTimer) clearTimeout(pollTimer);
+		pollTimer = null;
+		try {
+			status = await getTopicIndexStatus(tier, name);
+		} catch {
+			// A transient error: keep the last state and try again below.
+		}
+		const running = status?.job?.state === 'indexing' || status?.job?.state === 'deindexing';
+		if (running) {
+			wasRunning = true;
+			if (!destroyed) pollTimer = setTimeout(() => void loadStatus(), 2000);
+		} else if (wasRunning) {
+			wasRunning = false;
+			dispatch('changed');
+		}
+	}
+
+	onDestroy(() => {
+		destroyed = true;
+		if (pollTimer) clearTimeout(pollTimer);
+	});
 	const isOwnIndex = (imp: TopicDataImport) =>
 		imp.kind === 'rag' && !!indexCollection && imp.name === indexCollection;
 
@@ -88,7 +133,10 @@
 	// The tier shown next to each import comes from the catalog too, so it
 	// loads with the section, for every viewer (a non-admin receives only
 	// the entries they may import: the others show no tier).
-	onMount(() => void loadCatalog());
+	onMount(() => {
+		void loadCatalog();
+		void loadStatus();
+	});
 
 	async function run(label: string, fn: () => Promise<unknown>) {
 		if (busy) return;
@@ -120,11 +168,19 @@
 		void run('', () => grantTopicData(tier, name, imp.kind, imp.name, agent, mode));
 	}
 
-	function switchIndex(enabled: boolean) {
-		return run(
-			enabled ? 'Indicizzazione riattivata' : 'Indicizzazione disattivata',
-			() => setTopicIndex(tier, name, enabled)
-		);
+	async function switchIndex(enabled: boolean) {
+		if (busy || jobRunning) return;
+		busy = true;
+		try {
+			status = await setTopicIndex(tier, name, enabled);
+			wasRunning = true;
+			toastSuccess(enabled ? 'Indicizzazione avviata' : 'Deindicizzazione avviata');
+		} catch (e) {
+			toastError('Indice RAG del canale', apiErrorDetail(e));
+		} finally {
+			busy = false;
+		}
+		void loadStatus();
 	}
 
 	async function confirmIndexDisable() {
@@ -143,20 +199,39 @@
 <div class="topic-index">
 	<div class="data-head">
 		<span class="kind kind-rag">RAG</span>
-		<span class="index-label">Indice RAG del topic</span>
-		<span class="index-state" class:off={!indexEnabled}>{indexEnabled ? 'attivo' : 'disattivato'}</span>
-	</div>
-	<p class="muted">
-		{#if indexCollection}<code title={indexCollection}>{indexCollection}</code>{:else}in preparazione{/if}
-	</p>
-	{#if canEdit}
-		{#if indexEnabled}
-			<button type="button" class="link-btn" disabled={busy}
-				on:click={() => (confirmIndexOff = true)}>Disattiva indicizzazione</button>
+		<span class="index-label">Indicizza nel RAG</span>
+		{#if canEdit}
+			<label class="switch" title={jobRunning ? 'Attendi la fine del lavoro in corso' : ''}>
+				<input type="checkbox" checked={indexEnabled} disabled={busy || jobRunning}
+					on:click|preventDefault={() =>
+						indexEnabled ? (confirmIndexOff = true) : void switchIndex(true)} />
+				<span class="slider" aria-hidden="true"></span>
+			</label>
 		{:else}
-			<button type="button" class="link-btn" disabled={busy}
-				on:click={() => void switchIndex(true)}>{busy ? '…' : 'Riattiva indicizzazione'}</button>
+			<span class="index-state" class:off={!indexEnabled}>{indexEnabled ? 'attivo' : 'spento'}</span>
 		{/if}
+	</div>
+	{#if jobRunning}
+		<p class="index-job" role="status">
+			<span class="spinner" aria-hidden="true"></span>{jobLabel}
+			{#if job?.total}<progress max={job.total} value={job.done ?? 0}></progress>{/if}
+		</p>
+		<p class="muted">Puoi aprire altri topic: il lavoro continua e qui resta visibile fino alla fine.</p>
+	{:else if job?.state === 'error'}
+		<p class="err" role="alert">
+			{indexEnabled ? 'Indicizzazione' : 'Deindicizzazione'} non riuscita{job.error ? `: ${job.error}` : ''}.
+			{#if canEdit}
+				<button type="button" class="link-btn" disabled={busy}
+					on:click={() => void switchIndex(indexEnabled)}>Riprova</button>
+			{/if}
+		</p>
+	{:else if indexEnabled}
+		<p class="muted">
+			Indicizzati tutti i file del canale (Drive collegato compreso) e i messaggi dal
+			{status?.since ? new Date(status.since).toLocaleString() : 'momento dell\'attivazione'}.
+		</p>
+	{:else}
+		<p class="muted">Spento: nulla di questo canale è nel RAG.</p>
 	{/if}
 </div>
 
@@ -222,9 +297,9 @@
 
 <ConfirmDialog
 	open={confirmIndexOff}
-	title="Disattivare l'indicizzazione?"
-	message="L'indice delle conversazioni e dei file di questo topic verrà cancellato e gli agenti non potranno più cercarvi. Se la riattivi, l'indice viene ricostruito da zero nei cicli successivi."
-	confirmLabel="Disattiva"
+	title="Togliere il canale dal RAG?"
+	message="Tutti i contenuti di questo canale (file, Drive collegato e messaggi) vengono tolti dal RAG e gli agenti non potranno più cercarvi. Riattivando, i file vengono reindicizzati ma i messaggi solo da quel momento in poi."
+	confirmLabel="Togli dal RAG"
 	destructive
 	loading={busy}
 	on:confirm={confirmIndexDisable}
@@ -259,10 +334,20 @@
 	.topic-index {
 		margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
 	}
-	.topic-index code { overflow-wrap: anywhere; }
 	.index-label { flex: 1; min-width: 0; }
 	.index-state { font-size: 10px; color: #16a34a; white-space: nowrap; }
 	.index-state.off { color: var(--fg-muted); }
+	.index-job { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; margin: 6px 0 2px; color: var(--fg); }
+	.index-job progress { flex: 1 1 80px; min-width: 60px; height: 6px; }
+	.spinner { width: 10px; height: 10px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+	@keyframes spin { to { transform: rotate(360deg); } }
+	.switch { position: relative; display: inline-block; width: 30px; height: 16px; flex: 0 0 auto; }
+	.switch input { opacity: 0; width: 0; height: 0; }
+	.slider { position: absolute; inset: 0; border-radius: 16px; background: var(--border); cursor: pointer; transition: background .15s; }
+	.slider::before { content: ''; position: absolute; left: 2px; top: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); transition: transform .15s; }
+	.switch input:checked + .slider { background: var(--accent); }
+	.switch input:checked + .slider::before { transform: translateX(14px); }
+	.switch input:disabled + .slider { opacity: .5; cursor: default; }
 	.own-index {
 		font-size: 9px; padding: 1px 5px; border-radius: 999px; white-space: nowrap; flex-shrink: 0;
 		color: var(--fg-muted); border: 1px dashed var(--border);
