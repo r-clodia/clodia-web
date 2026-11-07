@@ -12,6 +12,13 @@
 	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
 	import { toastSuccess, toastError, toastInfo } from '$lib/stores/toasts';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
+	import ViewToggle from '$lib/components/ViewToggle.svelte';
+	import { readView } from '$lib/viewPref.js';
+
+	// Cards or table, read synchronously from the cookie while the component
+	// initialises (not in onMount): the first paint is already the stored
+	// layout, so there is no flicker (clodia-platform#656).
+	let view = readView('integrations');
 
 	// Sezione Tools — l'owner connette qui i tool esterni del pacchetto base.
 	// Le card vengono dal registry dei connettori del gateway (GET /tools,
@@ -70,6 +77,23 @@
 	// Edizione (Modular Distro): le card fuori lista non arrivano proprio — il
 	// gateway filtra snapshot e registry (clodia-platform#526).
 	$: visibleCards = cards;
+
+	// Status of a card, shared by the card pill and the table cell.
+	function isOn(c: CardModel): boolean {
+		return c.connected && c.operational !== false;
+	}
+	function isBroken(c: CardModel): boolean {
+		return c.operational === false && (c.connected || Boolean(c.issues?.length));
+	}
+	function statusLabel(c: CardModel): string {
+		return c.builtin ? 'Built-in' : c.mcp && c.authMethods?.length && !c.connected ? (c.authMethods.length === 1 && c.auth === 'oauth' ? 'Da autorizzare' : 'Da connettere') : c.mcp && c.authMethods?.length ? 'Connesso' : c.mcp ? 'MCP montato' : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto';
+	}
+	function providerLabel(c: CardModel): string {
+		return c.mcp ? (c.transport ?? 'mcp') : (c.provider ?? 'google');
+	}
+	function accountLabel(c: CardModel): string {
+		return c.connected && c.accounts.length ? c.accounts.join(', ') : (c.bot_username ? '@' + c.bot_username : '—');
+	}
 	// I servizi lungo-vivi dei pack (#515): il campo arriva con
 	// clodia-tools#362 e finché non c'è la sezione semplicemente non compare.
 	let servizi: ReturnType<typeof serviziDiPack> = [];
@@ -779,6 +803,7 @@
 		{#if $instanceProfile.features.integrations === 'full' || $instanceProfile.integrations?.allow_manual_mcp}
 			<button type="button" class="btn primary" on:click={openMcp}>+ Add MCP server</button>
 		{/if}
+		<ViewToggle page="integrations" bind:view />
 		<button type="button" on:click={load} disabled={loading}>{loading ? 'Loading…' : 'Reload'}</button>
 	</div>
 </header>
@@ -790,17 +815,129 @@
 	</div>
 {/if}
 
+<!-- The same actions in both views: one snippet each, two renderers
+     (clodia-platform#656). -->
+{#snippet pairingRow(c: CardModel)}
+	{#if c.pairing}
+		<!-- Device pairing (clodia-platform#639): state and identity only;
+		     the code and the QR live in the modal, never on the card. -->
+		<div class="pairing-row">
+			<span class="pairing-state" class:pairing-ok={pairingStates[c.id]?.state === 'open'}>
+				{#if pairingStates[c.id]}
+					{pairingStates[c.id].state === 'open' && pairingStates[c.id].me
+						? `Abbinato come ${pairingStates[c.id].me}`
+						: etichettaPairing(pairingStates[c.id].state)}
+				{:else}
+					Abbinamento dispositivo
+				{/if}
+			</span>
+			<!-- No «Abbina» once paired: pairing again could unlink the device. -->
+			{#if pairingStates[c.id]?.state !== 'open'}
+				<button type="button" class="btn ghost sm" on:click={() => openPairing(c)} disabled={!$isAdmin}>Abbina</button>
+			{/if}
+		</div>
+	{/if}
+{/snippet}
+
+{#snippet actions(c: CardModel)}
+	{#if c.builtin}
+		<span class="builtin-note">interno · pluggable</span>
+	{:else if c.mcp}
+		{#if testResult[c.id]}
+			<span class="test-badge" class:ok={testResult[c.id].ok === true} class:ko={testResult[c.id].ok === false} title={testResult[c.id].detail}>
+				{testResult[c.id].ok === true ? '✓' : testResult[c.id].ok === false ? '✕' : '—'}
+			</span>
+		{/if}
+		<button type="button" class="btn ghost" on:click={() => testConn(c.id)} disabled={testing[c.id]}>{testing[c.id] ? '…' : 'Test'}</button>
+		{#if c.authMethods?.length}
+			{#if c.connected}
+				<button type="button" class="btn" on:click={() => openMcpConnect(c)}>
+					{c.authActive === 'oauth' && c.auth === 'oauth' ? 'Riautorizza' : 'Riconnetti'}
+				</button>
+				{#if c.canDisconnect}
+					<button type="button" class="btn ghost" on:click={() => disconnectMcpCard(c)}>Disconnetti</button>
+				{/if}
+			{:else}
+				<button type="button" class="btn primary" on:click={() => openMcpConnect(c)}>Connetti</button>
+			{/if}
+		{/if}
+		<button type="button" class="btn ghost" on:click={() => removeMcp(c.id)}>Rimuovi</button>
+	{:else if !c.wired}
+		<button type="button" class="btn" disabled>Presto</button>
+	{:else if c.gestisce.includes('mailboxes')}
+		<!-- Il pannello che amministra un INSIEME di valori del gateway.
+		     La chiave è il nome dell'insieme (`mailboxes`), che è un elenco
+		     chiuso suo: un altro connettore che puntasse un campo sullo
+		     stesso insieme erediterebbe questo bottone senza collegarlo. -->
+		<button type="button" class="btn primary" on:click={openMailboxes}>{c.setupLabel || 'Gestisci'}</button>
+	{:else if c.connected}
+		{#if testResult[c.id]}
+			<span class="test-badge" class:ok={testResult[c.id].ok === true} class:ko={testResult[c.id].ok === false} title={testResult[c.id].detail}>
+				{testResult[c.id].ok === true ? '✓' : testResult[c.id].ok === false ? '✕' : '—'}
+			</span>
+		{/if}
+		<button type="button" class="btn ghost" on:click={() => testConn(c.id)} disabled={testing[c.id]}>{testing[c.id] ? '…' : 'Test'}</button>
+		<button type="button" class="btn ghost" on:click={() => askWainston(aiuto(c))}>💬 Aiuto</button>
+		<button type="button" class="btn ghost" on:click={() => connetti(c)}>Riconnetti</button>
+	{:else}
+		<button type="button" class="btn ghost" on:click={() => askWainston(aiuto(c))}>💬 Aiuto setup</button>
+		<button type="button" class="btn primary" on:click={() => connetti(c)}>{c.setupLabel || 'Connetti'}</button>
+	{/if}
+{/snippet}
+
+{#if view === 'table'}
+<div class="table-wrap">
+	<table class="tbl">
+		<thead>
+			<tr>
+				<th>Integrazione</th>
+				<th>Stato</th>
+				<th>Account</th>
+				<th class="act">Azioni</th>
+			</tr>
+		</thead>
+		<tbody>
+			{#each visibleCards as c (c.id)}
+				<tr class:on={isOn(c)} class:broken={isBroken(c)}>
+					<td>
+						<div class="cell-name">
+							<span class="glyph sm" aria-hidden="true"><ConnectorIcon name={c.icon} size={18} /></span>
+							<div class="title">
+								<div class="name">{c.name}</div>
+								<div class="provider">{providerLabel(c)}{#if c.relay?.label}<span class="relay-label" title="Canale chat (relay)"> · {c.relay.label}</span>{/if}</div>
+							</div>
+						</div>
+					</td>
+					<td>
+						<span class="pill" class:pill-on={isOn(c)} class:pill-broken={isBroken(c)}>{statusLabel(c)}</span>
+						{#if c.issues?.length}
+							<div class="integration-issues">
+								{#each c.issues as issue (issue.account)}
+									<div><strong>{issue.account}</strong>: {issue.missing?.length ? `mancano ${issue.missing.join(', ')}` : (issue.error ?? 'configurazione non valida')}</div>
+								{/each}
+							</div>
+						{/if}
+						{@render pairingRow(c)}
+					</td>
+					<td><span class="account">{accountLabel(c)}</span></td>
+					<td class="act"><div class="row-actions">{@render actions(c)}</div></td>
+				</tr>
+			{/each}
+		</tbody>
+	</table>
+</div>
+{:else}
 <div class="grid">
 	{#each visibleCards as c (c.id)}
-		<div class="card" class:on={c.connected && c.operational !== false} class:broken={c.operational === false && (c.connected || Boolean(c.issues?.length))}>
+		<div class="card" class:on={isOn(c)} class:broken={isBroken(c)}>
 			<div class="card-head">
 				<span class="glyph" aria-hidden="true"><ConnectorIcon name={c.icon} size={26} /></span>
 				<div class="title">
 					<div class="name">{c.name}</div>
-					<div class="provider">{c.mcp ? (c.transport ?? 'mcp') : (c.provider ?? 'google')}{#if c.relay?.label}<span class="relay-label" title="Canale chat (relay)"> · {c.relay.label}</span>{/if}</div>
+					<div class="provider">{providerLabel(c)}{#if c.relay?.label}<span class="relay-label" title="Canale chat (relay)"> · {c.relay.label}</span>{/if}</div>
 				</div>
-				<span class="pill" class:pill-on={c.connected && c.operational !== false} class:pill-broken={c.operational === false && (c.connected || Boolean(c.issues?.length))}>
-					{c.builtin ? 'Built-in' : c.mcp && c.authMethods?.length && !c.connected ? (c.authMethods.length === 1 && c.auth === 'oauth' ? 'Da autorizzare' : 'Da connettere') : c.mcp && c.authMethods?.length ? 'Connesso' : c.mcp ? 'MCP montato' : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto'}
+				<span class="pill" class:pill-on={isOn(c)} class:pill-broken={isBroken(c)}>
+					{statusLabel(c)}
 				</span>
 			</div>
 
@@ -812,25 +949,7 @@
 				</div>
 			{/if}
 
-			{#if c.pairing}
-				<!-- Device pairing (clodia-platform#639): state and identity only;
-				     the code and the QR live in the modal, never on the card. -->
-				<div class="pairing-row">
-					<span class="pairing-state" class:pairing-ok={pairingStates[c.id]?.state === 'open'}>
-						{#if pairingStates[c.id]}
-							{pairingStates[c.id].state === 'open' && pairingStates[c.id].me
-								? `Abbinato come ${pairingStates[c.id].me}`
-								: etichettaPairing(pairingStates[c.id].state)}
-						{:else}
-							Abbinamento dispositivo
-						{/if}
-					</span>
-					<!-- No «Abbina» once paired: pairing again could unlink the device. -->
-					{#if pairingStates[c.id]?.state !== 'open'}
-						<button type="button" class="btn ghost sm" on:click={() => openPairing(c)} disabled={!$isAdmin}>Abbina</button>
-					{/if}
-				</div>
-			{/if}
+			{@render pairingRow(c)}
 
 			{#if c.issues?.length}
 				<div class="integration-issues">
@@ -841,54 +960,13 @@
 			{/if}
 
 			<div class="card-foot">
-				<span class="account">{c.connected && c.accounts.length ? c.accounts.join(', ') : (c.bot_username ? '@' + c.bot_username : '—')}</span>
-				{#if c.builtin}
-					<span class="builtin-note">interno · pluggable</span>
-				{:else if c.mcp}
-					{#if testResult[c.id]}
-						<span class="test-badge" class:ok={testResult[c.id].ok === true} class:ko={testResult[c.id].ok === false} title={testResult[c.id].detail}>
-							{testResult[c.id].ok === true ? '✓' : testResult[c.id].ok === false ? '✕' : '—'}
-						</span>
-					{/if}
-					<button type="button" class="btn ghost" on:click={() => testConn(c.id)} disabled={testing[c.id]}>{testing[c.id] ? '…' : 'Test'}</button>
-					{#if c.authMethods?.length}
-						{#if c.connected}
-							<button type="button" class="btn" on:click={() => openMcpConnect(c)}>
-								{c.authActive === 'oauth' && c.auth === 'oauth' ? 'Riautorizza' : 'Riconnetti'}
-							</button>
-							{#if c.canDisconnect}
-								<button type="button" class="btn ghost" on:click={() => disconnectMcpCard(c)}>Disconnetti</button>
-							{/if}
-						{:else}
-							<button type="button" class="btn primary" on:click={() => openMcpConnect(c)}>Connetti</button>
-						{/if}
-					{/if}
-					<button type="button" class="btn ghost" on:click={() => removeMcp(c.id)}>Rimuovi</button>
-				{:else if !c.wired}
-					<button type="button" class="btn" disabled>Presto</button>
-				{:else if c.gestisce.includes('mailboxes')}
-					<!-- Il pannello che amministra un INSIEME di valori del gateway.
-					     La chiave è il nome dell'insieme (`mailboxes`), che è un elenco
-					     chiuso suo: un altro connettore che puntasse un campo sullo
-					     stesso insieme erediterebbe questo bottone senza collegarlo. -->
-					<button type="button" class="btn primary" on:click={openMailboxes}>{c.setupLabel || 'Gestisci'}</button>
-				{:else if c.connected}
-					{#if testResult[c.id]}
-						<span class="test-badge" class:ok={testResult[c.id].ok === true} class:ko={testResult[c.id].ok === false} title={testResult[c.id].detail}>
-							{testResult[c.id].ok === true ? '✓' : testResult[c.id].ok === false ? '✕' : '—'}
-						</span>
-					{/if}
-					<button type="button" class="btn ghost" on:click={() => testConn(c.id)} disabled={testing[c.id]}>{testing[c.id] ? '…' : 'Test'}</button>
-					<button type="button" class="btn ghost" on:click={() => askWainston(aiuto(c))}>💬 Aiuto</button>
-					<button type="button" class="btn ghost" on:click={() => connetti(c)}>Riconnetti</button>
-				{:else}
-					<button type="button" class="btn ghost" on:click={() => askWainston(aiuto(c))}>💬 Aiuto setup</button>
-					<button type="button" class="btn primary" on:click={() => connetti(c)}>{c.setupLabel || 'Connetti'}</button>
-				{/if}
+				<span class="account">{accountLabel(c)}</span>
+				{@render actions(c)}
 			</div>
 		</div>
 	{/each}
 </div>
+{/if}
 
 {#if servizi.length}
 	<!-- I processi lungo-vivi che i pack dichiarano (clodia-platform#515): un
@@ -1290,6 +1368,18 @@
 	.srv-err { flex-basis: 100%; font-size: 12px; color: #d32f2f; word-break: break-word; }
 
 	.head-actions { display: flex; gap: 8px; align-items: center; }
+	.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); }
+	.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+	.tbl th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+	.tbl td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+	.tbl tbody tr:last-child td { border-bottom: 0; }
+	.tbl tr.broken td:first-child { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--danger) 70%, transparent); }
+	.tbl tr.on td:first-child { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--success) 70%, transparent); }
+	.tbl td .integration-issues, .tbl td .pairing-row { margin-top: 6px; }
+	.tbl .act { text-align: right; }
+	.tbl .account { display: inline-block; max-width: 220px; vertical-align: middle; }
+	.cell-name { display: flex; align-items: center; gap: 10px; }
+	.row-actions { display: flex; gap: 6px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
 	.radio { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
 	textarea { width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--fg); padding: 9px 11px; font-size: 12px; line-height: 1.5; resize: vertical; }
 	.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
@@ -1300,6 +1390,7 @@
 	.card.broken { border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); }
 	.card-head { display: flex; align-items: center; gap: 10px; }
 	.glyph { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--fg); flex: none; }
+	.glyph.sm { width: 28px; height: 28px; }
 	.title { min-width: 0; flex: 1 1 auto; }
 	.name { font-weight: 700; font-size: 14px; }
 	.provider { color: var(--fg-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }

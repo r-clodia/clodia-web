@@ -18,6 +18,13 @@
 	} from '$lib/providerConnect.js';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { toastSuccess } from '$lib/stores/toasts';
+	import ViewToggle from '$lib/components/ViewToggle.svelte';
+	import { readView } from '$lib/viewPref.js';
+
+	// Cards or table, read synchronously from the cookie while the component
+	// initialises (not in onMount): the first paint is already the stored
+	// layout, so there is no flicker (clodia-platform#656).
+	let view = readView('providers');
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// Sezione PROVIDERS — credenziali dei MOTORI DI INFERENZA.
@@ -152,6 +159,11 @@
 	}
 	function prettyName(id: string): string {
 		return META[id]?.name ?? id;
+	}
+
+	// The status label, shared by the card pill and the table cell.
+	function statusLabel(p: Provider): string {
+		return p.paused ? '⏸ In pausa' : p.connected ? `Connesso · ${p.via === 'apikey' ? 'API key' : 'abbonamento'}` : 'Da connettere';
 	}
 
 	// "SEAL-2" → "2" per il breakdown compatto; "–" se assente.
@@ -330,9 +342,62 @@
 			Motori di inferenza · credenziali nel <strong>keystore</strong> di clodia-logic
 		</p>
 	</div>
-	<button type="button" on:click={load} disabled={loading}>{loading ? 'Loading…' : 'Reload'}</button>
+	<div class="head-actions">
+		<ViewToggle page="providers" bind:view />
+		<button type="button" on:click={load} disabled={loading}>{loading ? 'Loading…' : 'Reload'}</button>
+	</div>
 </header>
 
+<!-- The same actions in both views: one snippet, two renderers. -->
+{#snippet actions(p: Provider)}
+	{#if p.connected}
+		<button type="button" class="btn ghost" on:click={() => togglePause(p)}>{p.paused ? '▶ Riattiva' : '⏸ Pausa'}</button>
+		<button type="button" class="btn ghost" on:click={() => openConnect(p)}>Riconnetti</button>
+	{:else}
+		<button type="button" class="btn primary" on:click={() => openConnect(p)}>Connetti</button>
+	{/if}
+{/snippet}
+
+{#if view === 'table'}
+<div class="table-wrap">
+	<table class="tbl">
+		<thead>
+			<tr>
+				<th>Provider</th>
+				<th>Stato</th>
+				<th>Meccanismo</th>
+				<th>DPA</th>
+				<th>SEAL</th>
+				<th class="act">Azioni</th>
+			</tr>
+		</thead>
+		<tbody>
+			{#each providers as p (p.id)}
+				<tr class:paused={p.paused}>
+					<td>
+						<div class="name">{p.name}</div>
+						<div class="engine">{p.engine}</div>
+					</td>
+					<td>
+						<span class="pill" class:pill-on={p.connected && !p.paused} class:pill-paused={p.paused}>{statusLabel(p)}</span>
+					</td>
+					<td class="muted-cell">{p.mechanism === 'apikey' ? 'API · a consumo' : 'Abbonamento · costo fisso'}</td>
+					<td class="muted-cell">
+						{p.dpa || '—'}
+						{#if p.sovereignty?.dimensions?.dpa_url}
+							<a class="dim link" href={p.sovereignty.dimensions.dpa_url} target="_blank" rel="noopener">DPA ↗</a>
+						{/if}
+					</td>
+					<td>
+						{#if p.seal}<span class="seal seal-{sealN(p.seal)}" title="SEAL effettivo = min(SOV-2, SOV-3, SOV-7)">{p.seal}</span>{:else}—{/if}
+					</td>
+					<td class="act"><div class="row-actions">{@render actions(p)}</div></td>
+				</tr>
+			{/each}
+		</tbody>
+	</table>
+</div>
+{:else}
 <div class="grid">
 	{#each providers as p (p.id)}
 		<div class="card" class:on={p.connected && !p.paused} class:paused={p.paused}>
@@ -343,7 +408,7 @@
 					<div class="engine">{p.engine}</div>
 				</div>
 				<span class="pill" class:pill-on={p.connected && !p.paused} class:pill-paused={p.paused}>
-					{p.paused ? '⏸ In pausa' : p.connected ? `Connesso · ${p.via === 'apikey' ? 'API key' : 'abbonamento'}` : 'Da connettere'}
+					{statusLabel(p)}
 				</span>
 			</div>
 
@@ -376,16 +441,12 @@
 			{/if}
 
 			<div class="card-foot">
-				{#if p.connected}
-					<button type="button" class="btn ghost" on:click={() => togglePause(p)}>{p.paused ? '▶ Riattiva' : '⏸ Pausa'}</button>
-					<button type="button" class="btn ghost" on:click={() => openConnect(p)}>Riconnetti</button>
-				{:else}
-					<button type="button" class="btn primary" on:click={() => openConnect(p)}>Connetti</button>
-				{/if}
+				{@render actions(p)}
 			</div>
 		</div>
 	{/each}
 </div>
+{/if}
 
 <p class="footnote">
 	Provider distinti per <strong>DPA</strong> e costi: <em>API</em> (a consumo, DPA
@@ -476,6 +537,16 @@
 <style>
 	.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
 	.hint { margin: 4px 0 0; color: var(--fg-muted); font-size: 12px; }
+	.head-actions { display: flex; gap: 8px; align-items: center; }
+	.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); }
+	.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+	.tbl th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+	.tbl td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+	.tbl tbody tr:last-child td { border-bottom: 0; }
+	.tbl tr.paused td { opacity: 0.62; }
+	.tbl .act { text-align: right; }
+	.muted-cell { color: var(--fg-muted); font-size: 12px; }
+	.row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
 	.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 	.card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 	.card.on { border-color: color-mix(in srgb, var(--success) 55%, var(--border)); }
