@@ -23,7 +23,6 @@ export const FULL_PROFILE: InstanceProfile = {
 		providers_ui: true,
 		databases_ui: true,
 		activity: true,
-		pwa: true,
 		helpdesk: true,
 		colony: false
 	},

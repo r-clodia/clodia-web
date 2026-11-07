@@ -511,7 +511,6 @@ export interface InstanceFeatures {
 	readonly providers_ui: boolean;
 	readonly databases_ui: boolean;
 	readonly activity: boolean;
-	readonly pwa: boolean;
 	readonly helpdesk: boolean;
 	readonly colony: boolean;
 }
