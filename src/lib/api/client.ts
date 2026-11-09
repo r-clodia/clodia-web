@@ -297,6 +297,9 @@ import type {
 	JobsListResponse,
 	Topic,
 	TopicGoal,
+	TopicMetaView,
+	TopicTodo,
+	TopicTodoWrite,
 	TopicsListResponse,
 	TopicTree
 } from './types';
@@ -656,7 +659,10 @@ export interface ChannelInfo {
 		participants?: string[] | Record<string, string>;
 		tier?: string;
 		status?: string;
+		/** Derived from `todos` (#658): earliest due among open items. */
 		deadline?: string | null;
+		/** The room's to-do list (#658). */
+		todos?: TopicTodo[];
 		/** Path (dentro il topic) dell'immagine con cui la stanza si presenta.
 		 *  La imposta solo l'owner; `logo_kind` è il tipo rilevato dai byte al
 		 *  caricamento — il file non ha estensione, quindi chi lo serve non
@@ -3138,9 +3144,43 @@ export async function setTopicStatus(tier: string, name: string, status: string,
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/status`, { status }, opts);
 }
 
-/** POST `/api/topics/{tier}/{name}/deadline` — imposta la deadline (YYYY-MM-DD|null). */
-export async function setTopicDeadline(tier: string, name: string, deadline: string | null, opts: RequestOptions = {}): Promise<{ deadline: string | null }> {
-	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/deadline`, { deadline }, opts);
+/** GET `/api/topics/{tier}/{name}` — topic metadata for the Meta popup
+ *  (clodia-platform#658). A plain read: no agent turn, no tokens. The topic
+ *  deadline is derived from the to-do list and has no setter. */
+export async function getTopicMeta(tier: string, name: string, opts: RequestOptions = {}): Promise<TopicMetaView> {
+	return apiGet<TopicMetaView>(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}`, opts);
+}
+
+function topicTodosPath(tier: string, name: string, id?: string): string {
+	const base = `/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/todos`;
+	return id ? `${base}/${encodeURIComponent(id)}` : base;
+}
+
+/** POST `/api/topics/{tier}/{name}/todos` — add an open item. 409 = the list
+ *  changed since `base_version`: reload and retry by hand. */
+export async function addTopicTodo(
+	tier: string, name: string,
+	item: { text: string; due?: string | null; assignee?: string | null },
+	baseVersion: string, opts: RequestOptions = {}
+): Promise<TopicTodoWrite> {
+	return apiPost<TopicTodoWrite>(topicTodosPath(tier, name), { ...item, base_version: baseVersion }, opts);
+}
+
+/** PATCH `/api/topics/{tier}/{name}/todos/{id}` — only the keys present change;
+ *  `due: null` / `assignee: null` clear them. */
+export async function updateTopicTodo(
+	tier: string, name: string, id: string,
+	fields: { text?: string; due?: string | null; assignee?: string | null; status?: 'open' | 'done' },
+	baseVersion: string, opts: RequestOptions = {}
+): Promise<TopicTodoWrite> {
+	return apiPatch<TopicTodoWrite>(topicTodosPath(tier, name, id), { ...fields, base_version: baseVersion }, opts);
+}
+
+/** DELETE `/api/topics/{tier}/{name}/todos/{id}?base_version=…`. */
+export async function removeTopicTodo(
+	tier: string, name: string, id: string, baseVersion: string, opts: RequestOptions = {}
+): Promise<TopicTodoWrite> {
+	return apiDelete<TopicTodoWrite>(`${topicTodosPath(tier, name, id)}?base_version=${encodeURIComponent(baseVersion)}`, opts);
 }
 
 /** POST `/api/topics/{tier}/{name}/goal` — fissa il messaggio come OBIETTIVO

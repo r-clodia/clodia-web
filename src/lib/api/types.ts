@@ -845,15 +845,65 @@ export interface Topic {
 	/** Stato del topic (selezione unica): active | on-hold | done | archived
 	 *  (default active). La vista Topics nasconde di default gli `archived`. */
 	readonly status?: string;
-	/** Deadline esplicita del topic, ISO YYYY-MM-DD; null se non impostata. */
+	/** Topic deadline, ISO YYYY-MM-DD, DERIVED from the to-do list
+	 *  (clodia-platform#658): the earliest `due` among open items; null if none.
+	 *  Shown as the badge on the card. */
 	readonly deadline?: string | null;
-	/** Scadenza più vicina fra i todo (action_points) con data, ISO YYYY-MM-DD;
-	 *  null se nessun todo ha una scadenza. Mostrata come badge sulla card. */
+	/** @deprecated Alias of `deadline` for one release (#658); read `deadline`. */
 	readonly next_deadline?: string | null;
+	/** Number of open to-do items (#658). */
+	readonly todos_open?: number;
 	/** Backend di storage che contiene il topic (Topic System v2): es. "local-fs". */
 	readonly storage?: string;
 	/** Obiettivo del canale, quando l'owner ne ha fissato uno. */
 	readonly goal?: TopicGoal | null;
+}
+
+/** One item of a topic's to-do list (`meta.todos`, clodia-platform#658). */
+export interface TopicTodo {
+	readonly id: string;
+	readonly text: string;
+	/** ISO YYYY-MM-DD, or null. */
+	readonly due?: string | null;
+	readonly assignee?: string | null;
+	readonly status: 'open' | 'done';
+	readonly updated_at?: string | null;
+	readonly updated_by?: string | null;
+}
+
+/** `GET /api/topics/{tier}/{name}` — the topic metadata for the Meta popup.
+ *  A plain read: no agent, no model call. */
+export interface TopicMetaView {
+	readonly tier: string;
+	readonly tier_name?: string | null;
+	readonly name: string;
+	readonly meta: Record<string, unknown> & {
+		title?: string;
+		owner?: string;
+		participants?: string[] | Record<string, string>;
+		status?: string;
+		contact_agent?: string;
+		tags?: string[];
+		drive_folders?: { name?: string; folder?: string; id?: string }[];
+		local_folders?: { name: string }[];
+	};
+	readonly todos: ReadonlyArray<TopicTodo>;
+	readonly deadline: string | null;
+	/** Lock token of the to-do list: pass it as `base_version` on every write. */
+	readonly todos_version: string | null;
+	readonly links?: ReadonlyArray<{ name?: string; tier?: string; topic?: string }>;
+	readonly tldr?: string;
+	readonly updated_at?: string | null;
+	readonly is_admin?: boolean;
+}
+
+/** Answer of every to-do write: the list after the write, the derived
+ *  deadline and the new lock token. */
+export interface TopicTodoWrite {
+	readonly todo: TopicTodo;
+	readonly todos: ReadonlyArray<TopicTodo>;
+	readonly deadline: string | null;
+	readonly todos_version: string;
 }
 
 /** OBIETTIVO di un canale (clodia-platform#457): un messaggio dell'utente

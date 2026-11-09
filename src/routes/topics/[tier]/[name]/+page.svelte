@@ -14,6 +14,8 @@
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
 	import { pushToast } from '$lib/stores/toasts';
 	import TopicMark from '$lib/components/TopicMark.svelte';
+	import TopicMetaDialog from '$lib/components/TopicMetaDialog.svelte';
+	import type { TopicTodo } from '$lib/api/types';
 	import Modal from '$lib/components/Modal.svelte';
 	import { topicLogoUrl as logoObjectUrl, dimenticaLogo } from '$lib/topicLogo';
 	import SpawnTree from '$lib/components/SpawnTree.svelte';
@@ -51,7 +53,6 @@
 		clearTopicLogo,
 		API_BASE_URL,
 		setTopicStatus,
-		setTopicDeadline,
 		setTopicGoal,
 		addLocalFolder,
 		removeLocalFolder,
@@ -1114,9 +1115,14 @@
 	let retierOpen = false;
 	const topicStatusOptions = TOPIC_STATUSES;
 	let metaBusy = false;
-	let metaDeadlineDraft = '';
 	$: metaStatus = normalizeTopicStatus(info?.meta?.status);
-	$: if (info) metaDeadlineDraft = info.meta?.deadline ?? '';
+	// The «Meta» popup (#658): formatted metadata + the to-do list, from a plain
+	// read route. The deadline is derived from the list and has no editor.
+	let metaDialogOpen = false;
+	$: openTodos = (info?.meta?.todos ?? []).filter((t) => t.status === 'open').length;
+	function onMetaChanged(e: CustomEvent<{ deadline: string | null; todos: ReadonlyArray<TopicTodo> }>) {
+		if (info) info = { ...info, meta: { ...info.meta, deadline: e.detail.deadline, todos: [...e.detail.todos] } };
+	}
 
 	// ── Presenza degli umani in questa stanza ───────────────────────────────
 	//
@@ -1515,22 +1521,6 @@
 			toastSuccess('Indirizzo copiato');
 		} catch {
 			toastError('Copia non riuscita: seleziona l’indirizzo a mano');
-		}
-	}
-
-	async function saveTopicDeadline(deadline = metaDeadlineDraft) {
-		if (!isOwner || metaBusy) return;
-		const next = deadline.trim() || null;
-		if (next === (info?.meta?.deadline ?? null)) return;
-		metaBusy = true;
-		try {
-			const r = await setTopicDeadline(tier, name, next);
-			if (info) info = { ...info, meta: { ...info.meta, deadline: r.deadline } };
-			metaDeadlineDraft = r.deadline ?? '';
-		} catch (e) {
-			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			metaBusy = false;
 		}
 	}
 
@@ -2963,21 +2953,18 @@
 							<span class="meta-value">{metaStatus}</span>
 						{/if}
 					</label>
-					<label class="meta-field">
-						<span>Deadline</span>
-						{#if isOwner}
-							<div class="deadline-edit">
-								<input type="date" bind:value={metaDeadlineDraft} disabled={metaBusy}
-									on:change={() => saveTopicDeadline()} />
-								{#if info?.meta?.deadline}
-									<button type="button" title="Rimuovi deadline" disabled={metaBusy}
-										on:click={() => saveTopicDeadline('')}>×</button>
-								{/if}
-							</div>
-						{:else}
-							<span class="meta-value">{info?.meta?.deadline ?? '—'}</span>
-						{/if}
-					</label>
+					<!-- The deadline is DERIVED from the to-do list (#658): the earliest
+					     due among open items. The list, not a date picker, is the editor. -->
+					<div class="meta-field">
+						<span>Scadenza</span>
+						<span class="meta-value">{info?.meta?.deadline ?? '—'}</span>
+					</div>
+					<div class="meta-field">
+						<span>To-do</span>
+						<span class="meta-value">{openTodos} aperte</span>
+					</div>
+					<button type="button" class="meta-open" on:click={() => (metaDialogOpen = true)}
+						title="Metadati e lista to-do (lettura diretta, nessun agente)">Meta e to-do…</button>
 
 					<!-- summary.md e meta.json sono usciti dalla vista file il 7 ago 2026
 					     (la radice dell'albero mostra i due mount e basta). Non dovevano
@@ -2992,11 +2979,16 @@
 							<p class="meta-doc-empty">Nessun summary.</p>
 						{/if}
 					</details>
-					<details class="meta-doc">
-						<summary>meta.json</summary>
-						<pre class="meta-doc-body">{JSON.stringify(info?.meta ?? {}, null, 2)}</pre>
-					</details>
+					{#if $isAdmin}
+						<details class="meta-doc">
+							<summary>meta.json</summary>
+							<pre class="meta-doc-body">{JSON.stringify(info?.meta ?? {}, null, 2)}</pre>
+						</details>
+					{/if}
 				</details>
+				<TopicMetaDialog {tier} {name} open={metaDialogOpen}
+					canEdit={isOwner || (!!me && participants.includes(me))}
+					on:close={() => (metaDialogOpen = false)} on:changed={onMetaChanged} />
 				<details class="side-section" open>
 					<summary>
 						<span>Partecipanti</span>
@@ -3856,8 +3848,7 @@
 	.topic-meta { display: flex; flex-direction: column; gap: 8px; }
 	.meta-field { display: grid; grid-template-columns: 58px minmax(0, 1fr); align-items: center; gap: 8px; margin: 6px 0; font-size: 12px; color: var(--fg-muted); }
 	.meta-field > span:first-child { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
-	.meta-field select,
-	.meta-field input {
+	.meta-field select {
 		width: 100%;
 		min-width: 0;
 		height: 28px;
@@ -3869,23 +3860,20 @@
 		font-size: 12px;
 		padding: 0 8px;
 	}
-	.meta-field select:disabled,
-	.meta-field input:disabled { opacity: .55; }
+	.meta-field select:disabled { opacity: .55; }
 	.meta-value { color: var(--fg); }
-	.deadline-edit { display: flex; align-items: center; gap: 4px; min-width: 0; }
-	.deadline-edit button {
-		flex: none;
-		width: 28px;
+	.meta-open {
+		margin: 4px 0 8px;
 		height: 28px;
 		border: 1px solid var(--border);
 		border-radius: 6px;
 		background: transparent;
-		color: var(--fg-muted);
+		color: var(--fg);
 		cursor: pointer;
-		font-size: 16px;
-		line-height: 1;
+		font-size: 12px;
+		padding: 0 10px;
 	}
-	.deadline-edit button:hover:not(:disabled) { color: var(--fg); border-color: var(--accent); }
+	.meta-open:hover { border-color: var(--accent); }
 
 	/* Divisore trascinabile tra chat e pannello destro. Sta nel gap del .body;
 	   l'area cliccabile è più larga della barretta visibile (::before). */

@@ -35,6 +35,7 @@
 		isAdmin || (!!owner && owner === $session?.principal);
 	import { instanceProfile, ensureProfileLoaded, singleTopicHref, term } from '$lib/stores/instance';
 	import Modal from '$lib/components/Modal.svelte';
+	import TopicMetaDialog from '$lib/components/TopicMetaDialog.svelte';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
 
 	// Modalità topics:single (Modular Distro F2): la lista non esiste, si va
@@ -86,7 +87,8 @@
 			statusBusy = { ...statusBusy, [k]: false };
 		}
 	}
-	/** Scadenza todo: formatta + segnala se scaduta/imminente (per lo stile). */
+	/** Topic deadline (derived from the to-do list, #658): format + flag
+	 *  overdue/soon for the style. */
 	function deadlineInfo(iso?: string | null): { label: string; cls: string } | null {
 		if (!iso) return null;
 		const d = new Date(iso + 'T00:00:00');
@@ -341,6 +343,12 @@
 
 	// --- archiviazione con conferma ---
 	let archiveTarget: Topic | null = null;
+	/** The card whose «Meta» popup is open (#658): a plain read, no agent. */
+	let metaTarget: Topic | null = null;
+	function isMember(t: Topic): boolean {
+		const me = $session?.principal;
+		return !!me && (t.owner === me || (t.participants ?? []).includes(me));
+	}
 	let archiving = false;
 	async function confirmArchive() {
 		if (!archiveTarget) return;
@@ -613,6 +621,13 @@
 						aria-label={`Apri il canale di ${t.title || t.name}`}
 						on:click|stopPropagation
 					>💬</a>
+					<button
+						type="button"
+						class="topic-action meta-btn"
+						title="Meta e to-do"
+						aria-label={`Meta di ${t.title || t.name}`}
+						on:click|stopPropagation={() => (metaTarget = t)}
+					>ⓘ</button>
 					{#if !isArchived(t) && canManage(t.owner)}
 						<button
 							type="button"
@@ -647,10 +662,9 @@
 						{#if status !== 'active'}
 							<span class="state state-{status}">{status}</span>
 						{/if}
-						{#if deadlineInfo(t.deadline ?? t.next_deadline)}
-							{@const explicitDeadline = !!t.deadline}
-							{@const dl = deadlineInfo(t.deadline ?? t.next_deadline)}
-							<span class="deadline deadline-{dl?.cls}" title={explicitDeadline ? 'Deadline topic' : 'Scadenza todo più vicina'}>⏰ {dl?.label}</span>
+						{#if deadlineInfo(t.deadline)}
+							{@const dl = deadlineInfo(t.deadline)}
+							<span class="deadline deadline-{dl?.cls}" title="Scadenza del topic: la più vicina fra le voci to-do aperte">⏰ {dl?.label}</span>
 						{/if}
 						{#if t.storage}
 							<span class="storage" title="Storage backend del topic">⛁ {t.storage}</span>
@@ -765,6 +779,12 @@
 		{/each}
 	</div>
 	{/if}
+{/if}
+
+{#if metaTarget}
+	<TopicMetaDialog tier={metaTarget.tier} name={metaTarget.name} open={!!metaTarget}
+		canEdit={isMember(metaTarget)}
+		on:close={() => (metaTarget = null)} on:changed={() => void loadList()} />
 {/if}
 
 <Modal open={!!archiveTarget} dismissable={!archiving} maxWidth={420} on:close={() => (archiveTarget = null)}>
@@ -995,6 +1015,7 @@
 	}
 	.topic-action:hover { background: color-mix(in srgb, var(--card-bg) 78%, #000); }
 	.open-mini { font-size: 14px; text-decoration: none; }
+	.meta-btn { font-size: 15px; }
 	.archive-btn { font-size: 14px; }
 	.archive-btn:hover { color: var(--danger); }
 	.confirm { display: flex; flex-direction: column; gap: 12px; }
@@ -1019,7 +1040,7 @@
 		gap: 8px;
 		text-align: left;
 		width: 100%;
-		padding: 14px 88px 14px 16px;
+		padding: 14px 120px 14px 16px;
 		background: transparent;
 		border: none;
 		color: inherit;
