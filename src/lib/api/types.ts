@@ -19,10 +19,10 @@ export interface TierWarning {
 	readonly suggestions: readonly string[];
 }
 
-export interface AgentSandbox {
-	readonly allow_read?: ReadonlyArray<string>;
-	readonly deny_read?: ReadonlyArray<string>;
-	readonly allow_write?: ReadonlyArray<string>;
+/** What is left of the seed sandbox: the shell guards only
+ *  (clodia-platform#656). Path rules are gone — the boundary is the runtime
+ *  uid plus root-700 directories, and in-room least privilege is A·V·R·Q. */
+export interface AgentShellGuards {
 	readonly allow_shell_cmds?: ReadonlyArray<string>;
 	readonly deny_shell_patterns?: ReadonlyArray<string>;
 }
@@ -96,7 +96,7 @@ export interface Agent {
 	 *  "fino a quante" che il badge 👯 solleva. */
 	readonly max_spawns?: number;
 	readonly avatar_color?: string;
-	readonly sandbox?: AgentSandbox | null;
+	readonly sandbox?: AgentShellGuards | null;
 	readonly skills?: ReadonlyArray<string>;
 	/** Capability dichiarate (skill catalog dual: logic + data). Materializzate
 	 *  al boot del workspace via skill_sync da skills-catalog/<name>/. */
@@ -149,17 +149,15 @@ export interface Agent {
 	readonly priority?: number;
 	/** Profilo di costo dichiarato: economy | standard | premium. */
 	readonly cost_profile?: string;
-	/** Permessi tool MCP granulari (es. ["topic.*", "email.send"]). */
-	readonly tool_permissions?: ReadonlyArray<string>;
 	/** Strumenti NATIVI del runtime concessi dal seed (Read, Bash, WebSearch…),
 	 *  che non passano dal gateway. */
 	readonly native_tools?: ReadonlyArray<string> | null;
 	/** Quanto di quella dichiarazione il runtime dell'agent applica davvero.
 	 *  `unenforced` non vuoto = il seed nega strumenti che l'agent CONSERVA. */
 	readonly native_tools_info?: NativeToolsInfo;
-	/** Quanto del `sandbox` dichiarato questo runtime porta davvero.
-	 *  `unenforced` non vuoto = il seed stringe la shell (o i path) e il
-	 *  runtime non lo fa. */
+	/** How much of the declared shell guards this runtime really enforces.
+	 *  Non-empty `unenforced` = the seed narrows the shell and the runtime
+	 *  does not. */
 	readonly sandbox_info?: SandboxInfo;
 	/** Incoerenze del seed rilevate al load: dichiara comandi che non ha modo di
 	 *  eseguire, o non dichiara `native_tools` e cade sul pavimento dell'arciseed.
@@ -204,16 +202,13 @@ export interface NativeToolsInfo {
 	readonly unenforced?: ReadonlyArray<string>;
 }
 
-/** Il sandbox del seed e quanto ne applica il suo runtime — gemello di
- *  `NativeToolsInfo` un piano più sotto: quello dice QUALI strumenti il seed
- *  concede, questo COME si stringe la shell (e i path) che ha già.
+/** The seed's shell guards and how much of them its runtime enforces — twin
+ *  of `NativeToolsInfo`: that one says WHICH tools the seed grants, this one
+ *  HOW the shell it already has is narrowed.
  *
- *  `allow_read`/`deny_read`/`allow_write`/`allow_shell_cmds`/`deny_shell_patterns`
- *  sono tradotti solo in `.claude/settings.local.json`: su codex e opencode
- *  restano parole nel file. `ophelia` (codex) dichiara cinque comandi ammessi e
- *  tre pattern negati, e nessuno dei due elenchi arriva al runtime — una
- *  restrizione raccontata e inesistente è peggio di un campo assente
- *  (clodia-platform#296). */
+ *  `allow_shell_cmds` is enforced only by the claude runtime; opencode also
+ *  applies `deny_shell_patterns`, codex neither. A restriction that is shown
+ *  but not enforced is worse than an absent field (clodia-platform#296). */
 export interface SandboxInfo {
 	/** La dichiarazione del seed, così com'è. `null` = nessun sandbox. */
 	readonly declared?: Record<string, unknown> | null;

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, getAgentVerbs, getAgentAuthz, type AgentAuthz, type AuthzTuple, type ProfileFile, type AgentProfile, type AgentVerbs, type AgentVerb, type AgentVerbNode } from '$lib/api/client';
+	import { apiGet, API_BASE_URL, ApiError, updateAgent, patchAgentSettings, getAdminState, generateAgentPfp, getAgentPfpStatus, getAgentProfile, setAgentProfile, grantAgentProfile, getAgents, listProfileFiles, uploadProfileFile, deleteProfileFile, downloadProfileFile, selectAgentProvider, getAgentVerbs, type ProfileFile, type AgentProfile, type AgentVerbs, type AgentVerb, type AgentVerbNode } from '$lib/api/client';
 	import { session } from '$lib/auth/session';
 	import Modal from '$lib/components/Modal.svelte';
 	import type {
@@ -258,33 +258,13 @@
 	}
 	onMount(refetchOnFocus);
 
-	// The agent's global A·V·R·Q rules (#626): seeds no longer carry verbs.
-	let authz: AgentAuthz | null = null;
-	async function loadAuthz(n: string) {
-		authz = null;
-		try {
-			authz = await getAgentAuthz(n);
-		} catch {
-			authz = { agent: n, tuples: [], unavailable: 'non raggiungibile' };
-		}
-	}
-	function ruleText(t: AuthzTuple): string {
-		return (t.rule || [])
-			.map((c) => (c.match && c.match !== '*' ? `${c.effect} ${c.match}` : c.effect))
-			.join(' · ');
-	}
-	$: own = (authz?.tuples ?? []).filter((t) => t.agent !== '*');
-	$: ownEverywhere = own.filter((t) => t.where !== 'outside');
-	$: ownOutside = own.filter((t) => t.where === 'outside');
-	$: forAll = (authz?.tuples ?? []).filter((t) => t.agent === '*');
-
 	async function loadVerbs(n: string) {
 		verbs = null;
 		try {
 			const v = await getAgentVerbs(n);
 			verbs = v.unavailable ? null : v;
 		} catch {
-			verbs = null;   // → la scheda ricade sulla dichiarazione del seed, dicendolo
+			verbs = null;
 		}
 	}
 
@@ -293,7 +273,6 @@
 		promptBody = '';
 		promptError = '';
 		void loadVerbs(n);
-		void loadAuthz(n);
 		memories = { kind: 'idle' };   // ricaricata pigramente all'apertura del tab
 		try {
 			const data = await apiGet<Agent>(`/api/agents/${encodeURIComponent(n)}`);
@@ -625,11 +604,9 @@
 	$: modelPerTier = vaMostrata(agent?.model_by_tier)
 		? riassumiPerTier(agent?.model_by_tier)
 		: '';
-	// I campi del sandbox che QUESTO runtime non porta, per nome. Il server li
-	// dà già così (`sandbox_info.unenforced`), e si marcano uno per uno: dire
-	// «il sandbox non è applicato» manderebbe a cercare quale, che è
-	// l'informazione che serve (clodia-platform#296).
-	$: sandboxOff = new Set<string>(agent?.sandbox_info?.unenforced ?? []);
+	// Shell fields this runtime does not enforce, by name (`sandbox_info.unenforced`,
+	// clodia-platform#296): each one is marked on its own in the «Shell» line.
+	$: shellOff = (agent?.sandbox_info?.unenforced ?? []) as ReadonlyArray<string>;
 	$: if ((isHuman || isProxy) && tab === 'system-prompt') tab = 'definition';
 	$: events = activity.kind === 'ok' ? activity.events : [];
 	// Newest first
@@ -985,65 +962,11 @@
 					{:else}—{/if}
 				</dd>
 
-				<!-- Un solo tipo di principal: la sezione compare anche per un umano,
-				     che nel proprio seed non ha `tool_permissions` — la sua matrice vive
-				     nel seed come `tool_permissions` ma il dettaglio dell'agent non la
-				     espone, quindi si guarda `principal_kind` dalla risposta del gateway.
-				     Prima questo blocco non veniva renderizzato affatto per una persona,
-				     e la sua scheda diceva «nessun verbo». -->
-				<!-- Not a person: the verbs are the room's (Strumenti) and the global
-				     A·V·R·Q rules (#626). Shown for every agent, also with an empty
-				     `tool_permissions`, which seeds no longer carry. -->
-				{#if verbs?.principal_kind !== 'human'}
-					<dt>Verbi</dt>
-					<dd>
-						<p class="vnote">
-							I verbi li decide la <strong>stanza</strong> (Strumenti di ogni topic);
-							qui sotto le regole globali di questo agente.
-						</p>
-						{#if authz?.unavailable}
-							<p class="vnote">⚠ Regole globali non leggibili dal gateway in questo momento.</p>
-						{:else if authz}
-							<p class="vgroup">Ovunque <span class="muted">(governo e pavimento)</span></p>
-							{#if ownEverywhere.length}
-								<ul class="vrules">
-									{#each ownEverywhere as t (t.id)}
-										<li><code>{t.verb}</code> <span class="veff veff-{t.rule?.[0]?.effect}">{ruleText(t)}</span></li>
-									{/each}
-								</ul>
-							{:else}<p class="vnote">—</p>{/if}
-							<p class="vgroup">Fuori dalle stanze <span class="muted">(DM e job)</span></p>
-							{#if ownOutside.length}
-								<ul class="vrules">
-									{#each ownOutside as t (t.id)}
-										<li><code>{t.verb}</code> <span class="veff veff-{t.rule?.[0]?.effect}">{ruleText(t)}</span></li>
-									{/each}
-								</ul>
-							{:else}<p class="vnote">—</p>{/if}
-							{#if forAll.length}
-								<p class="vnote">
-									Per tutti gli agenti:
-									{#each forAll as t, i (t.id)}<code>{t.verb}</code>{t.where === 'outside' ? ' (fuori stanza)' : ''} {ruleText(t)}{i < forAll.length - 1 ? ' · ' : ''}{/each}
-								</p>
-							{/if}
-						{:else}
-							<p class="vnote">Caricamento…</p>
-						{/if}
-						{#if agent.tool_permissions?.length}
-							<details class="vseed">
-								<summary>{agent.tool_permissions.length} dichiarati nel seed (non più usati per autorizzare)</summary>
-								<ul class="chips">
-									{#each agent.tool_permissions as t}
-										<li><code>{t}</code></li>
-									{/each}
-								</ul>
-							</details>
-						{/if}
-					</dd>
-				{/if}
-
+				<!-- Only a person's role matrix is shown here. An agent's verbs are
+				     decided by the room (Strumenti) and by the global A·V·R·Q rules;
+				     the seed no longer carries any (clodia-platform#656). -->
 				{#if verbs?.principal_kind === 'human'}
-					<dt>{verbs?.principal_kind === 'human' ? 'Verbi (matrice)' : 'Tools'}</dt>
+					<dt>Verbi (matrice)</dt>
 					<dd>
 						{#if verbs?.principal_kind === 'human' && verbs.matrix_declared === false}
 							<!-- IL caso che non va mostrato come «zero verbi»: senza matrice
@@ -1056,7 +979,7 @@
 								verbo»: significa che questa persona ricade sulla regola precedente
 								— può far eseguire <strong>tutto ciò che non è gated</strong>, e i
 								verbi gated solo se è admin. Dichiarare una matrice nel suo seed
-								(<code>tool_permissions</code>) è ciò che la delimita.
+								è ciò che la delimita.
 							</p>
 						{/if}
 						{#if verbs?.principal_kind === 'human' && verbs.matrix_declared}
@@ -1139,18 +1062,6 @@
 									verbo può essere eseguito su richiesta di questa persona. È
 									diverso da «non dichiarata», che è il caso ampio qui sopra.</p>
 							{/if}
-						{:else if agent.tool_permissions?.length}
-							<!-- Gateway muto: la dichiarazione del seed SENZA lucchetti, e lo si
-							     dice. Un pannello che sparisce insegna a non fidarsi del pannello;
-							     uno che mostra grant senza lucchetti facendo credere che non ce ne
-							     siano sarebbe peggio. -->
-							<ul class="chips">
-								{#each agent.tool_permissions as t}
-									<li><code>{t === '*' ? 'tutti (gateway)' : t}</code></li>
-								{/each}
-							</ul>
-							<p class="vnote">Lucchetti non leggibili dal gateway: questa è la
-								dichiarazione del seed, non l’insieme effettivo.</p>
 						{:else}—{/if}
 					</dd>
 				{/if}
@@ -1224,86 +1135,30 @@
 					</dd>
 				{/if}
 
-				<dt>Sandbox</dt>
-				<dd>
-					{#if agent.sandbox}
-						<div class="sandbox">
-							{#if agent.sandbox.allow_read?.length}
-								<div class="sandbox-sec" class:inerte={sandboxOff.has('allow_read')}>
-									<span class="sk">allow_read</span>
-									{#if sandboxOff.has('allow_read')}
-										<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
-									{/if}
-									<ul class="paths">
-										{#each agent.sandbox.allow_read as p}
-											<li><code>{p}</code></li>
-										{/each}
-									</ul>
-								</div>
-							{/if}
-							{#if agent.sandbox.deny_read?.length}
-								<div class="sandbox-sec" class:inerte={sandboxOff.has('deny_read')}>
-									<span class="sk deny">deny_read</span>
-									{#if sandboxOff.has('deny_read')}
-										<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
-									{/if}
-									<ul class="paths">
-										{#each agent.sandbox.deny_read as p}
-											<li><code>{p}</code></li>
-										{/each}
-									</ul>
-								</div>
-							{/if}
-							{#if agent.sandbox.allow_write?.length}
-								<div class="sandbox-sec" class:inerte={sandboxOff.has('allow_write')}>
-									<span class="sk">allow_write</span>
-									{#if sandboxOff.has('allow_write')}
-										<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
-									{/if}
-									<ul class="paths">
-										{#each agent.sandbox.allow_write as p}
-											<li><code>{p}</code></li>
-										{/each}
-									</ul>
-								</div>
-							{/if}
-							{#if agent.sandbox.allow_shell_cmds?.length}
-								<div class="sandbox-sec" class:inerte={sandboxOff.has('allow_shell_cmds')}>
-									<span class="sk">allow_shell_cmds</span>
-									{#if sandboxOff.has('allow_shell_cmds')}
-										<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
-									{/if}
-									<ul class="chips">
-										{#each agent.sandbox.allow_shell_cmds as c}
-											<li><code>{c}</code></li>
-										{/each}
-									</ul>
-								</div>
-							{/if}
-							{#if agent.sandbox.deny_shell_patterns?.length}
-								<div class="sandbox-sec" class:inerte={sandboxOff.has('deny_shell_patterns')}>
-									<span class="sk deny">deny_shell_patterns</span>
-									{#if sandboxOff.has('deny_shell_patterns')}
-										<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
-									{/if}
-									<ul class="chips">
-										{#each agent.sandbox.deny_shell_patterns as c}
-											<li><code>{c}</code></li>
-										{/each}
-									</ul>
-								</div>
-							{/if}
-						</div>
-						{#if sandboxOff.size}
-							<p class="vnote warn">⚠ Il runtime <code>{agent.agent_sdk}</code> NON
-								applica {sandboxOff.size}
-								{sandboxOff.size === 1 ? 'campo' : 'campi'} di questo sandbox:
-								<code>{[...sandboxOff].join(', ')}</code>.
-								Per quelli, la restrizione che si legge qui sopra a runtime non
-								esiste.</p>
+				<!-- Only the shell guards are left of the seed sandbox
+				     (clodia-platform#656): `deny_shell_patterns` is the one guard also
+				     enforced by opencode. A field this runtime does not enforce is
+				     marked as such (clodia-platform#296). -->
+				{#if !isHuman && !isProxy}
+					<dt>Shell</dt>
+					<dd class="shell-line">
+						<span class="sk" class:inerte={shellOff.includes('allow_shell_cmds')}>consentiti</span>
+						{#if agent.sandbox?.allow_shell_cmds?.length}
+							{#each agent.sandbox.allow_shell_cmds as c}<code>{c}</code> {/each}
+						{:else}—{/if}
+						{#if shellOff.includes('allow_shell_cmds')}
+							<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
 						{/if}
-					{:else}—{/if}
-				</dd>
+						<span class="sep">·</span>
+						<span class="sk deny" class:inerte={shellOff.includes('deny_shell_patterns')}>pattern negati</span>
+						{#if agent.sandbox?.deny_shell_patterns?.length}
+							{#each agent.sandbox.deny_shell_patterns as c}<code>{c}</code> {/each}
+						{:else}—{/if}
+						{#if shellOff.includes('deny_shell_patterns')}
+							<span class="sk-off" title="Dichiarato nel seed, non portato da questo runtime">non applicato da {agent.agent_sdk}</span>
+						{/if}
+					</dd>
+				{/if}
 
 			</dl>
 
@@ -1634,17 +1489,9 @@
 		.vleaves li { grid-template-columns: 1fr; }
 		.vdesc { white-space: normal; }
 	}
-	.vgroup { margin-top: 8px; }
 	.grant { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 	.ghint { font-size: 11px; color: var(--fg-muted); }
 	.vnote { font-size: 11px; color: var(--fg-muted); margin: 6px 0 0; line-height: 1.5; }
-	.vgroup { font-size: 12px; font-weight: 600; margin: 10px 0 4px; }
-	.vrules { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 12px; }
-	.veff { font-size: 11px; color: var(--fg-muted); margin-left: 6px; }
-	.veff-deny { color: var(--danger, #b42318); }
-	.veff-ask { color: var(--warning, #b54708); }
-	.vseed { margin-top: 8px; font-size: 11px; color: var(--fg-muted); }
-	.vseed summary { cursor: pointer; }
 	/* L'avviso «nessuna matrice» descrive uno stato APERTO: deve leggersi come
 	   un allarme, non come un'informazione neutra fra le altre. */
 	.vmore { list-style: none; margin-top: 2px; }
@@ -1919,16 +1766,6 @@
 		font-size: 11.5px;
 	}
 
-	.sandbox {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-	.sandbox-sec {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
 	.sk {
 		font-size: 10px;
 		text-transform: uppercase;
@@ -1938,18 +1775,12 @@
 	.sk.deny {
 		color: var(--danger);
 	}
-	/* Un campo dichiarato che il runtime non porta. Il colore della chiave
-	   perde il verde/rosso — quelli dicono «concede»/«nega», e qui non fa né
-	   l'uno né l'altro — e l'elenco si smorza: resta leggibile, perché è ciò
-	   che il seed dichiara, ma non si legge più come una restrizione in
-	   vigore (clodia-platform#296). */
-	.sandbox-sec.inerte .sk,
-	.sandbox-sec.inerte .sk.deny {
+	/* A field declared in the seed that this runtime does not enforce: the key
+	   loses its green/red, which would read as an enforced allow/deny
+	   (clodia-platform#296). */
+	.sk.inerte,
+	.sk.deny.inerte {
 		color: var(--fg-muted);
-	}
-	.sandbox-sec.inerte .paths code,
-	.sandbox-sec.inerte .chips code {
-		opacity: 0.6;
 	}
 	.sk-off {
 		font-size: 10px;
@@ -1959,16 +1790,17 @@
 		padding: 0 4px;
 		align-self: flex-start;
 	}
-	.paths {
-		list-style: none;
-		padding: 0;
-		margin: 0;
+	.shell-line {
 		display: flex;
-		flex-direction: column;
-		gap: 3px;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 6px;
 	}
-	.paths code {
+	.shell-line code {
 		font-size: 11.5px;
+	}
+	.shell-line .sep {
+		color: var(--fg-muted);
 	}
 
 	.raw {

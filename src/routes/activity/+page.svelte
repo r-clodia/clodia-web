@@ -253,7 +253,8 @@
 	.pill.blk { color: #e8a23a; border-color: rgba(232,162,58,.5); }
 	.err { color: var(--danger, #e85d75); font-size: 12px; margin-bottom: 10px; }
 	.muted { color: var(--fg-muted); font-size: 13px; }
-	.activity-grid { display: grid; grid-template-rows: repeat(3, minmax(200px, 1fr)); gap: 18px; min-height: calc(100vh - 190px); }
+	/* Rows size to their content: an empty «Spawn live» must not take a third of the viewport (clodia-platform#656). */
+	.activity-grid { display: grid; grid-template-rows: auto; gap: 18px; }
 	.prov-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--fg-muted); display: inline-block; flex: none; }
 	.prov-dot[data-prov="anthropic-api"], .prov-dot[data-prov="claude-pro-max"] { background: #d97757; }
 	.prov-dot[data-prov="aws-region-eu"] { background: #ff9900; }
@@ -263,7 +264,8 @@
 	.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 8px; }
 	.panel h2 { margin: 0; font-size: 14px; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.05em; }
 	.panel-count { color: var(--fg-muted); font-size: 12px; }
-	.table-wrap { min-height: 0; overflow: auto; }
+	/* A long leaderboard scrolls inside its panel instead of stretching the page. */
+	.table-wrap { min-height: 0; max-height: 60vh; overflow: auto; }
 	.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 	.tbl th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); padding: 6px 10px; border-bottom: 1px solid var(--border); }
 	.tbl th.num, .tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
