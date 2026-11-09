@@ -10,11 +10,19 @@
 	 * every participant and is not listed. Enabling a verb does not remove its
 	 * gate: the gated ones are marked. The gateway decides call by call on the
 	 * signed room; this panel only edits the declaration.
+	 *
+	 * Since clodia-platform#662 the room's ingress/egress lists live here too,
+	 * in the card of the tool they serve and named for what they hold: Fonti /
+	 * Destinazioni (web), Mittenti / Destinatari (email), Gruppi e contatti
+	 * (chats), Cartelle remote (Drive). Adding an entry authorises its tool
+	 * (the gateway does it); removing the last one leaves the tool authorised.
 	 */
 	import { createEventDispatcher, onMount } from 'svelte';
 	import {
 		apiErrorDetail,
+		editTopicEgressScope,
 		getChannelTools,
+		getTopicEgressScope,
 		setChannelMcp,
 		setChannelTool,
 		toolMayAsk,
@@ -23,13 +31,16 @@
 		type McpInfo,
 		type McpToolAction,
 		type Toolbox,
-		type ToolboxAction
+		type ToolboxAction,
+		type UriLabelInfo
 	} from '$lib/api/client';
 	import McpPicker from '$lib/components/McpPicker.svelte';
 	import McpMailboxes from '$lib/components/McpMailboxes.svelte';
 	import McpResources from '$lib/components/McpResources.svelte';
 	import ToolboxPicker from '$lib/components/ToolboxPicker.svelte';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
+	import RoomList from '$lib/components/RoomList.svelte';
+	import UriLabel from '$lib/components/UriLabel.svelte';
 	import { AVVISO_GRUPPO } from '$lib/connettori';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
 
@@ -37,6 +48,10 @@
 	export let name: string;
 	/** Owner or admin. */
 	export let canEdit = false;
+	/** The room's message box (#583), shown in the Email card. */
+	export let messageBox: { code: string; address: string } | undefined = undefined;
+	/** Examples for the «Altre voci» field, from the installed schemes. */
+	export let examples: { ingress: string; egress: string } = { ingress: '', egress: '' };
 
 	/** The connectors' topic actions (`azioniDiTopic`): linking a Telegram chat,
 	 *  a Drive folder… They used to be buttons in the sidebar; since 26 Oct 2026
@@ -95,6 +110,90 @@
 
 	export function reload() {
 		return load();
+	}
+
+	// ── The room's lists, by tool (clodia-platform#662) ────────────────────
+	type Dir = 'egress' | 'ingress';
+	type ListDef = {
+		title: string; hint?: string; dirs: Dir[]; schemes: string[];
+		scheme: string; placeholder: string;
+	};
+	const LISTS: Record<string, ListDef[]> = {
+		web: [
+			{ title: 'Fonti', dirs: ['ingress'], schemes: ['https', 'http'], scheme: '',
+				hint: 'Siti letti senza conferma. https:* = tutto il web, solo in lettura.',
+				placeholder: 'https://sito.it/ oppure https:*' },
+			{ title: 'Destinazioni', dirs: ['egress'], schemes: ['https', 'http'], scheme: '',
+				hint: 'Siti a cui si può scrivere.', placeholder: 'https://api.sito.it/' }
+		],
+		email: [
+			{ title: 'Mittenti', dirs: ['ingress'], schemes: ['mailfrom'], scheme: 'mailfrom',
+				hint: 'La loro posta arriva in questo canale.', placeholder: 'nome@dominio.it oppure *@dominio.it' },
+			{ title: 'Destinatari', dirs: ['egress'], schemes: ['mailto'], scheme: 'mailto',
+				hint: 'Indirizzi a cui si scrive senza conferma.', placeholder: 'nome@dominio.it oppure *@dominio.it' }
+		],
+		telegram: [
+			{ title: 'Gruppi e contatti', dirs: ['ingress', 'egress'], schemes: ['tg'], scheme: 'tg',
+				placeholder: 'id della chat (es. -100…)' }
+		],
+		whatsapp: [
+			{ title: 'Gruppi e contatti', dirs: ['ingress', 'egress'], schemes: ['wa'], scheme: 'wa',
+				placeholder: 'numero (+39…) o id del gruppo' }
+		]
+	};
+	const LISTED = new Set(Object.values(LISTS).flatMap((ls) => ls.flatMap((l) => l.schemes)));
+	// `inbox:`/`outbox:` are mailbox links: shown by the Email card's Caselle.
+	const HIDDEN = new Set(['inbox', 'outbox']);
+	const schemeOf = (u: string) => u.split(':')[0].toLowerCase();
+
+	let scope: { egress: string[]; ingress: string[]; labels?: Record<string, UriLabelInfo> } | null = null;
+
+	$: entriesOf = (l: ListDef) => {
+		const seen = new Set<string>();
+		for (const d of l.dirs)
+			for (const u of scope?.[d] ?? []) if (l.schemes.includes(schemeOf(u))) seen.add(u);
+		return [...seen];
+	};
+	$: otherEntries = (['ingress', 'egress'] as Dir[]).flatMap((d) =>
+		(scope?.[d] ?? [])
+			.filter((u) => !LISTED.has(schemeOf(u)) && !HIDDEN.has(schemeOf(u)))
+			.map((u) => ({ d, u })));
+	// Lists of tools the instance has but the room has not authorised yet:
+	// adding to one authorises it.
+	$: pendingLists = Object.keys(LISTS).filter((id) => catalogue[id] && !authorised.includes(id));
+
+	async function listAct(dirs: Dir[], action: 'allow' | 'revoke', uri: string) {
+		if (busy) return;
+		busy = true;
+		try {
+			for (const d of dirs) {
+				if (action === 'revoke' && !(scope?.[d] ?? []).includes(uri)) continue;
+				await editTopicEgressScope(tier, name, d, action, uri);
+			}
+		} catch (e) {
+			toastError('Liste del canale', apiErrorDetail(e));
+		} finally {
+			busy = false;
+		}
+		await load();
+	}
+
+	let otherDir: Dir = 'ingress';
+	let otherUri = '';
+	async function addOther() {
+		const u = otherUri.trim();
+		if (!u) return;
+		await listAct([otherDir], 'allow', u);
+		otherUri = '';
+	}
+
+	async function copy(addr: string) {
+		try {
+			await navigator.clipboard.writeText(addr);
+			toastSuccess('Indirizzo copiato');
+		} catch {
+			toastError('Copia non riuscita: seleziona l’indirizzo a mano');
+		}
 	}
 
 	let box: Toolbox | null = null;
@@ -159,7 +258,10 @@
 	async function load() {
 		err = '';
 		try {
-			box = await getChannelTools(tier, name);
+			[box, scope] = await Promise.all([
+				getChannelTools(tier, name),
+				getTopicEgressScope(tier, name).catch(() => null)
+			]);
 			dispatch('count', box.mcp_catalogue
 				? Object.keys(box.mcp ?? {}).length
 				: box.enabled.length);
@@ -258,13 +360,51 @@
 									{/if}
 								</div>
 							{/each}
-							<McpResources mcp={m} rows={box.mcp?.[id]?.resources ?? []}
-								linked={id === 'google' ? (box.linked_folders ?? []) : []} {canEdit} {busy}
-								on:set={(e) => void mcpAct({ action: 'set_resource', mcp: id, uri: e.detail.uri, effect: e.detail.effect })}
-								on:unset={(e) => void mcpAct({ action: 'unset_resource', mcp: id, uri: e.detail.uri })} />
-							{#if id === 'email'}
-								<McpMailboxes {tier} {name} {canEdit} />
+							{#each LISTS[id] ?? [] as l (l.title)}
+								<RoomList title={l.title} hint={l.hint} entries={entriesOf(l)} labels={scope?.labels}
+									scheme={l.scheme} placeholder={l.placeholder} {canEdit} {busy}
+									on:add={(e) => void listAct(l.dirs, 'allow', e.detail)}
+									on:remove={(e) => void listAct(l.dirs, 'revoke', e.detail)} />
+							{/each}
+							{#if id === 'google'}
+								<div class="room-list">
+									<span class="sub">Cartelle remote <span class="muted">({(box.linked_folders ?? []).length})</span></span>
+									{#each box.linked_folders ?? [] as f (f)}
+										<span class="row"><UriLabel uri={f} labels={scope?.labels} /></span>
+									{:else}
+										<span class="muted">Nessuna: si collegano con il bottone qui sopra.</span>
+									{/each}
+								</div>
 							{/if}
+							{#if id === 'email'}
+								<div class="mailboxes">
+									<span class="sub">Caselle collegate</span>
+									<McpMailboxes {tier} {name} {canEdit} />
+									{#if messageBox}
+										<!-- The room's message box (#583): mail sent to it by a
+										     Mittente reaches the channel. -->
+										<p class="muted wrap">
+											📮 Message box:
+											{#if messageBox.address}
+												<code>{messageBox.address}</code>
+												<button type="button" class="x" title="Copia l'indirizzo"
+													on:click={() => void copy(messageBox?.address ?? '')}>⧉</button>
+												— arriva qui la posta inviata a questo indirizzo dai Mittenti.
+											{:else}
+												<code>{messageBox.code}</code> · la casella della colonia non è
+												impostata: l'indirizzo non è ancora attivo.
+											{/if}
+										</p>
+									{/if}
+								</div>
+							{/if}
+							<details class="advanced">
+								<summary>Regole avanzate{(box.mcp?.[id]?.resources ?? []).length ? ` (${(box.mcp?.[id]?.resources ?? []).length})` : ''}</summary>
+								<McpResources mcp={m} rows={box.mcp?.[id]?.resources ?? []}
+									{canEdit} {busy}
+									on:set={(e) => void mcpAct({ action: 'set_resource', mcp: id, uri: e.detail.uri, effect: e.detail.effect })}
+									on:unset={(e) => void mcpAct({ action: 'unset_resource', mcp: id, uri: e.detail.uri })} />
+							</details>
 							<details class="writes">
 								<summary>Cosa scrive questa scelta</summary>
 								<ul>
@@ -316,10 +456,54 @@
 		</div>
 	{/if}
 
+	{#if canEdit && pendingLists.length > 0}
+		<details class="advanced">
+			<summary>Aggiungi una fonte, un mittente, una chat…</summary>
+			<p class="muted wrap">La prima voce abilita anche lo strumento nella stanza.</p>
+			{#each pendingLists as id (id)}
+				{#each LISTS[id] as l (l.title)}
+					<RoomList title="{catalogue[id].label} · {l.title}" entries={[]} scheme={l.scheme}
+						placeholder={l.placeholder} {canEdit} {busy}
+						on:add={(e) => void listAct(l.dirs, 'allow', e.detail)} />
+				{/each}
+			{/each}
+		</details>
+	{/if}
+
 	{#if canEdit}
 		<McpPicker {catalogue} {authorised} gated={box.gated ?? []} disabled={busy}
 			on:pick={(e) => void authoriseMany(e.detail)} />
 	{/if}
+
+	{#if otherEntries.length > 0 || canEdit}
+		<details class="advanced">
+			<summary>Altre voci{otherEntries.length ? ` (${otherEntries.length})` : ''}</summary>
+			<p class="muted wrap">Voci della stanza che nessuno strumento elenca (topic:, datastore:…).</p>
+			<ul class="list">
+				{#each otherEntries as o (o.d + o.u)}
+					<li>
+						<span class="muted">{o.d === 'ingress' ? 'legge' : 'scrive'}</span>
+						<code title={o.u}><UriLabel uri={o.u} labels={scope?.labels} /></code>
+						{#if canEdit}
+							<button type="button" class="x" disabled={busy} aria-label="Togli {o.u}"
+								on:click={() => void listAct([o.d], 'revoke', o.u)}>✕</button>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+			{#if canEdit}
+				<form class="other-add" on:submit|preventDefault={addOther}>
+					<select bind:value={otherDir} disabled={busy}>
+						<option value="ingress">legge da</option>
+						<option value="egress">scrive a</option>
+					</select>
+					<input type="text" bind:value={otherUri} placeholder={examples[otherDir] || 'schema:risorsa'} disabled={busy} />
+					<button type="submit" class="link-btn" disabled={busy || !otherUri.trim()}>+</button>
+				</form>
+			{/if}
+		</details>
+	{/if}
+	<a class="global" href="/settings/egress">Liste globali (valgono in ogni stanza) →</a>
 
 {:else}
 	<p class="muted">
@@ -364,6 +548,16 @@
 		color: var(--fg-muted); white-space: nowrap; }
 	.badge.w { color: #b45309; border-color: #b45309; }
 	.writes summary { font-size: 10px; color: var(--fg-muted); }
+	.advanced > summary { font-size: 11px; color: var(--fg-muted); cursor: pointer; }
+	.advanced { display: flex; flex-direction: column; gap: 4px; }
+	.sub { font-size: 11px; font-weight: 600; }
+	.room-list, .mailboxes { display: flex; flex-direction: column; gap: 2px; }
+	.row { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.other-add { display: flex; gap: 4px; margin-top: 4px; }
+	.other-add select, .other-add input { font: inherit; font-size: 11px; padding: 2px 4px;
+		border: 1px solid var(--border); border-radius: 4px; background: transparent; color: inherit; }
+	.other-add input { flex: 1 1 120px; min-width: 0; }
+	.global { display: block; font-size: 11px; margin-top: 8px; color: var(--fg-muted); }
 	.writes ul { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 	.writes code { font-size: 10px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.err { color: #dc2626; font-size: 11px; margin: 4px 0; }

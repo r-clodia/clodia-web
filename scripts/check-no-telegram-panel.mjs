@@ -31,7 +31,9 @@
  * `.side-form`/`.side-form-row` col form Telegram): rimosso il 10 set 2026 e
  * sostituito da una sezione egress/ingress locale, quindi qui il testimone è
  * diventato quella — se la rimozione di Telegram si portasse via ANCHE la
- * sezione egress/ingress, avrebbe sforato.
+ * sezione egress/ingress, avrebbe sforato. Since clodia-platform#662 those
+ * lists live in the Strumenti panel (TopicToolsPanel), so the witness is
+ * looked for there.
  *
  * LIMITE DICHIARATO: è un controllo sul TESTO dei file, non sul DOM reso. Vede
  * le tracce elencate qui sotto, non un pannello equivalente scritto con altre
@@ -73,9 +75,9 @@ const VIETATI = {
  *  del gateway di prima — valida il token con getMe e memorizza l'@username.
  *  Il gesto è vivo, la funzione per-vendor non serviva più a nessuno. */
 const RICHIESTI = {
-	[PAGINA]: [
-		['getTopicEgressScope', "la lettura dell'egress/ingress locale del topic"],
-		['egress-panel', 'la sezione che ha preso il posto del pannello Proxy']
+	'src/lib/components/TopicToolsPanel.svelte': [
+		['getTopicEgressScope', 'la lettura delle liste locali del topic'],
+		['RoomList', 'le liste della stanza per strumento (#662)']
 	],
 	[CLIENT]: [
 		['getTopicEgressScope', "l'endpoint dell'egress/ingress locale del topic"],
