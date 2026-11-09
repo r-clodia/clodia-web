@@ -16,6 +16,12 @@
  * revoca dei grant proxy non è stata spostata altrove in questo giro: se
  * tornerà, sarà una decisione a sé, non un ritorno silenzioso di questa UI.
  *
+ * Third step (clodia-platform#662, 9 Nov 2026): the room's lists leave the
+ * sidebar and move into the Strumenti section, in the card of the tool they
+ * serve, named for what they hold (Fonti / Destinazioni, Mittenti /
+ * Destinatari, Gruppi e contatti). The required traces are now looked for in
+ * that panel, and the old «Egress/Ingress» title must not come back.
+ *
  * LIMITE DICHIARATO: è un controllo sul TESTO del file, non sul DOM reso. Vede
  * le tracce elencate qui sotto, non un pannello equivalente scritto con altre
  * parole o spostato in un componente nuovo. Sopra questo soffitto serve un test
@@ -24,6 +30,7 @@
 import { readFileSync } from 'node:fs';
 
 const PAGINA = 'src/routes/topics/[tier]/[name]/+page.svelte';
+const PANNELLO = 'src/lib/components/TopicToolsPanel.svelte';
 
 /** Tracce dei due pannelli dismessi: se una torna, torna la credenziale
  *  incollata a mano o l'emissione di grant proxy da questa superficie. */
@@ -37,14 +44,17 @@ const VIETATI = [
 	['proxyCandidates', 'la scelta del principal tra i proxy della stanza'],
 	['mcpFresh', 'il contratto reso al posto del segreto'],
 	['issueTopicMcpClient', 'la funzione che coniava/revocava un grant proxy'],
-	['ammetti un proxy', 'il bottone che apriva il form di arruolamento']
+	['ammetti un proxy', 'il bottone che apriva il form di arruolamento'],
+	['<span>Egress/Ingress</span>', 'la sezione della sidebar sostituita dalle liste per strumento (#662)']
 ];
 
-/** Ciò che deve restare: la sezione che ha preso il posto del pannello Proxy. */
+/** What must stay, in the Strumenti panel since #662: the room's lists. */
 const RICHIESTI = [
-	['getTopicEgressScope', 'la lettura dell\'egress/ingress locale del topic'],
-	['Egress/Ingress', 'il titolo della nuova sezione'],
-	['/settings/egress', 'il link alle impostazioni globali']
+	['getTopicEgressScope', 'la lettura delle liste locali del topic'],
+	["title: 'Fonti'", 'la lista delle fonti web'],
+	["title: 'Mittenti'", 'la lista dei mittenti email'],
+	["title: 'Gruppi e contatti'", 'la lista delle chat'],
+	['/settings/egress', 'il link alle liste globali']
 ];
 
 const guasti = [];
@@ -61,8 +71,14 @@ try {
 for (const [ago, cosa] of VIETATI) {
 	if (src.includes(ago)) guasti.push(`ricompare «${ago}» — ${cosa}`);
 }
+let pannello = '';
+try {
+	pannello = readFileSync(PANNELLO, 'utf8');
+} catch {
+	guasti.push(`${PANNELLO} assente — spostato o rinominato`);
+}
 for (const [ago, cosa] of RICHIESTI) {
-	if (!src.includes(ago)) guasti.push(`manca «${ago}» — ${cosa}`);
+	if (!pannello.includes(ago)) guasti.push(`manca «${ago}» in ${PANNELLO} — ${cosa}`);
 }
 
 if (guasti.length) {
@@ -70,4 +86,4 @@ if (guasti.length) {
 	for (const g of guasti) console.error(`  - ${g}`);
 	process.exit(1);
 }
-console.log('sidebar del topic: nessun pannello «Client MCP»/«Proxy», solo egress/ingress locale ✓');
+console.log('sidebar del topic: nessun pannello «Client MCP»/«Proxy», liste della stanza negli Strumenti ✓');

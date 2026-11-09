@@ -46,9 +46,6 @@
 		uploadChannelFile,
 		downloadTopicZip,
 		channelFileUrl,
-		getTopicEgressScope,
-		type UriLabelInfo,
-		editTopicEgressScope,
 		setTopicLogo,
 		clearTopicLogo,
 		API_BASE_URL,
@@ -83,7 +80,6 @@
 	import { decideBatch, gateBatch, gateCardState, gateCardVisibile, gateDestination, recordDecision } from '$lib/gateCard';
 	import { CHOICES_RE, leggiChoices, pillsAttive } from '$lib/pillPersistenti';
 	import GateBatchBar from '$lib/components/GateBatchBar.svelte';
-	import UriLabel from '$lib/components/UriLabel.svelte';
 	import RetierDialog from '$lib/components/RetierDialog.svelte';
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import { puoDiventareObiettivo, eObiettivoFissato, statoObiettivo, attendeOwner } from '$lib/goal';
@@ -1232,62 +1228,6 @@
 		logoDialogOpen = true;
 	}
 
-	// ── Egress/ingress locali a questa stanza ───────────────────────────────
-	// Sola lettura: le voci che valgono SOLO in questo topic (oltre a quelle
-	// globali, che restano nelle impostazioni). Sostituisce il pannello Proxy
-	// (emissione/revoca client MCP), rimosso il 10 set 2026.
-	let egressScope: { egress: string[]; ingress: string[]; labels?: Record<string, UriLabelInfo> } | null = null;
-	let egressScopeErr = '';
-
-	async function loadEgressScope() {
-		egressScopeErr = '';
-		try {
-			egressScope = await getTopicEgressScope(tier, name);
-		} catch (e) {
-			egressScope = null;
-			egressScopeErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		}
-	}
-
-	// Aggiunta/rimozione a mano (18 set 2026, richiesta di Davide): owner-only
-	// lato server (`_require_scope_owner` + verbo gated `topic.egress_add`/
-	// `ingress_add`/`*_remove`), quindi il form compare solo per `isOwner` —
-	// nasconderlo per gli altri evita un 403 prevedibile, non è la guardia vera.
-	let egressNewDir: 'egress' | 'ingress' = 'egress';
-	let egressNewUri = '';
-	let egressBusy = false;
-	let egressAddErr = '';
-
-	async function addEgressScope() {
-		const uri = egressNewUri.trim();
-		if (!uri || egressBusy) return;
-		egressBusy = true;
-		egressAddErr = '';
-		try {
-			await editTopicEgressScope(tier, name, egressNewDir, 'allow', uri);
-			egressNewUri = '';
-			await loadEgressScope();
-		} catch (e) {
-			egressAddErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			egressBusy = false;
-		}
-	}
-
-	async function removeEgressScope(direction: 'egress' | 'ingress', uri: string) {
-		if (egressBusy) return;
-		egressBusy = true;
-		egressAddErr = '';
-		try {
-			await editTopicEgressScope(tier, name, direction, 'revoke', uri);
-			await loadEgressScope();
-		} catch (e) {
-			egressAddErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
-		} finally {
-			egressBusy = false;
-		}
-	}
-
 	// ─── I bottoni dei connettori, dal registry (clodia-platform#520) ───
 	//
 	// Qui c'erano tre blocchi quasi uguali — Drive, Telegram, Mailbox — ognuno
@@ -1393,7 +1333,6 @@
 			});
 			if (st.binding === 'channel') statiCanale = { ...statiCanale, [`${a.connettore}/${a.azione}`]: st };
 			chiudiAzione();
-			await loadEgressScope();
 			// Linking implies authorising its MCP in the room (owner, 26 Oct 2026).
 			await toolsPanel?.afterLink(a.connettore);
 		} catch (e) {
@@ -1410,7 +1349,6 @@
 		try {
 			const st = await applyConnectorAction(tier, name, a.connettore, a.azione, 'disconnect', campi);
 			if (st.binding === 'channel') statiCanale = { ...statiCanale, [`${a.connettore}/${a.azione}`]: st };
-			await loadEgressScope();
 			void toolsPanel?.reload();
 		} catch (e) {
 			azioneErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
@@ -1511,16 +1449,6 @@
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
 			metaBusy = false;
-		}
-	}
-
-	async function copiaMessageBox(addr: string) {
-		if (!addr) return;
-		try {
-			await navigator.clipboard.writeText(addr);
-			toastSuccess('Indirizzo copiato');
-		} catch {
-			toastError('Copia non riuscita: seleziona l’indirizzo a mano');
 		}
 	}
 
@@ -3119,6 +3047,8 @@
 					{#key `${tier}/${name}`}
 						<TopicToolsPanel {tier} {name} bind:this={toolsPanel}
 							canEdit={isOwner || $isAdmin} on:count={(e) => (toolsCount = e.detail)}
+							messageBox={info?.message_box}
+							examples={{ ingress: esempiPerDirezione(registry, 'ingress'), egress: esempiPerDirezione(registry, 'egress') }}
 							azioni={azioniTopic} {statiCanale} {azioneBusy}
 							on:azione={(e) => onAzioneClick(e.detail)} />
 					{/key}
@@ -3186,96 +3116,6 @@
 					{/each}
 					</ul>
 					<p class="files-hint">Carica i file dall'input della chat: 📎, trascinamento o incolla (⌘/Ctrl+V) di immagini.</p>
-				</details>
-
-				<details class="side-section egress-panel" on:toggle={loadEgressScope}>
-					<summary>
-						<span>Egress/Ingress</span>
-						{#if egressScope && (egressScope.egress.length || egressScope.ingress.length)}
-							<span class="section-status">{egressScope.egress.length + egressScope.ingress.length}</span>
-						{/if}
-					</summary>
-					<p class="muted">
-						Le destinazioni/fonti che valgono <b>solo in questa stanza</b>, oltre a
-						quelle globali (che valgono ovunque e non compaiono qui).
-					</p>
-					{#if egressScopeErr}
-						<p class="cred-hint" role="alert">{egressScopeErr}</p>
-					{:else if egressScope}
-						<div class="egress-group">
-							<span class="egress-group-label">Egress ({egressScope.egress.length})</span>
-							{#if egressScope.egress.length}
-								<ul class="mcp-list">
-									{#each egressScope.egress as u}
-										<li>
-											<span class="mcp-who"><UriLabel uri={u} labels={egressScope.labels} /></span>
-											{#if isOwner}
-												<button type="button" class="egress-remove" disabled={egressBusy}
-													title="Togli dalle voci locali di questo topic"
-													on:click={() => removeEgressScope('egress', u)}>✕</button>
-											{/if}
-										</li>
-									{/each}
-								</ul>
-							{:else}
-								<p class="muted">Nessuna voce locale.</p>
-							{/if}
-						</div>
-						<div class="egress-group">
-							<span class="egress-group-label">Ingress ({egressScope.ingress.length})</span>
-							{#if egressScope.ingress.length}
-								<ul class="mcp-list">
-									{#each egressScope.ingress as u}
-										<li>
-											<span class="mcp-who"><UriLabel uri={u} labels={egressScope.labels} /></span>
-											{#if isOwner}
-												<button type="button" class="egress-remove" disabled={egressBusy}
-													title="Togli dalle voci locali di questo topic"
-													on:click={() => removeEgressScope('ingress', u)}>✕</button>
-											{/if}
-										</li>
-									{/each}
-								</ul>
-							{:else}
-								<p class="muted">Nessuna voce locale.</p>
-							{/if}
-						</div>
-						{#if info?.message_box}
-							<!-- The topic's message box (#583): mail to this address
-							     from a sender declared with mailfrom: reaches the channel. -->
-							<p class="message-box">
-								📮 Message box:
-								{#if info.message_box.address}
-									<code>{info.message_box.address}</code>
-									<button type="button" class="egress-remove" title="Copia l'indirizzo"
-										on:click={() => copiaMessageBox(info?.message_box?.address ?? '')}>⧉</button>
-									<br /><span class="muted">Arriva qui la posta inviata a questo indirizzo dai mittenti dichiarati con <code>mailfrom:</code>.</span>
-								{:else}
-									<code>{info.message_box.code}</code>
-									<span class="muted"> · la casella della colonia non è impostata: l'indirizzo non è ancora attivo.</span>
-								{/if}
-							</p>
-						{/if}
-						{#if isOwner}
-							<form class="egress-add-form" on:submit|preventDefault={addEgressScope}>
-								<select bind:value={egressNewDir} disabled={egressBusy}>
-									<option value="egress">Egress</option>
-									<option value="ingress">Ingress</option>
-								</select>
-								<input type="text" placeholder={esempiPerDirezione(registry, egressNewDir === 'ingress' ? 'ingress' : 'egress') || 'nuova voce'} bind:value={egressNewUri}
-									disabled={egressBusy} />
-								<button type="submit" class="link-btn" disabled={egressBusy || !egressNewUri.trim()}>
-									{egressBusy ? '…' : '+ aggiungi'}
-								</button>
-							</form>
-							{#if egressAddErr}
-								<p class="cred-hint" role="alert">{egressAddErr}</p>
-							{/if}
-						{/if}
-					{/if}
-					<div class="remote-actions">
-						<a class="link-btn" href="/settings/egress">Impostazioni egress/ingress globali →</a>
-					</div>
 				</details>
 
 				<div class="remote-actions">
@@ -4082,24 +3922,10 @@
 	}
 	.link-btn.disabled { opacity: 0.5; pointer-events: none; }
 
-	/* Egress/Ingress locali: l'elenco delle voci che valgono solo in questa
-	   stanza (sostituisce il pannello Proxy, rimosso il 10 set 2026). */
-	.mcp-list { list-style: none; margin: 4px 0; padding: 0; display: flex;
-		flex-direction: column; gap: 4px; font-size: 12px; }
-	.mcp-list li { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-	.mcp-who { font-weight: 600; font-family: var(--mono); }
-	.egress-group { margin: 8px 0; }
-	.egress-group-label { font-size: 11px; font-weight: 600; color: var(--fg-muted); }
 	.egress-remove { background: transparent; border: none; color: var(--fg-muted);
 		cursor: pointer; font-size: 11px; padding: 0 2px; line-height: 1; }
 	.egress-remove:hover:not(:disabled) { color: var(--danger, #c0392b); }
 	.egress-remove:disabled { opacity: .4; cursor: default; }
-	.egress-add-form { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-	.egress-add-form select { font: inherit; font-size: 12px; padding: 3px 4px;
-		border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
-	.egress-add-form input { flex: 1 1 140px; min-width: 0; font: inherit; font-size: 12px;
-		padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px;
-		background: var(--bg); color: var(--fg); }
 	.egress-quick-row { display: flex; gap: 6px; margin-top: 8px; }
 	.shared-folder { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0; font-size: 11px; }
 	.egress-quick-btn { font: inherit; font-size: 12px; padding: 4px 10px; cursor: pointer;
@@ -4148,10 +3974,5 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
-	}
-	.message-box {
-		margin: 8px 0;
-		font-size: 13px;
-		overflow-wrap: anywhere;
 	}
 </style>
