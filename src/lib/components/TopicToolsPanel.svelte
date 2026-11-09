@@ -69,7 +69,7 @@
 	export let statiCanale: Record<string, ConnectorActionState> = {};
 	export let azioneBusy = false;
 
-	const dispatch = createEventDispatcher<{ count: number; azione: Azione }>();
+	const dispatch = createEventDispatcher<{ count: number; azione: Azione; fonti: string[] | null }>();
 
 	// A mailbox is linked from the Email card (McpMailboxes): not repeated here.
 	const isMailbox = (a: Azione) => a.campi.some((f) => f.options === 'mailboxes');
@@ -262,6 +262,8 @@
 				getChannelTools(tier, name),
 				getTopicEgressScope(tier, name).catch(() => null)
 			]);
+			// The chat offers «＋ Fonte» on links the room does not cover (#663).
+			dispatch('fonti', scope ? scope.ingress : null);
 			dispatch('count', box.mcp_catalogue
 				? Object.keys(box.mcp ?? {}).length
 				: box.enabled.length);
