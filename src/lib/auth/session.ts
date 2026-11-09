@@ -18,7 +18,6 @@ const LS_KEY = 'clodia.session';
 const AUD = 'keystore';
 const PREFIX = 'ckt1';
 const DEFAULT_TTL = 12 * 3600; // 12h
-const PAIRING_TTL = 30 * 24 * 3600; // 30 giorni: la sessione PWA eredita questo exp
 
 export interface Session {
 	principal: string;
@@ -242,24 +241,6 @@ export function authToken(): string | null {
 
 export function currentSession(): Session | null {
 	return load();
-}
-
-/**
- * Conia il token che il pairing PWA trasporta, firmandolo con la masterkey
- * salvata da "Ricordami". La sessione della PWA eredita l'`exp` di questo token,
- * quindi il TTL di default è lungo (30gg) per non richiedere il ri-pairing ad
- * ogni utilizzo. Trade-off accettato con Davide: il QR resta un bearer valido
- * 30gg se trapela (la masterkey però NON viene mai trasmessa al telefono).
- * Richiede "Ricordami" attivo (la masterkey è l'unico modo per firmare).
- */
-export async function mintPairingToken(ttlSeconds = PAIRING_TTL): Promise<{ principal: string; token: string; exp: number }> {
-	let r: { principal?: string; mk?: string } | null = null;
-	try { r = JSON.parse(localStorage.getItem(LS_REMEMBER) || 'null'); } catch { r = null; }
-	if (!r?.mk || !r?.principal) {
-		throw new Error('Per generare un pairing attiva "Ricordami" al login (serve la masterkey per firmare il token di sessione della PWA).');
-	}
-	const { token, exp } = await signToken(r.principal, r.mk, ttlSeconds);
-	return { principal: r.principal, token, exp };
 }
 
 /**

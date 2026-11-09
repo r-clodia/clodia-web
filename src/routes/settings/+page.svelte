@@ -5,14 +5,11 @@
 	import AuditTrailPanel from '$lib/components/AuditTrailPanel.svelte';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { onMount } from 'svelte';
-	import QRCode from 'qrcode';
 	import {
 		getBackupStatus, configureBackup, runBackup, backupSnapshots, restoreTest,
 		getChannelAliases, putChannelAliases, ApiError, type BackupStatus
 	} from '$lib/api/client';
-	import { mintPairingToken } from '$lib/auth/session';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
-	import { instanceProfile } from '$lib/stores/instance';
 
 	let status: BackupStatus | null = null;
 	let loading = true;
@@ -27,9 +24,6 @@
 	let keepDaily = 7, keepWeekly = 4, keepMonthly = 6;
 	let schedule = '0 3 * * *';
 	let saving = false, running = false, testing = false;
-	let pairingQr = '';
-	let pairingPayload = '';
-	let pairingError = '';
 	type AliasRow = { key: string; value: string };
 	let aliasRows: AliasRow[] = [];
 	let aliasesSaving = false;
@@ -88,47 +82,6 @@
 		try { const r = await restoreTest(); r.ok ? toastSuccess('Restore-test OK', `${r.restored_topics} topic ripristinati e verificati`) : toastError('Restore-test fallito', 'nessun file ripristinato'); }
 		catch (e) { toastError('Restore-test fallito', e instanceof ApiError ? e.message : String(e)); }
 		finally { testing = false; }
-	}
-
-	function b64url(str: string): string {
-		const bytes = new TextEncoder().encode(str);
-		let raw = '';
-		for (let i = 0; i < bytes.length; i++) raw += String.fromCharCode(bytes[i]);
-		return btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-	}
-
-	async function createPairing() {
-		pairingError = '';
-		// La sessione PWA eredita l'exp del token di pairing: TTL 30gg (default di
-		// mintPairingToken) così la PWA non chiede il ri-pairing ad ogni utilizzo.
-		let minted: { principal: string; token: string; exp: number };
-		try {
-			minted = await mintPairingToken();
-		} catch (e) {
-			pairingError = e instanceof Error ? e.message : String(e);
-			return;
-		}
-		const payload = {
-			type: 'clodia.pwa.pairing',
-			version: 1,
-			principal: minted.principal,
-			token: minted.token,
-			exp: minted.exp,
-			issued_at: Math.floor(Date.now() / 1000)
-		};
-		pairingPayload = `clodia-pairing:${b64url(JSON.stringify(payload))}`;
-		pairingQr = await QRCode.toDataURL(pairingPayload, {
-			errorCorrectionLevel: 'M',
-			margin: 1,
-			width: 248,
-			color: { dark: '#0b0f14', light: '#ffffff' }
-		});
-	}
-
-	async function copyPairing() {
-		if (!pairingPayload) return;
-		await navigator.clipboard?.writeText(pairingPayload);
-		toastSuccess('Pairing copiato', 'incollalo nella PWA sul dispositivo da collegare');
 	}
 
 	function addAlias() {
@@ -280,29 +233,6 @@
 	</div>
 </section>
 
-{#if $instanceProfile.features.pwa}
-<section class="card pairing">
-	<div class="card-h">
-		<h2>Dispositivo PWA</h2>
-		<span class="iso">session pairing</span>
-	</div>
-	<p class="note">
-		Collega la PWA scansionando un QR da questo browser già autenticato. La PWA riceve un token di sessione valido 30 giorni, non la masterkey: dura per non richiedere il ri-pairing ad ogni utilizzo, ma è un bearer — tieni riservato il QR ed evita di condividerne screenshot.
-	</p>
-	{#if pairingError}<div class="err">{pairingError}</div>{/if}
-	<div class="actions">
-		<button class="btn primary" on:click={createPairing}>Genera QR</button>
-		<button class="btn" on:click={copyPairing} disabled={!pairingPayload}>Copia pairing</button>
-	</div>
-	{#if pairingQr}
-		<div class="qr-wrap">
-			<img src={pairingQr} alt="QR pairing PWA Clodia" />
-			<p class="muted">Scansiona dalla PWA. Scade insieme alla sessione web corrente.</p>
-		</div>
-	{/if}
-</section>
-{/if}
-
 <style>
 	.head { padding: 4px 0 14px; }
 	h1 { margin: 0; font-size: 22px; }
@@ -346,6 +276,4 @@
 		.alias-row label:nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
 		.alias-row .icon-btn { grid-column: 2; grid-row: 1; }
 	}
-	.qr-wrap { display: flex; align-items: center; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
-	.qr-wrap img { width: 248px; height: 248px; border-radius: 8px; background: #fff; padding: 8px; }
 </style>
