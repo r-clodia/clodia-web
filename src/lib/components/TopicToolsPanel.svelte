@@ -304,6 +304,24 @@
 	}
 </script>
 
+{#if messageBox}
+	<!-- The room's message box (#583): mail sent to it by a Mittente reaches
+	     the channel. Always visible, whatever tools the room has: it is the
+	     room's address, not a setting of the Email card (it was hidden there
+	     by #662 when Email was not authorised). -->
+	<p class="message-box wrap">
+		📮 Inbox del canale:
+		{#if messageBox.address}
+			<code>{messageBox.address}</code>
+			<button type="button" class="x" title="Copia l'indirizzo"
+				on:click={() => void copy(messageBox?.address ?? '')}>⧉</button>
+			<span class="muted">— arriva qui la posta dei Mittenti dichiarati (Strumenti → Email).</span>
+		{:else}
+			<code>{messageBox.code}</code>
+			<span class="muted">· la casella della colonia non è impostata: l'indirizzo non è ancora attivo.</span>
+		{/if}
+	</p>
+{/if}
 {#if err}
 	<p class="err" role="alert">{err}</p>
 {:else if !box}
@@ -380,22 +398,6 @@
 								<div class="mailboxes">
 									<span class="sub">Caselle collegate</span>
 									<McpMailboxes {tier} {name} {canEdit} />
-									{#if messageBox}
-										<!-- The room's message box (#583): mail sent to it by a
-										     Mittente reaches the channel. -->
-										<p class="muted wrap">
-											📮 Message box:
-											{#if messageBox.address}
-												<code>{messageBox.address}</code>
-												<button type="button" class="x" title="Copia l'indirizzo"
-													on:click={() => void copy(messageBox?.address ?? '')}>⧉</button>
-												— arriva qui la posta inviata a questo indirizzo dai Mittenti.
-											{:else}
-												<code>{messageBox.code}</code> · la casella della colonia non è
-												impostata: l'indirizzo non è ancora attivo.
-											{/if}
-										</p>
-									{/if}
 								</div>
 							{/if}
 							<details class="advanced">
@@ -557,6 +559,7 @@
 	.other-add select, .other-add input { font: inherit; font-size: 11px; padding: 2px 4px;
 		border: 1px solid var(--border); border-radius: 4px; background: transparent; color: inherit; }
 	.other-add input { flex: 1 1 120px; min-width: 0; }
+	.message-box { font-size: 12px; margin: 2px 0 6px; overflow-wrap: anywhere; }
 	.global { display: block; font-size: 11px; margin-top: 8px; color: var(--fg-muted); }
 	.writes ul { list-style: none; margin: 2px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 	.writes code { font-size: 10px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
