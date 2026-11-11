@@ -6,6 +6,7 @@
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { onEventStream, startEventStream } from '$lib/stores/events-stream';
 	import { renderMarkdown } from '$lib/markdown';
+	import { fontiDaProporre } from '$lib/fonti.js';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import ArtifactCanvas from '$lib/components/ArtifactCanvas.svelte';
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
@@ -48,6 +49,7 @@
 		channelFileUrl,
 		setTopicLogo,
 		clearTopicLogo,
+		editTopicEgressScope,
 		API_BASE_URL,
 		setTopicStatus,
 		setTopicGoal,
@@ -1248,6 +1250,28 @@
 	let registry: TopicConnectors | null = null;
 	/** The Strumenti panel: the connector actions live in its MCP cards. */
 	let toolsPanel: TopicToolsPanel | undefined;
+
+	// ── A link I post → «＋ Fonte» (clodia-platform#663) ──────────────────
+	// The room's Fonti come from the Strumenti panel (it loads the lists);
+	// null until then, or when the viewer cannot read them: no button.
+	let fontiStanza: string[] | null = null;
+	let fonteBusy = '';
+	$: puoAggiungereFonti = (isOwner || $isAdmin) && fontiStanza !== null;
+	const ownHost = typeof location === 'undefined' ? '' : location.host;
+
+	async function aggiungiFonte(sito: string) {
+		if (fonteBusy) return;
+		fonteBusy = sito;
+		try {
+			await editTopicEgressScope(tier, name, 'ingress', 'allow', sito);
+			toastSuccess(`${sito} aggiunto alle Fonti della stanza`);
+			await toolsPanel?.reload();
+		} catch (e) {
+			toastError('Fonte non aggiunta', e instanceof ApiError || e instanceof Error ? e.message : String(e));
+		} finally {
+			fonteBusy = '';
+		}
+	}
 	$: azioniTopic = azioniDiTopic(registry, { isAdmin: $isAdmin });
 	/** Lo stato delle azioni che agganciano un CANALE: è l'unico caso in cui
 	 *  «collegato» è una proprietà dell'azione e non delle voci in lista, ed è
@@ -2472,6 +2496,13 @@
 							<blockquote class="quote">{splitQuote(m.text).quote}</blockquote>
 						{/if}
 						<div class="text md">{@html renderMarkdown(linkifyFiles(stripChoices(splitQuote(m.text).body)))}</div>
+						{#if puoAggiungereFonti && m.author === me && m.kind !== 'ai' && m.kind !== 'system'}
+							{#each fontiDaProporre(m.text, fontiStanza ?? [], ownHost) as f (f.sito)}
+								<button type="button" class="fonte-btn" disabled={fonteBusy !== ''}
+									title="Aggiunge {f.sito} alle Fonti di questa stanza: gli agenti lo leggono senza chiedere conferma e abilita lo strumento web"
+									on:click={() => aggiungiFonte(f.sito)}>{fonteBusy === f.sito ? '…' : `＋ Fonte: ${f.host}`}</button>
+							{/each}
+						{/if}
 						{#if ragAperti[m.id]}
 							{@const rag = ragCaricato[m.id]}
 							{@const ragStato = statoRagionamento(rag)}
@@ -3049,6 +3080,7 @@
 						<TopicToolsPanel {tier} {name} bind:this={toolsPanel}
 							canEdit={isOwner || $isAdmin} on:count={(e) => (toolsCount = e.detail)}
 							messageBox={info?.message_box}
+							on:fonti={(e) => (fontiStanza = e.detail)}
 							examples={{ ingress: esempiPerDirezione(registry, 'ingress'), egress: esempiPerDirezione(registry, 'egress') }}
 							azioni={azioniTopic} {statiCanale} {azioneBusy}
 							on:azione={(e) => onAzioneClick(e.detail)} />
@@ -3412,6 +3444,10 @@
 	/* Allineamento per AUTORE: i miei a destra, la controparte a sinistra
 	   (vale per DM e canali di gruppo). Il bordo accent resta segnale per gli AI. */
 	.msg.mine { align-self: flex-end; }
+	.fonte-btn { font: inherit; font-size: 11px; padding: 1px 8px; margin: 4px 4px 0 0; cursor: pointer;
+		border: 1px dashed var(--accent); border-radius: 999px; background: transparent; color: var(--accent); }
+	.fonte-btn:hover:not(:disabled) { border-style: solid; }
+	.fonte-btn:disabled { opacity: .5; cursor: default; }
 	.msg:not(.mine) { align-self: flex-start; }
 	.msg.ai { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 	.msg.system {
