@@ -50,6 +50,8 @@
 		setTopicLogo,
 		clearTopicLogo,
 		editTopicEgressScope,
+		setTopicOrchestrator,
+		ORCHESTRATOR_SEEDS,
 		API_BASE_URL,
 		setTopicStatus,
 		setTopicGoal,
@@ -1554,6 +1556,26 @@
 	// Il ruolo `reader` è abolito (24 ott 2026, epic #604): chi non è owner è
 	// contributor, anche se nel meta è rimasto scritto `reader`.
 	$: roleOf = (p: string): string => (p === info?.meta?.owner ? 'owner' : 'contributor');
+
+	// ── Who orchestrates the room (clodia-platform#667) ─────────────────────
+	// One per room, Segretario by default; the owner moves it to Clodia or
+	// Ophelia with one click. The server answers with the effective one (a
+	// choice that cannot serve, e.g. past its tier, falls back).
+	$: orchestratore = info?.orchestrator ?? null;
+	$: puoOrchestrare = (p: string) => (ORCHESTRATOR_SEEDS as readonly string[]).includes(p);
+	let orchBusy = false;
+	async function scegliOrchestratore(p: string) {
+		if (orchBusy || p === orchestratore) return;
+		orchBusy = true;
+		try {
+			await setTopicOrchestrator(tier, name, p === 'segretario' ? null : p);
+			await refreshInfo();
+		} catch (e) {
+			toastError('Orchestratore non cambiato', e instanceof ApiError || e instanceof Error ? e.message : String(e));
+		} finally {
+			orchBusy = false;
+		}
+	}
 	// I partecipanti si mostrano TUTTI: la lista è la composizione del canale, e
 	// l'idoneità la governa il backend all'ingresso (409) e alla riconciliazione
 	// (uscita annunciata nel canale). Qui non si nasconde nessuno — nascondere
@@ -3009,6 +3031,20 @@
 								     del server quando si invita senza ruolo. Il modello
 								     owner/contributor resta lato server e via API (`reader`
 								     è abolito dal 24 ott 2026, epic #604). -->
+								{#if puoOrchestrare(p)}
+									{#if isOwner || $isAdmin}
+										<label class="orch-check" class:on={p === orchestratore}
+											title={p === orchestratore
+												? 'Orchestra questa stanza: parla con te e assegna i compiti'
+												: `Affida l'orchestrazione della stanza a ${p}`}>
+											<input type="radio" name="orchestratore" checked={p === orchestratore}
+												disabled={orchBusy} on:change={() => scegliOrchestratore(p)} />
+											orchestratore
+										</label>
+									{:else if p === orchestratore}
+										<span class="orch-check on" title="Orchestra questa stanza">orchestratore</span>
+									{/if}
+								{/if}
 								<span class="role-fixed">{roleOf(p)}</span>
 								{#if isOwner}
 									<button class="x" type="button" on:click={() => removeParticipant(p)} aria-label="Rimuovi">×</button>
@@ -3448,6 +3484,10 @@
 		border: 1px dashed var(--accent); border-radius: 999px; background: transparent; color: var(--accent); }
 	.fonte-btn:hover:not(:disabled) { border-style: solid; }
 	.fonte-btn:disabled { opacity: .5; cursor: default; }
+	.orch-check { display: inline-flex; align-items: center; gap: 3px; font-size: 10px;
+		color: var(--fg-muted); cursor: pointer; white-space: nowrap; }
+	.orch-check input { margin: 0; }
+	.orch-check.on { color: var(--accent); font-weight: 600; }
 	.msg:not(.mine) { align-self: flex-start; }
 	.msg.ai { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 	.msg.system {

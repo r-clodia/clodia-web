@@ -706,6 +706,9 @@ export interface ChannelInfo {
 	 *  Un partecipante senza istanze vive non compare nella mappa: è
 	 *  partecipante, e in questo momento non gira niente. */
 	participant_instances?: Record<string, { ordinal: number | null; state: 'working' | 'idle' }[]>;
+	/** Who leads the room now (clodia-platform#667): the room's choice
+	 *  (`meta.orchestrator`) or, when it cannot serve, the fallback. */
+	orchestrator?: string | null;
 	/** Chi ha azzerato il trifecta di questo canale, e quando (agents-notebook:
 	 *  richiesta dell'owner del 17 ago 2026). Viaggia DENTRO `trifecta`, ma è
 	 *  ridichiarato qui perché il tipo del profilo vive in `types.ts` e questo
@@ -3450,6 +3453,19 @@ export async function removeTopicTodo(
 	tier: string, name: string, id: string, baseVersion: string, opts: RequestOptions = {}
 ): Promise<TopicTodoWrite> {
 	return apiDelete<TopicTodoWrite>(`${topicTodosPath(tier, name, id)}?base_version=${encodeURIComponent(baseVersion)}`, opts);
+}
+
+/** The seeds that can orchestrate a room (clodia-platform#667); the first is
+ *  the default. */
+export const ORCHESTRATOR_SEEDS = ['segretario', 'clodia', 'ophelia'] as const;
+
+/** POST `/api/topics/{tier}/{name}/orchestrator` — who orchestrates the room
+ *  (clodia-platform#667). Owner or admin; `null` = the default (segretario). */
+export async function setTopicOrchestrator(
+	tier: string, name: string, orchestrator: string | null, opts: RequestOptions = {}
+): Promise<{ orchestrator: string | null; previous: string | null; changed: boolean; effective?: string | null }> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/orchestrator`,
+		{ orchestrator }, opts);
 }
 
 /** POST `/api/topics/{tier}/{name}/goal` — fissa il messaggio come OBIETTIVO
