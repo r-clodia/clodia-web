@@ -42,7 +42,8 @@
 		<p>
 			<b>{name}</b> e tutti i suoi dati vengono rimossi dalla piattaforma.
 			{#if scopes.length}
-				Viene tolto anche dagli spazi che lo importano ({scopes.join(', ')}).
+				Viene tolto anche dagli spazi che lo importano — topic, DM e job
+				({scopes.join(', ')}).
 			{/if}
 			La dichiarazione del pack resta, ma non lo ricrea: si ricrea solo con un'azione esplicita.
 		</p>

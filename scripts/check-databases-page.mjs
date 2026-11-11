@@ -57,6 +57,8 @@ if (mod) {
 		['xlsx refused', mod.uploadProblem({ name: 'a.xlsx', size: 10 }, 100).startsWith('formato'), true],
 		['too big refused', mod.uploadProblem({ name: 'a.pdf', size: 101 }, 100).startsWith('file troppo grande'), true],
 		['empty refused', mod.uploadProblem({ name: 'a.md', size: 0 }, 100), 'file vuoto'],
+		['topic scope href', mod.scopeHref('SEAL-2/commerciale'), '/topics/SEAL-2/commerciale'],
+		['job scope href', mod.scopeHref('job:7'), '/jobs/7'],
 		['valid name', mod.validName('procedure-interne'), true],
 		['invalid name', mod.validName('Procedure/../x'), false]
 	];

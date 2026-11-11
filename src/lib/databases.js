@@ -91,9 +91,11 @@ export function entryHref(entry, isAdmin) {
 	return entry.kind === 'rag' ? collectionHref(entry.name, scope) : datastoreHref(entry.name, scope);
 }
 
-/** `"SEAL-2/name"` → `/topics/SEAL-2/name`.
+/** `"SEAL-2/name"` → `/topics/SEAL-2/name`; `"job:7"` → `/jobs/7` (#670).
  * @param {string} s */
 export function scopeHref(s) {
+	const job = /^job:(\d+)$/.exec(String(s));
+	if (job) return `/jobs/${job[1]}`;
 	const i = String(s).indexOf('/');
 	return i < 0
 		? `/topics/${encodeURIComponent(s)}`
