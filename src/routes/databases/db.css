@@ -1,0 +1,71 @@
+/* Databases pages (clodia-platform#672): the catalogue and the two detail
+   pages share these. Global on purpose, every class is `db-` prefixed. */
+.db-page { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.db-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.db-head h1 { margin: 0; }
+.db-head-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.db-hint { color: var(--fg-muted); font-size: 13px; margin: 4px 0 0; }
+.db-small { font-size: 11px; color: var(--fg-muted); }
+.db-crumbs { font-size: 12px; color: var(--fg-muted); margin-bottom: 6px; }
+.db-crumbs a { text-decoration: underline; }
+.db-section { margin: 22px 0; }
+.db-section h2 { font-size: 15px; margin: 0 0 8px; }
+.db-count { color: var(--fg-muted); font-weight: 400; }
+.db-empty { color: var(--fg-muted); font-size: 13px; }
+.db-error { color: var(--danger); font-size: 13px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.db-btn { font-size: 12px; padding: 5px 10px; }
+.db-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.db-btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--border)); }
+.db-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+a.db-link { display: inline-block; border: 1px solid var(--border); border-radius: 6px; }
+a.db-link:hover { background: var(--card-bg); border-color: var(--fg-muted); }
+.db-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0 14px; }
+.db-filters select, .db-filters input, .db-field input, .db-field select, .db-field textarea {
+	font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+	background: var(--bg); color: var(--fg);
+}
+.db-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.db-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.db-card.missing { border-style: dashed; opacity: 0.75; }
+.db-card-head { display: flex; align-items: center; gap: 10px; }
+.db-glyph { font-size: 20px; width: 28px; text-align: center; }
+.db-name { font-weight: 600; font-family: var(--mono); font-size: 13px; word-break: break-all; }
+.db-name a:hover { text-decoration: underline; }
+.db-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--fg-muted); }
+.db-tag { font-size: 11px; padding: 1px 7px; border: 1px solid var(--border); border-radius: 999px; white-space: nowrap; }
+.db-tag.tier { font-family: var(--mono); }
+.db-tag.st-missing, .db-tag.st-unreadable { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, var(--border)); }
+.db-tag.st-active { color: var(--success); border-color: color-mix(in srgb, var(--success) 50%, var(--border)); }
+.db-scopes { display: flex; gap: 4px; flex-wrap: wrap; font-size: 11px; }
+.db-scopes a { font-family: var(--mono); padding: 1px 6px; border: 1px solid var(--border); border-radius: 999px; }
+.db-scopes a:hover { border-color: var(--fg-muted); }
+.db-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; margin-top: auto; }
+.db-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+table.db-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.db-tbl th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-muted); padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.db-tbl td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.db-tbl tbody tr:last-child td { border-bottom: 0; }
+.db-tbl td.mono, .db-tbl td .mono { font-family: var(--mono); font-size: 12px; }
+.db-tbl td.cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
+.db-tbl .act { text-align: right; white-space: nowrap; }
+.db-tbl tr.sel td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.db-split { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 760px) { .db-split { grid-template-columns: 1fr; } }
+.db-list { display: flex; flex-direction: column; gap: 4px; }
+.db-list button { text-align: left; display: flex; justify-content: space-between; gap: 8px; font-family: var(--mono); font-size: 12px; }
+.db-list button.on { border-color: var(--accent); }
+.db-pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 8px; font-size: 12px; color: var(--fg-muted); }
+.db-form { display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.db-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.db-field.inline { flex-direction: row; align-items: center; gap: 8px; }
+.db-cols { display: flex; flex-direction: column; gap: 6px; }
+.db-colrow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.db-admin { border: 1px dashed var(--border); border-radius: 10px; padding: 12px 14px; }
+.db-admin h3 { font-size: 13px; margin: 0 0 8px; }
+.db-drop { border: 2px dashed var(--border); border-radius: 10px; padding: 18px; text-align: center; color: var(--fg-muted); font-size: 13px; transition: border-color 0.12s, background 0.12s; }
+.db-drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.db-progress { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.db-progress > div { height: 100%; background: var(--accent); transition: width 0.15s; }
+.db-chunk { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; white-space: pre-wrap; }
+.db-chunk .db-small { display: block; margin-bottom: 4px; }
+.db-page .mono { font-family: var(--mono); font-size: 12px; }

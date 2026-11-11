@@ -2010,13 +2010,293 @@ export async function listDatabases(opts: RequestOptions = {}): Promise<Database
 
 /** DELETE `/clodia/datastores/archived/{dir}` — purge definitivo di un
  *  datastore già archiviato (pack rimosso). Unica azione distruttiva
- *  dell'inventario: le collection RAG orfane restano sola lettura finché il
- *  servizio eu-rag-search non espone un modo di cancellarle. */
+ *  dell'inventario legacy. Datastore e collection attivi si eliminano (con
+ *  export prima) da `deleteDatabase` (clodia-platform#671). */
 export async function purgeArchivedDatastore(
 	archiveDir: string,
 	opts: RequestOptions = {}
 ): Promise<void> {
 	await apiDelete(`/clodia/datastores/archived/${encodeURIComponent(archiveDir)}`, opts);
+}
+
+// ---------------------------------------------------------------------------
+// DATABASES (clodia-platform#671, #672) — the uniform catalogue of datastores
+// and RAG collections, their containers and their content. The gateway decides
+// every call: an admin reaches the whole catalogue (within their clearance);
+// anybody else only resources imported into a scope they are in, so content
+// calls carry the `scope` the person is working from.
+// ---------------------------------------------------------------------------
+
+export type DbKind = 'datastore' | 'rag';
+
+/** One row of the uniform catalogue. `pack: null` = created on the platform. */
+export interface DbCatalogueEntry {
+	kind: DbKind;
+	/** Datastore: `"<pack>/<name>"` (`platform/<name>` for the platform's own). */
+	name: string;
+	key: string;
+	pack: string | null;
+	tier: string;
+	status: 'active' | 'missing' | 'unreadable' | 'unknown';
+	size:
+		| { tables: number; rows: number; bytes: number }
+		| { documents: number; chunks: number }
+		| null;
+	updated_at: string | null;
+	/** Scopes importing it, as `"SEAL-2/name"` (only the person's own for a non-admin). */
+	imported_by_scopes: string[];
+	created_at?: string;
+	importers?: string[];
+	purpose?: string;
+	pii?: boolean;
+}
+
+export interface DbTombstone {
+	kind: DbKind;
+	name: string;
+	deleted_at: string;
+	by: string;
+	/** Where the pre-delete export was written, relative to the data dir. */
+	export: string;
+}
+
+export interface DbCatalogue {
+	entries: DbCatalogueEntry[];
+	rag_available: boolean;
+	upload_max_bytes: number;
+	upload_formats: string[];
+	is_admin: boolean;
+	tombstones?: DbTombstone[];
+}
+
+export interface DbColumn {
+	name: string;
+	type: string;
+	notnull: boolean;
+	default: unknown;
+	pk: number;
+}
+
+export interface DbTable {
+	name: string;
+	type: 'table' | 'view';
+	rows: number | null;
+	columns: DbColumn[];
+	editable: boolean;
+}
+
+export interface DbRowsPage {
+	datastore: string;
+	table: string;
+	columns: DbColumn[];
+	rows: Record<string, unknown>[];
+	total: number;
+	limit: number;
+	offset: number;
+	editable: boolean;
+	truncated: boolean;
+}
+
+export interface RagDocument {
+	name: string;
+	version: string;
+	status: string;
+	chunks: number;
+	source_url?: string | null;
+	ingested_at?: string | null;
+	provenance?: string | null;
+	source?: string | null;
+}
+
+export interface RagChunksPage {
+	collection: string;
+	name: string;
+	version: string;
+	total: number;
+	limit: number;
+	offset: number;
+	chunks: { ordinal: number | null; section: string | null; page: number | null; text: string }[];
+}
+
+export interface DbDeleteResult {
+	ok: boolean;
+	export_dir: string;
+	imports_removed: string[];
+	imports_failed: { scope: string; error: string }[];
+}
+
+function dbQuery(params: Record<string, string | number | undefined | null>): string {
+	const q = new URLSearchParams();
+	for (const [k, v] of Object.entries(params)) {
+		if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
+	}
+	const s = q.toString();
+	return s ? `?${s}` : '';
+}
+
+/** `pack/name` → `/clodia/databases/datastore/<pack>/<name>`, each segment encoded. */
+function dsPath(key: string): string {
+	const i = key.indexOf('/');
+	return `/clodia/databases/datastore/${encodeURIComponent(key.slice(0, i))}/${encodeURIComponent(key.slice(i + 1))}`;
+}
+
+function colPath(name: string): string {
+	return `/clodia/databases/collection/${encodeURIComponent(name)}`;
+}
+
+/** GET `/clodia/databases` — the uniform catalogue (topic indexes never listed). */
+export async function getDatabases(opts: RequestOptions = {}): Promise<DbCatalogue> {
+	return apiGet<DbCatalogue>('/clodia/databases', opts);
+}
+
+/** Admin: a new empty datastore `platform/<name>`. */
+export async function createDatastore(
+	body: { name: string; tier: string; purpose?: string; pii?: boolean },
+	opts: RequestOptions = {}
+): Promise<{ created: { kind: DbKind; name: string; tier: string } }> {
+	return apiPost('/clodia/databases', { action: 'create_datastore', ...body }, opts);
+}
+
+/** Admin: a new empty RAG collection. */
+export async function createCollection(
+	body: { name: string; tier: string; description?: string },
+	opts: RequestOptions = {}
+): Promise<{ created: { kind: DbKind; name: string; tier: string } }> {
+	return apiPost('/clodia/databases', { action: 'create_collection', ...body }, opts);
+}
+
+/** Admin: delete a datastore or collection and all its data. The server
+ *  exports it first and checks `confirm` (the typed name) itself. */
+export async function deleteDatabase(
+	kind: DbKind, name: string, confirm: string, opts: RequestOptions = {}
+): Promise<DbDeleteResult> {
+	return apiPost('/clodia/databases', { action: 'delete', kind, name, confirm }, opts);
+}
+
+/** Admin: lift a deletion's tombstone (the pack may re-create the resource). */
+export async function restoreDatabase(
+	kind: DbKind, name: string, opts: RequestOptions = {}
+): Promise<{ restored: { kind: DbKind; name: string } }> {
+	return apiPost('/clodia/databases', { action: 'restore', kind, name }, opts);
+}
+
+export async function getDatastoreTables(
+	key: string, scope?: string | null, opts: RequestOptions = {}
+): Promise<{ datastore: string; tables: DbTable[]; missing?: boolean }> {
+	return apiGet(`${dsPath(key)}/tables${dbQuery({ scope })}`, opts);
+}
+
+export async function getDatastoreRows(
+	key: string,
+	p: { table: string; limit?: number; offset?: number; q?: string; scope?: string | null },
+	opts: RequestOptions = {}
+): Promise<DbRowsPage> {
+	return apiGet(`${dsPath(key)}/rows${dbQuery(p)}`, opts);
+}
+
+/** insert | update | delete of one row (`rowid` for update/delete). */
+export async function datastoreRowOp(
+	key: string,
+	body: {
+		op: 'insert' | 'update' | 'delete';
+		table: string;
+		rowid?: number;
+		values?: Record<string, unknown>;
+		scope?: string | null;
+	},
+	opts: RequestOptions = {}
+): Promise<{ ok: boolean; rowcount: number; rowid?: number }> {
+	return apiPost(`${dsPath(key)}/rows`, body, opts);
+}
+
+export interface DbColumnSpec {
+	name: string;
+	type: string;
+	pk?: boolean;
+	notnull?: boolean;
+}
+
+/** Admin: schema change (create table, add column, drop table). */
+export async function datastoreSchema(
+	key: string,
+	body:
+		| { op: 'create_table'; table: string; columns: DbColumnSpec[] }
+		| { op: 'add_column'; table: string; column: DbColumnSpec }
+		| { op: 'drop_table'; table: string },
+	opts: RequestOptions = {}
+): Promise<{ ok: boolean; statement: string }> {
+	return apiPost(`${dsPath(key)}/schema`, body, opts);
+}
+
+export async function getCollectionDocuments(
+	name: string, scope?: string | null, opts: RequestOptions = {}
+): Promise<{ collection: string; documents: RagDocument[] }> {
+	return apiGet(`${colPath(name)}/documents${dbQuery({ scope })}`, opts);
+}
+
+export async function getCollectionChunks(
+	name: string,
+	p: { doc: string; version?: string; limit?: number; offset?: number; scope?: string | null },
+	opts: RequestOptions = {}
+): Promise<RagChunksPage> {
+	return apiGet(`${colPath(name)}/chunks${dbQuery(p)}`, opts);
+}
+
+export async function removeCollectionDocument(
+	name: string, docName: string, version?: string | null, scope?: string | null,
+	opts: RequestOptions = {}
+): Promise<{ removed: unknown[] }> {
+	return apiPost(`${colPath(name)}/remove`, { doc_name: docName, version: version || undefined, scope: scope || undefined }, opts);
+}
+
+export interface CollectionUploadResult {
+	ok: boolean;
+	document: string;
+	version: string;
+	chunks: number | null;
+	bytes: number;
+	characters: number;
+}
+
+/**
+ * Upload a file to a collection and index it. `onProgress(sent, total)` follows
+ * the upload; once it reaches 100% the server is extracting and indexing, and
+ * the promise settles when it is done. XHR, not fetch: fetch has no upload
+ * progress.
+ */
+export function uploadToCollection(
+	name: string,
+	file: File,
+	p: { docName?: string; version?: string; scope?: string | null } = {},
+	onProgress?: (sent: number, total: number) => void
+): Promise<CollectionUploadResult> {
+	const fd = new FormData();
+	fd.append('file', file);
+	if (p.docName) fd.append('doc_name', p.docName);
+	fd.append('version', p.version || '1');
+	if (p.scope) fd.append('scope', p.scope);
+	return new Promise((resolve, reject) => {
+		const xhr = new XMLHttpRequest();
+		xhr.open('POST', joinUrl(`${colPath(name)}/upload`));
+		for (const [k, v] of Object.entries(authHeaders())) xhr.setRequestHeader(k, v);
+		xhr.upload.onprogress = (e) => {
+			if (onProgress && e.lengthComputable) onProgress(e.loaded, e.total);
+		};
+		xhr.onload = () => {
+			invalidateApiCache('/clodia/databases');
+			if (xhr.status >= 200 && xhr.status < 300) {
+				try {
+					resolve(JSON.parse(xhr.responseText) as CollectionUploadResult);
+				} catch {
+					reject(new ApiError(xhr.status, xhr.responseText, 'risposta non valida'));
+				}
+			} else {
+				reject(new ApiError(xhr.status, xhr.responseText, `HTTP ${xhr.status} — ${xhr.responseText.slice(0, 200)}`));
+			}
+		};
+		xhr.onerror = () => reject(new ApiError(0, '', 'rete non raggiungibile'));
+		xhr.send(fd);
+	});
 }
 
 // ---------------------------------------------------------------------------
