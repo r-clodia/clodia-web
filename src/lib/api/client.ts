@@ -685,6 +685,8 @@ export interface ChannelInfo {
 		 *  non ne fissa uno. Sta nel meta e non fra i messaggi perché è un
 		 *  requisito che deve restare leggibile quando la chat è andata avanti. */
 		goal?: TopicGoal | null;
+		/** `"dm"` for a direct message (a topic with two participants). */
+		kind?: string;
 	};
 	summary?: string;
 	tldr?: string;
@@ -2018,13 +2020,12 @@ export async function purgeArchivedDatastore(
 }
 
 // ---------------------------------------------------------------------------
-// TOPIC DATA (clodia-platform#590) — instance data catalog, imports into a
-// topic, per-agent grants inside the topic, migration from seed grants.
+// SCOPE DATA (clodia-platform#590, #669, #670) — instance data catalog and
+// imports into a scope (topic, DM, job): the only way an agent reaches data.
 // ---------------------------------------------------------------------------
 
 export type DataKind = 'datastore' | 'rag';
 export type DataGrantMode = 'read' | 'write';
-export type DataAccessMode = 'legacy' | 'topic';
 
 /** One resource of the instance data catalog. */
 export interface DataCatalogEntry {
@@ -2064,7 +2065,6 @@ export function catalogTopicTier(entry: { topic?: string }): string {
 
 export interface DataCatalog {
 	entries: DataCatalogEntry[];
-	data_access: DataAccessMode;
 }
 
 /** A resource imported by a topic (`meta.data`), with its per-agent grants. */
@@ -2072,23 +2072,6 @@ export interface TopicDataImport {
 	kind: DataKind;
 	name: string;
 	grants?: Record<string, DataGrantMode>;
-}
-
-export interface DataMigrationItem {
-	/** `"SEAL-2/name"`. */
-	topic: string;
-	kind: DataKind;
-	name: string;
-	tier: string;
-	grants: Record<string, DataGrantMode>;
-	status: 'ok' | 'already' | 'skipped';
-	reason?: string;
-}
-
-export interface DataMigrationPlan {
-	items: DataMigrationItem[];
-	notes: string[];
-	counts: { ok: number; already: number; skipped: number };
 }
 
 /** The `detail` of a FastAPI error body (Italian, for the user), else the message. */
@@ -2136,25 +2119,6 @@ export async function syncDataCatalog(opts: RequestOptions = {}): Promise<{ adde
 	return postDataCatalog({ action: 'sync' }, opts);
 }
 
-/** Admin: compute the migration from seed grants to topic imports (read-only). */
-export async function getDataMigrationPlan(opts: RequestOptions = {}): Promise<DataMigrationPlan> {
-	return postDataCatalog({ action: 'migration_plan' }, opts);
-}
-
-/** Admin: apply the approved items of the migration plan. */
-export async function applyDataMigration(
-	items: DataMigrationItem[], opts: RequestOptions = {}
-): Promise<{ applied: string[]; failed: { item: unknown; error: string }[] }> {
-	return postDataCatalog({ action: 'migration_apply', items }, opts);
-}
-
-/** Admin: switch the instance between seed grants (`legacy`) and topic imports. */
-export async function setDataAccessMode(
-	mode: DataAccessMode, opts: RequestOptions = {}
-): Promise<{ data_access: DataAccessMode }> {
-	return postDataCatalog({ action: 'set_mode', mode }, opts);
-}
-
 function topicDataPath(tier: string, name: string): string {
 	return `/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/data`;
 }
@@ -2171,6 +2135,31 @@ export async function removeTopicData(
 	tier: string, name: string, kind: DataKind, resource: string, opts: RequestOptions = {}
 ): Promise<{ ok: boolean; removed: boolean }> {
 	return apiPost(topicDataPath(tier, name), { action: 'remove', kind, resource }, opts);
+}
+
+/** A resource imported by an agentic job (`data`, clodia-platform#670). */
+export interface JobDataImport {
+	kind: DataKind;
+	name: string;
+}
+
+function jobDataPath(jobId: string): string {
+	return `/clodia/jobs/${encodeURIComponent(jobId)}/data`;
+}
+
+/** Job owner (or admin): import a catalog resource into an agentic job.
+ *  The gateway checks catalog, importer, clearance and job tier first. */
+export async function importJobData(
+	jobId: string, kind: DataKind, resource: string, opts: RequestOptions = {}
+): Promise<{ ok: boolean; already?: boolean; data: JobDataImport[]; job_tier?: string }> {
+	return apiPost(jobDataPath(jobId), { action: 'import', kind, resource }, opts);
+}
+
+/** Job owner (or admin): remove an imported resource from the job. */
+export async function removeJobData(
+	jobId: string, kind: DataKind, resource: string, opts: RequestOptions = {}
+): Promise<{ ok: boolean; data: JobDataImport[] }> {
+	return apiPost(jobDataPath(jobId), { action: 'remove', kind, resource }, opts);
 }
 
 /** The topic's own RAG index (`meta.index`, clodia-platform#599). */

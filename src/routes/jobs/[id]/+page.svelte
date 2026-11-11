@@ -16,6 +16,7 @@
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import JobFormDialog from '$lib/components/JobFormDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import JobDataPanel from '$lib/components/JobDataPanel.svelte';
 	import { toastSuccess, toastError, toastInfo } from '$lib/stores/toasts';
 	import { bumpJobs } from '$lib/stores/jobs';
 	import { session } from '$lib/auth/session';
@@ -240,7 +241,9 @@
 		'timezone',
 		'next_run',
 		'config',
-		'runs'
+		'runs',
+		// Rendered as the «Dati» row (clodia-platform#670).
+		'data'
 	]);
 
 	function extraConfigEntries(j: JobDetail): Array<[string, unknown]> {
@@ -465,6 +468,20 @@
 					<dd class="stale-reason">{job.stale_reason}</dd>
 				{/if}
 
+				<!-- A job is a data scope like a topic (clodia-platform#670): its agent
+				     reaches a datastore or a collection only if the job imports it.
+				     A topic trigger runs in its topic and uses that topic's data. -->
+				<dt>Dati</dt>
+				<dd>
+					{#if (job.mode ?? 'agentic') === 'agentic'}
+						<JobDataPanel jobId={job.id} imports={job.data ?? []} tier={job.tier ?? ''}
+							agent={job.agent ?? ''} canEdit={canManageJob(job.owner)}
+							on:changed={reload} />
+					{:else}
+						<span class="muted-inline">Un job {job.mode} non importa dati.</span>
+					{/if}
+				</dd>
+
 				{#if configEntries(job).length > 0}
 					<dt>Config</dt>
 					<dd>
@@ -587,6 +604,10 @@
 />
 
 <style>
+	.muted-inline {
+		color: var(--fg-muted);
+		font-size: 12px;
+	}
 	.head {
 		display: flex;
 		align-items: flex-end;
