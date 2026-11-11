@@ -408,8 +408,8 @@ export interface JobDetail extends Job {
 	readonly runs?: ReadonlyArray<JobRun>;
 	/** `agentic` (default) | `logic` | `topic_trigger`. */
 	readonly mode?: string;
-	/** Declared tier of the job's data; empty = the executing agent's
-	 *  effective clearance (clodia-platform#670). */
+	/** Declared tier of the job's data; empty = none, and then the job
+	 *  imports no data (clodia-platform#670, owner 11 Nov 2026). */
 	readonly tier?: string;
 	/** Datastores/collections the job imports (clodia-platform#670). */
 	readonly data?: ReadonlyArray<{ readonly kind: 'datastore' | 'rag'; readonly name: string }>;
@@ -431,6 +431,8 @@ export interface JobCreate {
 	/** Agent (kind) che lo scheduler spawna al fire. Default server "clodia". */
 	readonly agent?: string;
 	readonly enabled?: boolean;
+	/** SEAL level of the job's data; required before importing data (#670). */
+	readonly tier?: string;
 }
 
 /**
@@ -445,6 +447,8 @@ export interface JobUpdate {
 	readonly prompt?: string;
 	readonly agent?: string;
 	readonly enabled?: boolean;
+	/** `""` removes the declared tier (refused while the job imports data). */
+	readonly tier?: string;
 }
 
 /**

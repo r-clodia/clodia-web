@@ -685,6 +685,8 @@ export interface ChannelInfo {
 		 *  non ne fissa uno. Sta nel meta e non fra i messaggi perché è un
 		 *  requisito che deve restare leggibile quando la chat è andata avanti. */
 		goal?: TopicGoal | null;
+		/** `"dm"` for a direct message (a topic with two participants). */
+		kind?: string;
 	};
 	summary?: string;
 	tldr?: string;

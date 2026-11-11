@@ -12,6 +12,8 @@
 	 *   - cron_expr  string, standard 5-field cron (required)
 	 *   - prompt     string, ≥1 char (required) — what the scheduler enqueues
 	 *   - enabled    boolean (defaults true server-side)
+	 *   - tier       SEAL level of the job's data; "" = none declared. Required
+	 *                before the job can import data (clodia-platform#670).
 	 *
 	 * Single state machine: `submitting` blocks the Submit button (no double
 	 * fire), the dialog itself is non-dismissable while submitting. Errors
@@ -46,6 +48,11 @@
 	let prompt = '';
 	let agent = 'clodia';
 	let enabled = true;
+	/** Declared tier of the job's data ("" = none). A job imports data only
+	 *  with a tier (owner, 11 Nov 2026); the server refuses lowering it below
+	 *  what the job imports. */
+	let tier = '';
+	const TIERS = ['SEAL-0', 'SEAL-1', 'SEAL-2', 'SEAL-3', 'SEAL-4'];
 
 	// Periodicità in linguaggio naturale → cron (preview live via backend).
 	let scheduleText = '';
@@ -85,12 +92,14 @@
 		prompt: string;
 		agent: string;
 		enabled: boolean;
+		tier: string;
 	} = {
 		name: '',
 		cronExpr: '',
 		prompt: '',
 		agent: 'clodia',
-		enabled: true
+		enabled: true,
+		tier: ''
 	};
 
 	// Re-seed when the dialog opens (and only then — avoids stomping mid-edit
@@ -128,6 +137,7 @@
 			prompt = (initial as Job & { prompt?: string }).prompt ?? '';
 			agent = initial.agent ?? 'clodia';
 			enabled = (initial as Job & { enabled?: boolean }).enabled !== false;
+			tier = (initial as Job & { tier?: string }).tier ?? '';
 			showAdvancedCron = true; // in edit mostriamo il cron esistente
 		} else {
 			name = '';
@@ -136,10 +146,11 @@
 			prompt = '';
 			agent = 'clodia';
 			enabled = true;
+			tier = '';
 			showAdvancedCron = false;
 			onScheduleInput(); // popola la preview del default
 		}
-		initialSnapshot = { name, cronExpr, prompt, agent, enabled };
+		initialSnapshot = { name, cronExpr, prompt, agent, enabled, tier };
 		submitting = false;
 		error = null;
 	}
@@ -168,7 +179,8 @@
 		cronExpr !== initialSnapshot.cronExpr ||
 		prompt !== initialSnapshot.prompt ||
 		agent !== initialSnapshot.agent ||
-		enabled !== initialSnapshot.enabled;
+		enabled !== initialSnapshot.enabled ||
+		tier !== initialSnapshot.tier;
 
 	// Any non-human seed may run a job (#626): seeds no longer carry verbs —
 	// what a job may do outside a room is decided by the agent's global
@@ -199,6 +211,7 @@
 		if (prompt !== initialSnapshot.prompt) diff.prompt = prompt;
 		if (agent !== initialSnapshot.agent) diff.agent = agent;
 		if (enabled !== initialSnapshot.enabled) diff.enabled = enabled;
+		if (tier !== initialSnapshot.tier) diff.tier = tier;
 		return diff as JobUpdate;
 	}
 
@@ -214,7 +227,8 @@
 					cron_expr: cronExpr.trim(),
 					prompt,
 					agent,
-					enabled
+					enabled,
+					...(tier ? { tier } : {})
 				};
 				const job = await createJob(body);
 				toastSuccess(`Job "${body.name}" creato`, 'POST /clodia/jobs → 200');
@@ -337,6 +351,21 @@
 					Il job gira con tutte le skill / tool / MCP dell'agent scelto.
 				</span>
 			{/if}
+		</label>
+
+		<label class="field">
+			<span class="label-row">
+				<span class="lbl">Tier dei dati</span>
+				<span class="hint-inline">richiesto per importare dati nel job</span>
+			</span>
+			<select bind:value={tier}>
+				<option value="">— nessuno —</option>
+				{#each TIERS as t}<option value={t}>{t}</option>{/each}
+			</select>
+			<span class="hint-inline">
+				Il job importa solo dati con tier ≤ a questo, e l'agente deve avere clearance ≥
+				tier per usarli: sotto, i run falliscono. Non si scende sotto i dati già importati.
+			</span>
 		</label>
 
 		<label class="field-row">

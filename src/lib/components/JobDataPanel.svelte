@@ -26,7 +26,7 @@
 	export let jobId: string;
 	/** `data` of the job. */
 	export let imports: ReadonlyArray<JobDataImport> = [];
-	/** Declared tier; empty = the executing agent's effective clearance. */
+	/** Declared tier; empty = none, and the job imports nothing until it has one. */
 	export let tier = '';
 	/** The agent that runs the job: the only one that uses its data. */
 	export let agent = '';
@@ -50,13 +50,12 @@
 	$: entryOf = Object.fromEntries((catalog ?? []).map((e) => [key(e.kind, e.name), e]));
 	$: label = (imp: JobDataImport) => catalogLabel(entryOf[key(imp.kind, imp.name)] ?? imp);
 	$: importedKeys = new Set(imports.map((i) => key(i.kind, i.name)));
-	// A room's own index stays in its room; with a declared tier, only
-	// resources at or below it. Undeclared: the server checks the agent's
-	// effective clearance, which the page does not know.
+	// A room's own index stays in its room; only resources at or below the
+	// job's tier (owner, 11 Nov 2026: no tier, no imports).
 	$: importable = (catalog ?? []).filter(
 		(e) => !importedKeys.has(key(e.kind, e.name))
 			&& !e.topic && !e.name.startsWith('topic-')
-			&& (!tier || (rank(e.tier) >= 0 && rank(e.tier) <= rank(tier)))
+			&& rank(e.tier) >= 0 && rank(e.tier) <= rank(tier)
 	);
 
 	async function loadCatalog() {
@@ -123,18 +122,18 @@
 	<p class="muted">Li legge e li scrive {agent || "l'agente del job"}, solo durante i run di questo job.</p>
 {/if}
 
-{#if canEdit}
+{#if canEdit && !tier}
+	<p class="muted" role="note">
+		Imposta il tier del job (Modifica → Tier dei dati) prima di importare dati.
+	</p>
+{:else if canEdit}
 	{#if catalogErr}
 		<p class="err" role="alert">{catalogErr}</p>
 	{:else if catalog}
 		<DataPicker entries={importable} disabled={busy} on:pick={(ev) => doImport(ev.detail)} />
 		<p class="muted">
-			{#if tier}
-				Solo le risorse con tier ≤ {tier} che puoi importare.
-			{:else}
-				Il job non dichiara un tier: vale la clearance effettiva di {agent || "chi lo esegue"},
-				e il server rifiuta le risorse sopra di essa.
-			{/if}
+			Solo le risorse con tier ≤ {tier} che puoi importare. {agent || "L'agente del job"}
+			deve avere clearance ≥ {tier}, altrimenti i run non usano i dati.
 		</p>
 	{/if}
 {/if}

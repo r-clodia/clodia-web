@@ -3034,6 +3034,7 @@
 							imports={info?.meta?.data ?? []} topicIndex={info?.meta?.index}
 							agents={triggerAgents}
 							canEdit={isOwner || $isAdmin} on:changed={refreshInfo}
+							isDm={info?.meta?.kind === 'dm'} on:retier={() => (retierOpen = true)}
 							on:indexjob={(e) => (indexJobLabel = e.detail.running ? e.detail.label : '')} />
 					{/key}
 				</details>

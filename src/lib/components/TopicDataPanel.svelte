@@ -37,11 +37,16 @@
 	export let agents: string[] = [];
 	/** Owner or admin: may import, remove and grant. */
 	export let canEdit = false;
+	/** A DM (`kind: dm`): its owner sets its tier like a topic's
+	 *  (clodia-platform#670, owner 11 Nov 2026); the panel offers the control. */
+	export let isDm = false;
 
 	const dispatch = createEventDispatcher<{
 		changed: void;
 		/** The toggle's job, for the section header (#648). */
 		indexjob: { running: boolean; label: string };
+		/** Open the page's re-classification dialog (a DM's tier, #670). */
+		retier: void;
 	}>();
 
 	let catalog: DataCatalogEntry[] | null = null;
@@ -262,6 +267,20 @@
 	</ul>
 {/if}
 
+{#if isDm}
+	<div class="dm-tier">
+		<span class="muted">
+			Questo DM è {tier}: importa solo dati di livello ≤ {tier}, e l'agente deve avere
+			clearance ≥ {tier}.
+		</span>
+		{#if canEdit}
+			<button type="button" class="link-btn" disabled={busy}
+				title="Il livello non può superare la tua clearance né scendere sotto i dati importati"
+				on:click={() => dispatch('retier')}>Cambia livello</button>
+		{/if}
+	</div>
+{/if}
+
 {#if canEdit}
 	{#if catalogErr}
 		<p class="err" role="alert">{catalogErr}</p>
@@ -341,4 +360,5 @@
 		border-radius: 4px; color: var(--fg); cursor: pointer; padding: 2px 8px; white-space: nowrap;
 	}
 	.link-btn:disabled { opacity: .5; cursor: default; }
+	.dm-tier { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
 </style>
