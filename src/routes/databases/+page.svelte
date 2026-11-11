@@ -1,65 +1,161 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import './db.css';
 	import {
-		ApiError,
 		apiErrorDetail,
-		catalogLabel,
-		catalogTopicTier,
-		getDataCatalog,
+		createCollection,
+		createDatastore,
+		deleteDatabase,
+		getDatabases,
 		listDatabases,
 		purgeArchivedDatastore,
-		syncDataCatalog,
-		updateDataCatalogEntry,
-		type DataCatalog,
-		type DataCatalogEntry
+		restoreDatabase,
+		type DbCatalogue,
+		type DbCatalogueEntry,
+		type DbTombstone
 	} from '$lib/api/client';
-	import type { DatabaseEntry, DatabasesInventory } from '$lib/api/types';
+	import type { DatabaseEntry } from '$lib/api/types';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import DeleteResourceDialog from '$lib/components/DeleteResourceDialog.svelte';
+	import Modal from '$lib/components/Modal.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
-	import { toastSuccess, toastError } from '$lib/stores/toasts';
-	import { isAdmin } from '$lib/stores/capabilities';
+	import ViewToggle from '$lib/components/ViewToggle.svelte';
+	import { readView } from '$lib/viewPref.js';
+	import {
+		TIERS,
+		dateLabel,
+		entryHref,
+		filterEntries,
+		originLabel,
+		packsOf,
+		scopeHref,
+		sizeLabel,
+		statusLabel,
+		validName
+	} from '$lib/databases.js';
+	import { toastError, toastSuccess } from '$lib/stores/toasts';
 
 	// ─────────────────────────────────────────────────────────────────────────
-	// Sezione DATABASES — dati (SQL, vector-db) indipendenti dai TOPIC, creati
-	// e popolati dai pack via due primitive del manifest: `datastores:` (SQLite,
-	// posseduto dall'MCP del pack) e `rag_collections:` (vector-db, pgvector
-	// condiviso). Disinstallare un pack non cancella mai i suoi dati: i
-	// datastore vengono ARCHIVIATI (`plugins-archive/`), le collection RAG
-	// restano vive — la pulizia definitiva è un atto umano, da qui.
-	//
-	// Le collection RAG sono SOLA LETTURA: il servizio eu-rag-search (fuori dai
-	// repo git) non espone ancora un modo di cancellarle (9 set 2026).
+	// DATABASES (clodia-platform#672) — one uniform catalogue of the instance's
+	// datastores (SQLite) and RAG collections, declared by packs or created
+	// here. A topic's own index (`topic-*`) is never listed: it belongs to its
+	// room. Who reaches the content: an admin everything (within clearance),
+	// anybody else only what is imported into a scope they are in — the server
+	// sends a non-admin only those resources, and only those scopes.
 	// ─────────────────────────────────────────────────────────────────────────
 
-	type State =
-		| { kind: 'idle' }
-		| { kind: 'loading' }
-		| { kind: 'ok'; data: DatabasesInventory }
-		| { kind: 'error'; message: string; status?: number };
+	let view = readView('databases');
 
-	let state: State = { kind: 'idle' };
-	let pendingPurge: DatabaseEntry | null = null;
-	let purging = false;
+	let cat: DbCatalogue | null = null;
+	let loading = true;
+	let err = '';
 
-	function errorMessage(err: unknown): { message: string; status?: number } {
-		if (err instanceof ApiError) return { message: err.message, status: err.status };
-		if (err instanceof Error) return { message: err.message };
-		return { message: String(err) };
-	}
+	let fKind = '';
+	let fPack = '';
+	let fTier = '';
+	let fQ = '';
+
+	$: admin = !!cat?.is_admin;
+	$: shown = cat ? filterEntries(cat.entries, { kind: fKind, pack: fPack, tier: fTier, q: fQ }) : [];
+	$: packs = cat ? packsOf(cat.entries) : [];
 
 	async function load() {
-		state = { kind: 'loading' };
+		loading = true;
+		err = '';
 		try {
-			const data = await listDatabases();
-			state = { kind: 'ok', data };
-		} catch (err) {
-			const e = errorMessage(err);
-			state = { kind: 'error', message: e.message, status: e.status };
+			cat = await getDatabases();
+		} catch (e) {
+			err = apiErrorDetail(e);
+		} finally {
+			loading = false;
+		}
+		void loadArchived();
+	}
+
+	// ── New datastore / collection (admins) ──────────────────────────────────
+	let creating: 'datastore' | 'rag' | null = null;
+	let newName = '';
+	let newTier = 'SEAL-1';
+	let newPurpose = '';
+	let newPii = false;
+	let createBusy = false;
+
+	function openCreate(kind: 'datastore' | 'rag') {
+		creating = kind;
+		newName = '';
+		newTier = 'SEAL-1';
+		newPurpose = '';
+		newPii = false;
+	}
+
+	async function submitCreate() {
+		if (!creating || !validName(newName) || createBusy) return;
+		createBusy = true;
+		try {
+			const r = creating === 'datastore'
+				? await createDatastore({ name: newName, tier: newTier, purpose: newPurpose, pii: newPii })
+				: await createCollection({ name: newName, tier: newTier, description: newPurpose });
+			toastSuccess(`Creato: ${r.created.name}`);
+			creating = null;
+			await load();
+		} catch (e) {
+			toastError('Creazione', apiErrorDetail(e));
+		} finally {
+			createBusy = false;
 		}
 	}
 
-	function askPurge(entry: DatabaseEntry) {
-		pendingPurge = entry;
+	// ── Delete (admins): typed name, export first ────────────────────────────
+	let pendingDelete: DbCatalogueEntry | null = null;
+	let deleting = false;
+
+	async function confirmDelete(e: CustomEvent<string>) {
+		if (!pendingDelete) return;
+		deleting = true;
+		try {
+			const r = await deleteDatabase(pendingDelete.kind, pendingDelete.name, e.detail);
+			toastSuccess(`Eliminato: ${pendingDelete.name}`, `Export in ${r.export_dir}`);
+			if (r.imports_failed.length) {
+				toastError('Import non rimossi', r.imports_failed.map((f) => f.scope).join(', '));
+			}
+			pendingDelete = null;
+			await load();
+		} catch (er) {
+			toastError('Eliminazione', apiErrorDetail(er));
+		} finally {
+			deleting = false;
+		}
+	}
+
+	// ── Tombstones (admins) ──────────────────────────────────────────────────
+	let restoring = '';
+
+	async function restore(t: DbTombstone) {
+		restoring = `${t.kind}:${t.name}`;
+		try {
+			await restoreDatabase(t.kind, t.name);
+			toastSuccess(`Ripristinabile: ${t.name}`, 'Il pack che lo dichiara può ricrearlo.');
+			await load();
+		} catch (e) {
+			toastError('Ripristino', apiErrorDetail(e));
+		} finally {
+			restoring = '';
+		}
+	}
+
+	// ── Datastores archived with a removed pack (unchanged behaviour) ────────
+	let archived: DatabaseEntry[] = [];
+	let pendingPurge: DatabaseEntry | null = null;
+	let purging = false;
+
+	async function loadArchived() {
+		if (!admin) return;
+		try {
+			const inv = await listDatabases({ cache: false });
+			archived = inv.datastores.filter((d) => d.status === 'archived');
+		} catch {
+			archived = [];
+		}
 	}
 
 	async function confirmPurge() {
@@ -69,460 +165,253 @@
 			await purgeArchivedDatastore(pendingPurge.archive_dir);
 			toastSuccess(`Eliminato: ${pendingPurge.archive_dir}`);
 			pendingPurge = null;
-			await load();
-		} catch (err) {
-			toastError(errorMessage(err).message);
+			await loadArchived();
+		} catch (e) {
+			toastError('Eliminazione', apiErrorDetail(e));
 		} finally {
 			purging = false;
 		}
 	}
 
-	function statusLabel(s: DatabaseEntry['status']): string {
-		return s === 'active' ? 'attivo' : s === 'archived' ? 'archiviato' : 'orfano';
+	function glyph(e: DbCatalogueEntry): string {
+		return e.kind === 'rag' ? '🧠' : '🗄️';
 	}
 
-	// ── DATA CATALOG (clodia-platform#590) ───────────────────────────────────
-	// The instance registry of datastores and collections: tier and who may
-	// import them into a topic. Loaded apart from the inventory so that a
-	// server without the catalog still shows the inventory above.
-	const TIERS = ['SEAL-0', 'SEAL-1', 'SEAL-2', 'SEAL-3', 'SEAL-4'];
-
-	let catalog: DataCatalog | null = null;
-	let catalogErr = '';
-	let catalogBusy = false;
-	/** Admin drafts per entry key: tier and importers as typed. */
-	let draftTier: Record<string, string> = {};
-	let draftImporters: Record<string, string> = {};
-
-	function resetDrafts(entries: DataCatalogEntry[]) {
-		draftTier = Object.fromEntries(entries.map((e) => [e.key, e.tier]));
-		draftImporters = Object.fromEntries(entries.map((e) => [e.key, e.importers.join(', ')]));
-	}
-
-	async function loadCatalog() {
-		catalogErr = '';
-		try {
-			catalog = await getDataCatalog();
-			resetDrafts(catalog.entries);
-		} catch (err) {
-			catalog = null;
-			catalogErr = apiErrorDetail(err);
-		}
-	}
-
-	/** `"SEAL-2/name"` → `/topics/SEAL-2/name`, each segment encoded. */
-	function topicHref(t: string): string {
-		const i = t.indexOf('/');
-		return i < 0
-			? `/topics/${encodeURIComponent(t)}`
-			: `/topics/${encodeURIComponent(t.slice(0, i))}/${encodeURIComponent(t.slice(i + 1))}`;
-	}
-
-		function parseImporters(v: string): string[] {
-		return v.split(',').map((x) => x.trim()).filter(Boolean);
-	}
-
-	function isDirty(e: DataCatalogEntry, tier: string, importers: string): boolean {
-		return tier !== e.tier || parseImporters(importers).join(',') !== e.importers.join(',');
-	}
-
-	async function catalogAction(fn: () => Promise<string>) {
-		if (catalogBusy) return;
-		catalogBusy = true;
-		try {
-			toastSuccess(await fn());
-			await loadCatalog();
-		} catch (err) {
-			toastError('Catalogo dati', apiErrorDetail(err));
-		} finally {
-			catalogBusy = false;
-		}
-	}
-
-	function saveEntry(e: DataCatalogEntry) {
-		void catalogAction(async () => {
-			await updateDataCatalogEntry(e.kind, e.name, {
-				tier: draftTier[e.key],
-				importers: parseImporters(draftImporters[e.key] ?? '')
-			});
-			return `Aggiornato: ${e.name}`;
-		});
-	}
-
-	function sync() {
-		void catalogAction(async () => {
-			const r = await syncDataCatalog();
-			return r.added ? `Aggiunte ${r.added} risorse al catalogo` : 'Catalogo già allineato';
-		});
-	}
-
-	onMount(() => {
-		void load();
-		void loadCatalog();
-	});
+	onMount(load);
 </script>
 
 <svelte:head>
 	<title>Databases</title>
 </svelte:head>
 
-<div class="page">
-	<h1>Databases</h1>
-	<p class="hint">
-		Datastore e collection RAG creati dai pack, indipendenti dai topic. Un pack disinstallato
-		non cancella mai i suoi dati: i datastore vengono archiviati, le collection RAG restano vive
-		— la pulizia è un atto umano.
-	</p>
+<!-- Same actions in both views: one snippet, two renderers. -->
+{#snippet actions(e: DbCatalogueEntry)}
+	<a class="db-btn db-link" href={entryHref(e, admin)}>Apri</a>
+	{#if admin}
+		<button type="button" class="db-btn danger" on:click={() => (pendingDelete = e)}>Elimina</button>
+	{/if}
+{/snippet}
 
-	{#if state.kind === 'idle' || state.kind === 'loading'}
-		<div class="tbl">
-			{#each Array(4) as _}
-				<Skeleton height="28px" radius="6px" />
-			{/each}
+{#snippet scopes(e: DbCatalogueEntry)}
+	<div class="db-scopes">
+		{#each e.imported_by_scopes as s (s)}
+			<a href={scopeHref(s)} title="importato in {s}">{s}</a>
+		{:else}
+			<span class="db-small">nessuno spazio lo importa</span>
+		{/each}
+	</div>
+{/snippet}
+
+<div class="db-page">
+	<header class="db-head">
+		<div>
+			<h1>Databases</h1>
+			<p class="db-hint">
+				Datastore e collection RAG dell'istanza, dichiarati dai pack o creati qui. I dati si usano
+				importandoli in uno spazio (topic, DM, job){admin ? '' : ': qui vedi quelli importati negli spazi di cui fai parte'}.
+			</p>
 		</div>
-	{:else if state.kind === 'error'}
-		<div class="error">
-			Errore{state.status ? ` (${state.status})` : ''}: {state.message}
-			<button type="button" on:click={load}>Riprova</button>
-		</div>
-	{:else}
-		<section>
-			<h2>Datastore <span class="count">({state.data.datastores.length})</span></h2>
-			{#if state.data.datastores.length === 0}
-				<p class="empty">Nessun datastore dichiarato.</p>
-			{:else}
-				<div class="tbl">
-					{#each state.data.datastores as d (d.pack + '/' + (d.path ?? '.') + '/' + (d.archive_dir ?? ''))}
-						<div class="row">
-							<span class="cell pack">{d.pack}</span>
-							<span class="cell path">{d.path ?? '.'}</span>
-							<span class="cell purpose">{d.purpose}</span>
-							<span class="badge status-{d.status}">{statusLabel(d.status)}</span>
-							{#if d.pii}<span class="badge pii-badge">PII</span>{/if}
-							{#if d.status === 'archived' && d.archived_at}
-								<span class="cell archived-at">dal {d.archived_at}</span>
-							{/if}
-							{#if $isAdmin && d.status === 'archived' && d.archive_dir}
-								<button type="button" class="danger" on:click={() => askPurge(d)}>
-									Elimina definitivamente
-								</button>
-							{/if}
-						</div>
-					{/each}
-				</div>
+		<div class="db-head-actions">
+			<ViewToggle page="databases" bind:view />
+			{#if admin}
+				<button type="button" class="db-btn primary" on:click={() => openCreate('datastore')}>＋ Nuovo datastore</button>
+				<button type="button" class="db-btn primary" on:click={() => openCreate('rag')}
+					disabled={cat !== null && !cat.rag_available}>＋ Nuova collection</button>
 			{/if}
-		</section>
+			<button type="button" class="db-btn" on:click={load} disabled={loading}>{loading ? '…' : 'Aggiorna'}</button>
+		</div>
+	</header>
 
-		<section>
-			<h2>Collection RAG <span class="count">({state.data.rag_collections.length})</span></h2>
-			{#if state.data.rag_collections.length === 0}
-				<p class="empty">Nessuna collection RAG.</p>
-			{:else}
-				<div class="tbl">
-					{#each state.data.rag_collections as r (r.name)}
-						<div class="row rag">
-							<div class="line">
-								<span class="cell name">{r.name}</span>
-								<span class="cell pack">{r.pack ?? '—'}</span>
-								<span class="cell tier">{r.tier}</span>
-								<span class="cell counts">{r.documents ?? 0} doc · {r.chunks ?? 0} chunk</span>
-								<span class="badge status-{r.status}">{statusLabel(r.status)}</span>
+	<div class="db-filters">
+		<select bind:value={fKind} aria-label="Tipo">
+			<option value="">Tutti i tipi</option>
+			<option value="datastore">Datastore</option>
+			<option value="rag">Collection RAG</option>
+		</select>
+		<select bind:value={fPack} aria-label="Origine">
+			<option value="">Tutte le origini</option>
+			<option value="@platform">Piattaforma</option>
+			{#each packs as p (p)}<option value={p}>{p}</option>{/each}
+		</select>
+		<select bind:value={fTier} aria-label="Tier">
+			<option value="">Tutti i tier</option>
+			{#each TIERS as t (t)}<option value={t}>{t}</option>{/each}
+		</select>
+		<input type="search" placeholder="Cerca per nome…" bind:value={fQ} />
+		{#if cat && !cat.rag_available}
+			<span class="db-error">Servizio RAG non raggiungibile: le collection potrebbero mancare.</span>
+		{/if}
+	</div>
+
+	{#if loading && !cat}
+		<div class="db-grid">
+			{#each Array(4) as _}<Skeleton height="120px" radius="10px" />{/each}
+		</div>
+	{:else if err}
+		<div class="db-error">{err} <button type="button" class="db-btn" on:click={load}>Riprova</button></div>
+	{:else if cat}
+		{#if shown.length === 0}
+			<p class="db-empty">
+				{cat.entries.length === 0
+					? admin ? 'Nessun datastore o collection.' : 'Nessun dato importato negli spazi di cui fai parte.'
+					: 'Nessun risultato con questi filtri.'}
+			</p>
+		{:else if view === 'table'}
+			<div class="db-table-wrap">
+				<table class="db-tbl">
+					<thead>
+						<tr>
+							<th></th><th>Nome</th><th>Origine</th><th>Tier</th><th>Stato</th><th>Dimensione</th>
+							<th>Aggiornato</th><th>Spazi</th><th class="act">Azioni</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each shown as e (e.key)}
+							<tr>
+								<td title={e.kind === 'rag' ? 'Collection RAG' : 'Datastore'}>{glyph(e)}</td>
+								<td class="mono"><a href={entryHref(e, admin)}>{e.name}</a>{#if e.pii} <span class="db-tag">PII</span>{/if}</td>
+								<td>{originLabel(e)}</td>
+								<td><span class="db-tag tier">{e.tier}</span></td>
+								<td><span class="db-tag st-{e.status}">{statusLabel(e.status)}</span></td>
+								<td class="db-small">{sizeLabel(e)}</td>
+								<td class="db-small">{dateLabel(e.updated_at)}</td>
+								<td>{@render scopes(e)}</td>
+								<td class="act">{@render actions(e)}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{:else}
+			<div class="db-grid">
+				{#each shown as e (e.key)}
+					<div class="db-card" class:missing={e.status !== 'active'}>
+						<div class="db-card-head">
+							<span class="db-glyph" aria-hidden="true">{glyph(e)}</span>
+							<div>
+								<div class="db-name"><a href={entryHref(e, admin)}>{e.name}</a></div>
+								<div class="db-small">{e.kind === 'rag' ? 'Collection RAG' : 'Datastore'} · {originLabel(e)}</div>
 							</div>
 						</div>
-					{/each}
-				</div>
-				<p class="hint small">
-					Le collection RAG sono sola lettura: il servizio non espone ancora un modo di
-					cancellarle. Nessun agente le raggiunge per nome: le usa chi lavora in un topic,
-					in un DM o in un job che le importa.
-				</p>
-			{/if}
-		</section>
-	{/if}
-
-	<section>
-		<h2>
-			Catalogo dati
-			{#if catalog}<span class="count">({catalog.entries.length})</span>{/if}
-		</h2>
-		<p class="hint small top">
-			Le risorse dell'istanza che un topic, un DM o un job può importare: è l'unico modo in cui un
-			agente raggiunge un datastore o una collection. Uno scope importa solo risorse con tier ≤ al
-			suo, e solo chi è fra gli importatori può farlo (<code>@admin</code> = qualunque admin).
-		</p>
-		{#if catalogErr}
-			<div class="error">
-				{catalogErr}
-				<button type="button" on:click={loadCatalog}>Riprova</button>
-			</div>
-		{:else if !catalog}
-			<Skeleton height="28px" radius="6px" />
-		{:else}
-			{#if $isAdmin}
-				<div class="toolbar">
-					<button type="button" class="btn" disabled={catalogBusy} on:click={sync}
-						title="Registra nel catalogo i datastore e le collection che non ci sono ancora">
-						{catalogBusy ? '…' : 'Sincronizza'}
-					</button>
-				</div>
-			{/if}
-			{#if catalog.entries.length === 0}
-				<p class="empty">Nessuna risorsa nel catalogo.</p>
-			{:else}
-				<div class="tbl">
-					{#each catalog.entries as e (e.key)}
-						<div class="row">
-							<span class="badge kind-{e.kind}">{e.kind === 'rag' ? 'RAG' : 'DB'}</span>
-							<span class="cell name" title={e.name}>
-								{catalogLabel(e)}
-								{#if catalogTopicTier(e)}<span class="topic-tier">{catalogTopicTier(e)}</span>{/if}
-							</span>
-							{#if $isAdmin}
-								<select class="cat-tier" bind:value={draftTier[e.key]} disabled={catalogBusy}>
-									{#each TIERS as t}<option value={t}>{t}</option>{/each}
-								</select>
-								<input class="cat-importers" type="text" placeholder="@admin, utente…"
-									bind:value={draftImporters[e.key]} disabled={catalogBusy}
-									title="Chi può importarla: nomi separati da virgola" />
-								<button type="button" class="btn"
-									disabled={catalogBusy || !isDirty(e, draftTier[e.key], draftImporters[e.key] ?? '')}
-									on:click={() => saveEntry(e)}>Salva</button>
-							{:else}
-								<span class="cell tier">{e.tier}</span>
-								<span class="cell purpose">
-									{e.importers.length ? e.importers.join(', ') : 'nessun importatore'}
-								</span>
-							{/if}
-							<span class="cell counts" title={`creata ${e.created_at} · ${e.source}`}>{e.owner}</span>
-							{#if e.importing_topics}
-								<div class="importing">
-									<span class="axis-label">Importata da</span>
-									{#each e.importing_topics as t (t)}
-										<a class="seed" href={topicHref(t)}>{t}</a>
-									{:else}
-										<span class="none">nessuno</span>
-									{/each}
-								</div>
-							{/if}
+						{#if e.purpose}<div class="db-small">{e.purpose}</div>{/if}
+						<div class="db-meta">
+							<span class="db-tag tier">{e.tier}</span>
+							<span class="db-tag st-{e.status}">{statusLabel(e.status)}</span>
+							{#if e.pii}<span class="db-tag">PII</span>{/if}
+							<span>{sizeLabel(e)}</span>
 						</div>
-					{/each}
-				</div>
-			{/if}
-
+						<div class="db-small">Aggiornato {dateLabel(e.updated_at)}</div>
+						{@render scopes(e)}
+						<div class="db-actions">{@render actions(e)}</div>
+					</div>
+				{/each}
+			</div>
 		{/if}
-	</section>
+
+		{#if admin && cat.tombstones && cat.tombstones.length}
+			<section class="db-section">
+				<h2>Eliminati <span class="db-count">({cat.tombstones.length})</span></h2>
+				<p class="db-hint">
+					Risorse eliminate da qui: il pack che le dichiara non le ricrea finché non le ripristini
+					(o non ne crei una nuova con lo stesso nome). L'export è nella cartella dati.
+				</p>
+				<div class="db-table-wrap">
+					<table class="db-tbl">
+						<thead><tr><th>Risorsa</th><th>Eliminata</th><th>Da</th><th>Export</th><th class="act"></th></tr></thead>
+						<tbody>
+							{#each cat.tombstones as t (t.kind + ':' + t.name)}
+								<tr>
+									<td class="mono">{t.kind === 'rag' ? '🧠' : '🗄️'} {t.name}</td>
+									<td class="db-small">{dateLabel(t.deleted_at)}</td>
+									<td>{t.by}</td>
+									<td class="mono">{t.export || '—'}</td>
+									<td class="act">
+										<button type="button" class="db-btn" disabled={restoring === `${t.kind}:${t.name}`}
+											on:click={() => restore(t)}>Ripristina</button>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			</section>
+		{/if}
+
+		{#if admin && archived.length}
+			<section class="db-section">
+				<h2>Archiviati con un pack rimosso <span class="db-count">({archived.length})</span></h2>
+				<div class="db-table-wrap">
+					<table class="db-tbl">
+						<thead><tr><th>Pack</th><th>File</th><th>Dal</th><th class="act"></th></tr></thead>
+						<tbody>
+							{#each archived as d (d.archive_dir + '/' + (d.path ?? '.'))}
+								<tr>
+									<td>{d.pack}</td>
+									<td class="mono">{d.path ?? '.'}</td>
+									<td class="db-small">{d.archived_at ?? '—'}</td>
+									<td class="act">
+										<button type="button" class="db-btn danger" on:click={() => (pendingPurge = d)}>
+											Elimina definitivamente
+										</button>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			</section>
+		{/if}
+	{/if}
 </div>
+
+<Modal open={creating !== null} dismissable={!createBusy} on:close={() => (creating = null)} maxWidth={460}>
+	<h2 slot="title">{creating === 'rag' ? 'Nuova collection RAG' : 'Nuovo datastore'}</h2>
+	<form class="db-form" on:submit|preventDefault={submitCreate}>
+		<label class="db-field">
+			Nome
+			<input type="text" bind:value={newName} placeholder="es. procedure-interne" autocomplete="off" />
+			{#if newName && !validName(newName)}
+				<span class="db-error">Minuscole, cifre, «-» e «_» (max 63), iniziale lettera o cifra.</span>
+			{:else if creating === 'datastore' && newName}
+				<span class="db-small">Sarà <code>platform/{newName}</code>, un file SQLite vuoto.</span>
+			{/if}
+		</label>
+		<label class="db-field">
+			Tier
+			<select bind:value={newTier}>{#each TIERS as t (t)}<option value={t}>{t}</option>{/each}</select>
+		</label>
+		<label class="db-field">
+			{creating === 'rag' ? 'Descrizione' : 'Scopo'}
+			<input type="text" bind:value={newPurpose} />
+		</label>
+		{#if creating === 'datastore'}
+			<label class="db-field inline"><input type="checkbox" bind:checked={newPii} /> Contiene dati personali (PII)</label>
+		{/if}
+	</form>
+	<svelte:fragment slot="actions">
+		<button type="button" class="db-btn" on:click={() => (creating = null)} disabled={createBusy}>Annulla</button>
+		<button type="button" class="db-btn primary" on:click={submitCreate}
+			disabled={createBusy || !validName(newName)}>{createBusy ? '…' : 'Crea'}</button>
+	</svelte:fragment>
+</Modal>
+
+<DeleteResourceDialog
+	open={pendingDelete !== null}
+	kind={pendingDelete?.kind ?? 'datastore'}
+	name={pendingDelete?.name ?? ''}
+	scopes={pendingDelete?.imported_by_scopes ?? []}
+	loading={deleting}
+	on:confirm={confirmDelete}
+	on:cancel={() => (pendingDelete = null)}
+/>
 
 <ConfirmDialog
 	open={pendingPurge !== null}
 	title="Eliminare definitivamente?"
-	message={pendingPurge
-		? `«${pendingPurge.archive_dir}» verrà cancellato dal disco. L'azione non è reversibile.`
-		: ''}
+	message={pendingPurge ? `«${pendingPurge.archive_dir}» verrà cancellato dal disco. L'azione non è reversibile.` : ''}
 	confirmLabel="Elimina"
 	destructive
 	loading={purging}
 	on:confirm={confirmPurge}
 	on:cancel={() => (pendingPurge = null)}
 />
-
-<style>
-	.page {
-		max-width: 960px;
-		margin: 0 auto;
-		padding: 16px;
-	}
-	.hint {
-		color: var(--fg-muted);
-		font-size: 13px;
-		margin: 0 0 20px;
-	}
-	.hint.small {
-		font-size: 11px;
-		margin: 8px 0 0;
-	}
-	section {
-		margin-bottom: 28px;
-	}
-	h2 {
-		font-size: 15px;
-		margin: 0 0 8px;
-	}
-	.count {
-		color: var(--fg-muted);
-		font-weight: 400;
-	}
-	.empty {
-		color: var(--fg-muted);
-		font-size: 13px;
-	}
-	.tbl {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-	.row {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 6px 10px;
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		flex-wrap: wrap;
-	}
-	.row.rag {
-		flex-direction: column;
-		align-items: stretch;
-		gap: 6px;
-	}
-	.line {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		flex-wrap: wrap;
-	}
-	.axis-label {
-		color: var(--fg-muted);
-		min-width: 120px;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		font-size: 10px;
-	}
-	.seed {
-		font-family: var(--mono);
-		font-size: 11px;
-		padding: 1px 6px;
-		border: 1px solid var(--border);
-		border-radius: 999px;
-	}
-	.none {
-		color: var(--fg-muted);
-		font-style: italic;
-	}
-	.cell {
-		font-size: 12px;
-	}
-	.cell.pack {
-		font-weight: 600;
-		min-width: 100px;
-	}
-	.cell.path,
-	.cell.name {
-		font-family: var(--mono);
-		color: var(--fg-muted);
-	}
-	.topic-tier {
-		font-size: 10px;
-		opacity: 0.8;
-		margin-left: 4px;
-	}
-	.cell.purpose {
-		color: var(--fg-muted);
-		flex: 1;
-	}
-	.cell.archived-at,
-	.cell.counts,
-	.cell.tier {
-		color: var(--fg-muted);
-		font-size: 11px;
-	}
-	.badge {
-		font-size: 10px;
-		padding: 1px 7px;
-		border-radius: 999px;
-		white-space: nowrap;
-		flex-shrink: 0;
-		border: 1px solid var(--border);
-	}
-	.status-active {
-		color: #16a34a;
-		border-color: rgba(22, 163, 74, 0.4);
-	}
-	.status-archived {
-		color: #e0a800;
-		border-color: rgba(224, 168, 0, 0.5);
-		font-weight: 600;
-	}
-	.status-orphaned {
-		color: #dc2626;
-		border-color: rgba(220, 38, 38, 0.4);
-		font-weight: 600;
-	}
-	.pii-badge {
-		color: #a855f7;
-		border-color: rgba(168, 85, 247, 0.5);
-	}
-	button.danger {
-		margin-left: auto;
-		font-size: 11px;
-		padding: 3px 9px;
-		border-radius: 6px;
-		border: 1px solid rgba(220, 38, 38, 0.4);
-		color: #dc2626;
-		background: transparent;
-		cursor: pointer;
-	}
-	.error {
-		color: #dc2626;
-		font-size: 13px;
-	}
-	.hint.small.top {
-		margin: 0 0 10px;
-	}
-	.toolbar {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		flex-wrap: wrap;
-		margin-bottom: 8px;
-	}
-	.btn {
-		font-size: 11px;
-		padding: 3px 9px;
-		border-radius: 6px;
-		border: 1px solid var(--border);
-		color: var(--fg);
-		background: transparent;
-		cursor: pointer;
-	}
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.kind-rag {
-		color: #a855f7;
-		border-color: rgba(168, 85, 247, 0.5);
-	}
-	.kind-datastore {
-		color: #0ea5e9;
-		border-color: rgba(14, 165, 233, 0.5);
-	}
-	.cat-tier,
-	.cat-importers {
-		font-size: 11px;
-		padding: 2px 4px;
-		border-radius: 4px;
-		border: 1px solid var(--border);
-		background: var(--bg);
-		color: var(--fg);
-	}
-	.cat-importers {
-		flex: 1;
-		min-width: 140px;
-	}
-	.importing {
-		flex-basis: 100%;
-		display: flex;
-		align-items: baseline;
-		gap: 6px;
-		flex-wrap: wrap;
-		font-size: 11px;
-	}
-	a.seed {
-		color: var(--fg);
-		text-decoration: none;
-	}
-	a.seed:hover {
-		border-color: var(--fg-muted);
-	}
-</style>
