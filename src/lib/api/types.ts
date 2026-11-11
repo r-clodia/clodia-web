@@ -406,6 +406,13 @@ export interface JobDetail extends Job {
 	readonly config?: Record<string, unknown>;
 	/** Recent runs, newest-first or oldest-first (UI sorts defensively). */
 	readonly runs?: ReadonlyArray<JobRun>;
+	/** `agentic` (default) | `logic` | `topic_trigger`. */
+	readonly mode?: string;
+	/** Declared tier of the job's data; empty = the executing agent's
+	 *  effective clearance (clodia-platform#670). */
+	readonly tier?: string;
+	/** Datastores/collections the job imports (clodia-platform#670). */
+	readonly data?: ReadonlyArray<{ readonly kind: 'datastore' | 'rag'; readonly name: string }>;
 }
 
 /**
@@ -625,16 +632,9 @@ export interface DatabaseEntry {
 }
 
 /** Una riga collection RAG dell'inventario. `pack` è `null` per le orfane
- *  (nessun pack installato la dichiara più).
- *
- *  MEMBER LIST (`seeds_*`): al contrario del `seeds:` di un datastore — campo di
- *  manifest, dove assente significa «non dichiarato» — qui le tre liste sono
- *  CALCOLATE girando i grant `rag_read`/`rag_write` dei seed (clodia-logic#413),
- *  quindi il backend le manda sempre tutte e tre e `[]` è una risposta piena:
- *  «nessun seed dichiara quel grant». Restano opzionali solo per il server più
- *  vecchio della member list: lì il campo manca davvero e la pagina deve dirlo
- *  non riportato, mai «nessuno». Ordine già stabile (seed per nome): non
- *  riordinare in UI. */
+ *  (nessun pack installato la dichiara più). No seed list
+ *  (clodia-platform#669): a collection is reached only through an import in
+ *  a topic, DM or job. */
 export interface RagCollectionEntry {
 	readonly name: string;
 	readonly description?: string;
@@ -643,14 +643,6 @@ export interface RagCollectionEntry {
 	readonly chunks?: number;
 	readonly pack: string | null;
 	readonly status: DatabaseStatus;
-	/** Seed che dichiarano `rag_read` su questa collection. */
-	readonly seeds_read?: ReadonlyArray<string>;
-	/** Seed che dichiarano `rag_write` su questa collection. */
-	readonly seeds_write?: ReadonlyArray<string>;
-	/** Seed che la raggiungono SENZA essere in lista, perché coprono l'intero
-	 *  namespace `rag.*` (sysadmin, provisioner dei pack) o hanno `*` sull'asse
-	 *  RAG. Non sono membri: vanno mostrati a parte. */
-	readonly seeds_bypass?: ReadonlyArray<string>;
 }
 
 export interface DatabasesInventory {
