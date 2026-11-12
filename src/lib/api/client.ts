@@ -3455,6 +3455,46 @@ export async function removeTopicTodo(
 	return apiDelete<TopicTodoWrite>(`${topicTodosPath(tier, name, id)}?base_version=${encodeURIComponent(baseVersion)}`, opts);
 }
 
+/** A kind of source a room can listen to (clodia-platform#676). */
+export interface ListenKind {
+	connector: string;
+	connector_label: string;
+	kind: string;
+	label: string;
+	/** none | choice (the owner ticks it) | implicit (a chat is answered where it is) */
+	reply: 'none' | 'choice' | 'implicit';
+	/** An ACTION kind: the connector's topic action that binds the chat. */
+	action: string;
+	field: { name: string; label: string; placeholder: string } | null;
+}
+
+/** A source the room listens to, derived from its lists and bindings. */
+export interface ListenSource {
+	connector: string;
+	kind: string;
+	label: string;
+	address: string;
+	reply: boolean;
+	action: string;
+}
+
+/** GET `/api/topics/{tier}/{name}/listen` — the room's «In ascolto». */
+export async function getTopicListen(
+	tier: string, name: string, opts: RequestOptions = {}
+): Promise<{ kinds: ListenKind[]; sources: ListenSource[] }> {
+	return apiGet(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/listen`, opts);
+}
+
+/** POST `/api/topics/{tier}/{name}/listen` — add/remove a TEMPLATE source
+ *  (a chat is linked through its connector action). Owner or admin. */
+export async function setTopicListen(
+	tier: string, name: string,
+	body: { action: 'add' | 'remove'; connector: string; kind: string; address: string; reply?: boolean },
+	opts: RequestOptions = {}
+): Promise<Record<string, unknown>> {
+	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/listen`, body, opts);
+}
+
 /** The seeds that can orchestrate a room (clodia-platform#667); the first is
  *  the default. */
 export const ORCHESTRATOR_SEEDS = ['segretario', 'clodia', 'ophelia'] as const;
