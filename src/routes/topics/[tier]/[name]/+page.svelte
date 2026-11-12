@@ -1612,6 +1612,41 @@
 	//
 	// Chi porta cosa resta leggibile dove ha senso: la pagina dell'agente elenca
 	// i suoi verbi, che sono la fonte di quella capacità.
+	// --- /commands (owner, 12 Nov 2026) --------------------------------------
+	// `/name` at the start of the message opens a popup with that sidebar
+	// component; nothing is sent to the chat.
+	const COMANDI = {
+		meta: { titolo: 'Meta', desc: 'Stato, scadenza, to-do, summary' },
+		participants: { titolo: 'Partecipanti', desc: 'Chi è nella stanza, orchestratore, inviti' },
+		trigger: { titolo: 'Trigger', desc: 'Ogni N minuti o posta in arrivo → prompt → agente' },
+		data: { titolo: 'Dati', desc: 'Datastore, collezioni RAG, indicizzazione' },
+		tools: { titolo: 'Strumenti', desc: 'MCP autorizzati, fonti, destinatari, caselle' },
+		file: { titolo: 'File', desc: 'I file del topic' }
+	} as const;
+	type Comando = keyof typeof COMANDI;
+	let comandoAperto: Comando | null = null;
+	let commandQuery: string | null = null;
+	let commandIdx = 0;
+	$: commandMatches = commandQuery === null ? [] :
+		(Object.keys(COMANDI) as Comando[]).filter((c) => c.startsWith(commandQuery!.toLowerCase()));
+	function updateCommand() {
+		const pos = composer?.selectionStart ?? draft.length;
+		const m = draft.slice(0, pos).match(/^\/([a-z]*)$/i);
+		commandQuery = m ? m[1] : null;
+		commandIdx = 0;
+	}
+	/** The command the whole draft is, or null. */
+	function comandoDi(testo: string): Comando | null {
+		const m = testo.trim().match(/^\/([a-z]+)$/i);
+		const c = m ? m[1].toLowerCase() : '';
+		return c in COMANDI ? (c as Comando) : null;
+	}
+	function apriComando(c: Comando) {
+		comandoAperto = c;
+		draft = '';
+		commandQuery = null;
+	}
+
 	// --- @mention autocomplete -----------------------------------------------
 	// Estraggo il token @parziale in coda al testo (fino al cursore) e propongo
 	// i partecipanti che combaciano. Click/Invio inserisce "@nome " — e "nome"
@@ -1682,6 +1717,12 @@
 	}
 
 	async function onCompactComposerKeydown(e: KeyboardEvent) {
+		if (commandQuery !== null && commandMatches.length) {
+			if (e.key === 'ArrowDown') { e.preventDefault(); commandIdx = (commandIdx + 1) % commandMatches.length; return; }
+			if (e.key === 'ArrowUp') { e.preventDefault(); commandIdx = (commandIdx - 1 + commandMatches.length) % commandMatches.length; return; }
+			if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) { e.preventDefault(); apriComando(commandMatches[commandIdx]); return; }
+			if (e.key === 'Escape') { e.preventDefault(); commandQuery = null; return; }
+		}
 		if (mentionQuery !== null && mentionMatches.length) {
 			if (e.key === 'ArrowDown') { e.preventDefault(); mentionIdx = (mentionIdx + 1) % mentionMatches.length; return; }
 			if (e.key === 'ArrowUp') { e.preventDefault(); mentionIdx = (mentionIdx - 1 + mentionMatches.length) % mentionMatches.length; return; }
@@ -1884,6 +1925,8 @@
 	}
 
 	async function send() {
+		const cmd = comandoDi(draft);
+		if (cmd) { apriComando(cmd); return; }
 		const body = expandChannelAliases(draft, channelAliases).trim();
 		if (!body || sending) return;
 		sending = true;
@@ -2877,6 +2920,19 @@
 						<button type="button" class="reply-x" title="Annulla risposta" on:click={cancelReply}>×</button>
 					</div>
 				{/if}
+				{#if commandQuery !== null && commandMatches.length}
+					<ul class="mention-pop" role="listbox">
+						{#each commandMatches as c, i}
+							<li>
+								<button type="button" class="mention-item cmd-item" class:sel={i === commandIdx}
+									on:click={() => apriComando(c)}>
+									<span class="cmd-name">/{c}</span>
+									<span class="cmd-desc">{COMANDI[c].desc}</span>
+								</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
 				{#if mentionQuery !== null && mentionMatches.length}
 					<ul class="mention-pop" role="listbox">
 						{#each mentionMatches as p, i}
@@ -2896,8 +2952,8 @@
 					on:click={openExpandedComposer}>↗</button>
 				<textarea bind:this={composer} bind:value={draft} rows="2"
 					placeholder="Scrivi nel canale… (@nome per rivolgerti a un partecipante; ⌘/Ctrl+V per incollare immagini)"
-					on:input={updateMention}
-					on:click={updateMention}
+					on:input={() => { updateMention(); updateCommand(); }}
+					on:click={() => { updateMention(); updateCommand(); }}
 					on:paste={onPasteFiles}
 					on:keydown={onCompactComposerKeydown}></textarea>
 				<!-- Qui c'era il bottone «■ Stop» del canale. È andato nel box di
@@ -2937,51 +2993,7 @@
 						<span>Meta</span>
 						{#if info?.meta?.schema_version}<span class="section-status">v{info.meta.schema_version}</span>{/if}
 					</summary>
-					<label class="meta-field">
-						<span>Stato</span>
-						{#if isOwner}
-							<select value={metaStatus} disabled={metaBusy}
-								on:change={(e) => saveTopicStatus((e.currentTarget as HTMLSelectElement).value)}>
-								{#each topicStatusOptions as s}
-									<option value={s}>{s}</option>
-								{/each}
-							</select>
-						{:else}
-							<span class="meta-value">{metaStatus}</span>
-						{/if}
-					</label>
-					<!-- The deadline is DERIVED from the to-do list (#658): the earliest
-					     due among open items. The list, not a date picker, is the editor. -->
-					<div class="meta-field">
-						<span>Scadenza</span>
-						<span class="meta-value">{info?.meta?.deadline ?? '—'}</span>
-					</div>
-					<div class="meta-field">
-						<span>To-do</span>
-						<span class="meta-value">{openTodos} aperte</span>
-					</div>
-					<button type="button" class="meta-open" on:click={() => (metaDialogOpen = true)}
-						title="Metadati e lista to-do (lettura diretta, nessun agente)">Meta e to-do…</button>
-
-					<!-- summary.md e meta.json sono usciti dalla vista file il 7 ago 2026
-					     (la radice dell'albero mostra i due mount e basta). Non dovevano
-					     sparire: sono il control-plane del topic e vanno letti, solo non
-					     navigati come se fossero dati. Qui, in sola lettura. -->
-					<details class="meta-doc">
-						<summary>summary.md<span class="meta-doc-size"
-							>{(info?.summary?.length ?? 0).toLocaleString('it-IT')} car.</span></summary>
-						{#if info?.summary}
-							<pre class="meta-doc-body">{info.summary}</pre>
-						{:else}
-							<p class="meta-doc-empty">Nessun summary.</p>
-						{/if}
-					</details>
-					{#if $isAdmin}
-						<details class="meta-doc">
-							<summary>meta.json</summary>
-							<pre class="meta-doc-body">{JSON.stringify(info?.meta ?? {}, null, 2)}</pre>
-						</details>
-					{/if}
+					{@render corpo_meta()}
 				</details>
 				<TopicMetaDialog {tier} {name} open={metaDialogOpen}
 					canEdit={isOwner || (!!me && participants.includes(me))}
@@ -2991,114 +3003,14 @@
 						<span>Partecipanti</span>
 						<span class="section-count">{participants.length}</span>
 					</summary>
-					<ul class="parts">
-					{#each participants as p}
-						{@const c = eligibility[p]?.context}
-						<li>
-							<span class="part-id">
-								<AgentAvatar name={p} size={22} />
-								<span class="part-col">
-									<span class="part-name">{#if presenza[p]}<span
-											class="presenza presenza-{presenza[p]}"
-											title={titoloPresenza(p, presenza[p])}></span>{/if}{p}{#if multiSpawn[p]} <MultiSpawnBadge name={p} maxSpawns={multiSpawn[p].max} />{/if}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
-									{#if eligibility[p]?.provider}
-										<!-- Provider EFFETTIVO in QUESTA stanza (clodia-platform#310, A14) e
-										     modello ABBINATO a quello stack (#315): dipendono dal tier del topic
-										     e possono differire da un topic all'altro. Un chip solo perché sono
-										     una coppia, non due scelte indipendenti. -->
-										{@const ch = chipDi(p)}
-										<span class="part-provider" title={ch.titolo}>{ch.testo}</span>
-									{/if}
-									{#if c}
-										<span class="ctx-bar" title={`Contesto ${Math.round(c.pct * 100)}% — ${c.used.toLocaleString()}/${c.window.toLocaleString()} token`}>
-											<span class="ctx-fill" style="width:{Math.min(100, c.pct * 100)}%; background:{ctxColor(c.pct)}"></span>
-										</span>
-									{/if}
-								</span>
-								{#if eligibility[p]?.available === false}
-									<!-- Lo stato TRANSITORIO, che prima faceva sparire la riga: il
-									     partecipante c'è, in questo momento non può prendere un turno
-									     (provider scollegato o in pausa). Dirlo è il punto di #190 —
-									     un membro che tace per un provider giù e un membro che tace
-									     e basta erano indistinguibili. -->
-									<span class="part-unavailable" title="Non disponibile ora: il provider di questa stanza è scollegato o in pausa. Resta partecipante.">⏸</span>
-								{/if}
-								{#if eligibility[p]?.warn}
-									<span class="part-warn" title="Provider sotto il tier del topic: attiva un provider con SEAL ≥ tier">⚠️</span>
-								{/if}
-							</span>
-							{#if instancesOf(p).length}
-								<ul class="spawn-rows">
-									{#each instancesOf(p) as inst}
-										<li class="spawn-row" title={inst.state === 'working' ? 'turno in corso' : 'in attesa'}>
-											<span class="spawn-dot" class:working={inst.state === 'working'}></span>
-											<span class="spawn-ord">#{inst.ordinal}</span>
-											<span class="spawn-state">{inst.state === 'working' ? 'al lavoro' : 'in attesa'}</span>
-										</li>
-									{/each}
-								</ul>
-							{/if}
-							{#if p === info?.meta?.owner}
-								<span class="role-fixed" title="La proprietà dello scope, non un grado di accesso">owner</span>
-							{:else}
-								<!-- Nessuna etichetta di ruolo (owner, 12 Nov 2026): ogni
-								     partecipante è uguale agli altri, l'unica distinzione è
-								     l'owner. Prima c'era `contributor` accanto a tutti, che
-								     non distingueva niente; la select che lo cambiava era già
-								     stata tolta (clodia-platform#292). -->
-								{#if puoOrchestrare(p)}
-									{#if isOwner || $isAdmin}
-										<label class="orch-check" class:on={p === orchestratore}
-											title={p === orchestratore
-												? 'Orchestra questa stanza: parla con te e assegna i compiti'
-												: `Affida l'orchestrazione della stanza a ${p}`}>
-											<input type="radio" name="orchestratore" checked={p === orchestratore}
-												disabled={orchBusy} on:change={() => scegliOrchestratore(p)} />
-											orchestratore
-										</label>
-									{:else if p === orchestratore}
-										<span class="orch-check on" title="Orchestra questa stanza">orchestratore</span>
-									{/if}
-								{/if}
-								{#if isOwner}
-									<button class="x" type="button" on:click={() => removeParticipant(p)} aria-label="Rimuovi">×</button>
-								{/if}
-							{/if}
-						</li>
-					{/each}
-				</ul>
-				<SpawnTree {tier} {name} />
-				{#if isOwner}
-					<div class="addp">
-						<div class="addp-field">
-							<input type="text" bind:value={newParticipant} placeholder="cerca agente/utente…"
-								autocomplete="off"
-								on:keydown={(e) => {
-									if (e.key === 'Enter' && inviteMatches.length) { e.preventDefault(); addParticipant(inviteMatches[0]); }
-								}} />
-							{#if inviteMatches.length}
-								<ul class="invite-pop" role="listbox">
-									{#each inviteMatches as a}
-										<li>
-											<button type="button" class="invite-item" on:click={() => addParticipant(a)}>
-												<AgentAvatar name={a} size={18} /> <span>{a}</span>
-											</button>
-										</li>
-									{/each}
-								</ul>
-							{/if}
-						</div>
-						</div>
-					{/if}
+					{@render corpo_participants()}
 				</details>
 				<!-- Trigger (clodia-platform#646): one form — when (every N minutes |
 				     inbox), prompt, agent. The owner edits; participants see the inbox
 				     trigger (the cron read is owner-only). -->
 				<details class="side-section trigger-section">
 					<summary>Trigger</summary>
-					{#key `${tier}/${name}`}
-						<TopicTriggersPanel {tier} {name} agents={triggerAgents} canEdit={isOwner} />
-					{/key}
+					{@render corpo_trigger()}
 				</details>
 				<!-- Datastores and RAG collections the topic imports, with each agent's
 				     access inside this topic (clodia-platform#595). -->
@@ -3110,14 +3022,7 @@
 						{/if}
 						<span class="section-count">{(info?.meta?.data ?? []).length}</span>
 					</summary>
-					{#key `${tier}/${name}`}
-						<TopicDataPanel {tier} {name}
-							imports={info?.meta?.data ?? []} topicIndex={info?.meta?.index}
-							agents={triggerAgents}
-							canEdit={isOwner || $isAdmin} on:changed={refreshInfo}
-							isDm={info?.meta?.kind === 'dm'} on:retier={() => (retierOpen = true)}
-							on:indexjob={(e) => (indexJobLabel = e.detail.running ? e.detail.label : '')} />
-					{/key}
+					{@render corpo_data()}
 				</details>
 				<!-- MCP/connector verbs this room enables for every participant, with
 				     per-agent exceptions (clodia-platform#609, epic #604). -->
@@ -3126,79 +3031,14 @@
 						<span>Strumenti</span>
 						<span class="section-count">{toolsCount ?? '·'}</span>
 					</summary>
-					{#key `${tier}/${name}`}
-						<TopicToolsPanel {tier} {name} bind:this={toolsPanel}
-							canEdit={isOwner || $isAdmin} on:count={(e) => (toolsCount = e.detail)}
-							messageBox={info?.message_box}
-							on:fonti={(e) => (fontiStanza = e.detail)}
-							examples={{ ingress: esempiPerDirezione(registry, 'ingress'), egress: esempiPerDirezione(registry, 'egress') }}
-							azioni={azioniTopic} {statiCanale} {azioneBusy}
-							on:azione={(e) => onAzioneClick(e.detail)} />
-					{/key}
+					{@render corpo_tools(true)}
 				</details>
 				<details class="side-section">
 					<summary>
 						<span>File</span>
 						<span class="section-count">{files.length}</span>
 					</summary>
-					{#if isOwner}
-						<!-- The Mac-shared folder (#571): part of the topic's files, not
-						     a connector — moved here from the connectors row (26 Oct 2026).
-						     One per topic: the topic sees it as `shared/`. -->
-						<div class="shared-folder">
-							{#each info?.meta.local_folders ?? [] as f (f.name)}
-								<span class="muted"><code>shared/</code> ↔ Mac <code>ClodiaShared/{f.name}/</code></span>
-								<button type="button" class="egress-remove" disabled={localFolderBusy}
-									title="Sgancia (il contenuto reale resta sul Mac)"
-									on:click={() => confirmRemoveLocalFolder(f.name)}>✕</button>
-							{:else}
-								<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
-									on:click={openLocalFolderDialog}>🗂️ Cartella Mac</button>
-							{/each}
-						</div>
-					{/if}
-					<nav class="crumbs" aria-label="Percorso file">
-					<button type="button" class="crumb" on:click={() => gotoCrumb(-1)}>/</button>
-					{#each crumbs as seg, i}
-						<span class="crumb-sep">/</span>
-						<button type="button" class="crumb" on:click={() => gotoCrumb(i)}>{seg}</button>
-					{/each}
-					{#if filesLoading}<span class="files-spinner" aria-label="Caricamento…" title="Caricamento…"></span>{/if}
-				</nav>
-			{#if filesError}
-					<!-- Lo storage del topic è remoto e non risponde: dirlo, invece di
-					     mostrare una cartella vuota che sembra un topic senza file. -->
-					<p class="files-error" role="status">⚠ {filesError}</p>
-				{/if}
-				<ul class="files" class:loading={filesLoading} aria-busy={filesLoading}>
-					{#each files as f}
-						<li>
-							{#if f.kind === 'dir'}
-								<button type="button" class="dir" on:click={() => openDir(f)} disabled={filesLoading}>📂 {f.name}</button>
-							{:else}
-								<a href="#download"
-									title={f.name}
-									on:click|preventDefault={() => openSignedFile(tier, name, f.path)}>{f.name}</a>
-								{#if f.provenance === 'untrusted' || f.provenance === 'unknown'}
-									<!-- Etichetta visibile solo quando NON è verificata: marcare anche
-									     i file fidati farebbe rumore su ogni riga e nessuno la
-									     guarderebbe più. `unknown` = caricato prima della §3. -->
-									<span class="prov-tag" class:unknown={f.provenance === 'unknown'}
-										title={f.provenance === 'unknown'
-											? 'Provenienza non registrata: file caricato prima che la classificazione esistesse'
-											: 'Dichiarato come fonte esterna o non verificata'}>{f.provenance === 'unknown' ? '?' : '⚠'}</span>
-								{/if}
-								{#if /\.(html?|md|markdown|mdown|mkd)$/i.test(f.name)}
-									<button type="button" class="artifact-open" title="Apri anteprima renderizzata (finestra separata)"
-										on:click={() => openArtifact(f.path)}>🔎</button>
-								{/if}
-							{/if}
-						</li>
-					{:else}
-						<li class="muted">{filesLoading ? 'caricamento…' : 'cartella vuota'}</li>
-					{/each}
-					</ul>
-					<p class="files-hint">Carica i file dall'input della chat: 📎, trascinamento o incolla (⌘/Ctrl+V) di immagini.</p>
+					{@render corpo_file()}
 				</details>
 
 				<div class="remote-actions">
@@ -3421,6 +3261,269 @@
 		</div>
 	</div>
 {/if}
+
+
+<!-- The sidebar sections as snippets (12 Nov 2026): one source, rendered in the
+     sidebar and in the /command popups. -->
+{#snippet corpo_meta()}
+					<label class="meta-field">
+						<span>Stato</span>
+						{#if isOwner}
+							<select value={metaStatus} disabled={metaBusy}
+								on:change={(e) => saveTopicStatus((e.currentTarget as HTMLSelectElement).value)}>
+								{#each topicStatusOptions as s}
+									<option value={s}>{s}</option>
+								{/each}
+							</select>
+						{:else}
+							<span class="meta-value">{metaStatus}</span>
+						{/if}
+					</label>
+					<!-- The deadline is DERIVED from the to-do list (#658): the earliest
+					     due among open items. The list, not a date picker, is the editor. -->
+					<div class="meta-field">
+						<span>Scadenza</span>
+						<span class="meta-value">{info?.meta?.deadline ?? '—'}</span>
+					</div>
+					<div class="meta-field">
+						<span>To-do</span>
+						<span class="meta-value">{openTodos} aperte</span>
+					</div>
+					<button type="button" class="meta-open" on:click={() => (metaDialogOpen = true)}
+						title="Metadati e lista to-do (lettura diretta, nessun agente)">Meta e to-do…</button>
+
+					<!-- summary.md e meta.json sono usciti dalla vista file il 7 ago 2026
+					     (la radice dell'albero mostra i due mount e basta). Non dovevano
+					     sparire: sono il control-plane del topic e vanno letti, solo non
+					     navigati come se fossero dati. Qui, in sola lettura. -->
+					<details class="meta-doc">
+						<summary>summary.md<span class="meta-doc-size"
+							>{(info?.summary?.length ?? 0).toLocaleString('it-IT')} car.</span></summary>
+						{#if info?.summary}
+							<pre class="meta-doc-body">{info.summary}</pre>
+						{:else}
+							<p class="meta-doc-empty">Nessun summary.</p>
+						{/if}
+					</details>
+					{#if $isAdmin}
+						<details class="meta-doc">
+							<summary>meta.json</summary>
+							<pre class="meta-doc-body">{JSON.stringify(info?.meta ?? {}, null, 2)}</pre>
+						</details>
+					{/if}
+{/snippet}
+{#snippet corpo_participants()}
+					<ul class="parts">
+					{#each participants as p}
+						{@const c = eligibility[p]?.context}
+						<li>
+							<span class="part-id">
+								<AgentAvatar name={p} size={22} />
+								<span class="part-col">
+									<span class="part-name">{#if presenza[p]}<span
+											class="presenza presenza-{presenza[p]}"
+											title={titoloPresenza(p, presenza[p])}></span>{/if}{p}{#if multiSpawn[p]} <MultiSpawnBadge name={p} maxSpawns={multiSpawn[p].max} />{/if}{#if p === info?.meta?.owner} <em>(owner)</em>{/if}</span>
+									{#if eligibility[p]?.provider}
+										<!-- Provider EFFETTIVO in QUESTA stanza (clodia-platform#310, A14) e
+										     modello ABBINATO a quello stack (#315): dipendono dal tier del topic
+										     e possono differire da un topic all'altro. Un chip solo perché sono
+										     una coppia, non due scelte indipendenti. -->
+										{@const ch = chipDi(p)}
+										<span class="part-provider" title={ch.titolo}>{ch.testo}</span>
+									{/if}
+									{#if c}
+										<span class="ctx-bar" title={`Contesto ${Math.round(c.pct * 100)}% — ${c.used.toLocaleString()}/${c.window.toLocaleString()} token`}>
+											<span class="ctx-fill" style="width:{Math.min(100, c.pct * 100)}%; background:{ctxColor(c.pct)}"></span>
+										</span>
+									{/if}
+								</span>
+								{#if eligibility[p]?.available === false}
+									<!-- Lo stato TRANSITORIO, che prima faceva sparire la riga: il
+									     partecipante c'è, in questo momento non può prendere un turno
+									     (provider scollegato o in pausa). Dirlo è il punto di #190 —
+									     un membro che tace per un provider giù e un membro che tace
+									     e basta erano indistinguibili. -->
+									<span class="part-unavailable" title="Non disponibile ora: il provider di questa stanza è scollegato o in pausa. Resta partecipante.">⏸</span>
+								{/if}
+								{#if eligibility[p]?.warn}
+									<span class="part-warn" title="Provider sotto il tier del topic: attiva un provider con SEAL ≥ tier">⚠️</span>
+								{/if}
+							</span>
+							{#if instancesOf(p).length}
+								<ul class="spawn-rows">
+									{#each instancesOf(p) as inst}
+										<li class="spawn-row" title={inst.state === 'working' ? 'turno in corso' : 'in attesa'}>
+											<span class="spawn-dot" class:working={inst.state === 'working'}></span>
+											<span class="spawn-ord">#{inst.ordinal}</span>
+											<span class="spawn-state">{inst.state === 'working' ? 'al lavoro' : 'in attesa'}</span>
+										</li>
+									{/each}
+								</ul>
+							{/if}
+							{#if p === info?.meta?.owner}
+								<span class="role-fixed" title="La proprietà dello scope, non un grado di accesso">owner</span>
+							{:else}
+								<!-- Nessuna etichetta di ruolo (owner, 12 Nov 2026): ogni
+								     partecipante è uguale agli altri, l'unica distinzione è
+								     l'owner. Prima c'era `contributor` accanto a tutti, che
+								     non distingueva niente; la select che lo cambiava era già
+								     stata tolta (clodia-platform#292). -->
+								{#if puoOrchestrare(p)}
+									{#if isOwner || $isAdmin}
+										<label class="orch-check" class:on={p === orchestratore}
+											title={p === orchestratore
+												? 'Orchestra questa stanza: parla con te e assegna i compiti'
+												: `Affida l'orchestrazione della stanza a ${p}`}>
+											<input type="radio" name="orchestratore" checked={p === orchestratore}
+												disabled={orchBusy} on:change={() => scegliOrchestratore(p)} />
+											orchestratore
+										</label>
+									{:else if p === orchestratore}
+										<span class="orch-check on" title="Orchestra questa stanza">orchestratore</span>
+									{/if}
+								{/if}
+								{#if isOwner}
+									<button class="x" type="button" on:click={() => removeParticipant(p)} aria-label="Rimuovi">×</button>
+								{/if}
+							{/if}
+						</li>
+					{/each}
+				</ul>
+				<SpawnTree {tier} {name} />
+				{#if isOwner}
+					<div class="addp">
+						<div class="addp-field">
+							<input type="text" bind:value={newParticipant} placeholder="cerca agente/utente…"
+								autocomplete="off"
+								on:keydown={(e) => {
+									if (e.key === 'Enter' && inviteMatches.length) { e.preventDefault(); addParticipant(inviteMatches[0]); }
+								}} />
+							{#if inviteMatches.length}
+								<ul class="invite-pop" role="listbox">
+									{#each inviteMatches as a}
+										<li>
+											<button type="button" class="invite-item" on:click={() => addParticipant(a)}>
+												<AgentAvatar name={a} size={18} /> <span>{a}</span>
+											</button>
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						</div>
+						</div>
+					{/if}
+{/snippet}
+{#snippet corpo_trigger()}
+					{#key `${tier}/${name}`}
+						<TopicTriggersPanel {tier} {name} agents={triggerAgents} canEdit={isOwner} />
+					{/key}
+{/snippet}
+{#snippet corpo_data()}
+					{#key `${tier}/${name}`}
+						<TopicDataPanel {tier} {name}
+							imports={info?.meta?.data ?? []} topicIndex={info?.meta?.index}
+							agents={triggerAgents}
+							canEdit={isOwner || $isAdmin} on:changed={refreshInfo}
+							isDm={info?.meta?.kind === 'dm'} on:retier={() => (retierOpen = true)}
+							on:indexjob={(e) => (indexJobLabel = e.detail.running ? e.detail.label : '')} />
+					{/key}
+{/snippet}
+{#snippet corpo_tools(principale: boolean)}
+					{#key `${tier}/${name}`}
+						{#if principale}
+							<TopicToolsPanel {tier} {name} bind:this={toolsPanel}
+							canEdit={isOwner || $isAdmin} on:count={(e) => (toolsCount = e.detail)}
+							messageBox={info?.message_box}
+							on:fonti={(e) => (fontiStanza = e.detail)}
+							examples={{ ingress: esempiPerDirezione(registry, 'ingress'), egress: esempiPerDirezione(registry, 'egress') }}
+							azioni={azioniTopic} {statiCanale} {azioneBusy}
+							on:azione={(e) => onAzioneClick(e.detail)} />
+						{:else}
+							<TopicToolsPanel {tier} {name}
+							canEdit={isOwner || $isAdmin} on:count={(e) => (toolsCount = e.detail)}
+							messageBox={info?.message_box}
+							on:fonti={(e) => (fontiStanza = e.detail)}
+							examples={{ ingress: esempiPerDirezione(registry, 'ingress'), egress: esempiPerDirezione(registry, 'egress') }}
+							azioni={azioniTopic} {statiCanale} {azioneBusy}
+							on:azione={(e) => onAzioneClick(e.detail)} />
+						{/if}
+					{/key}
+{/snippet}
+{#snippet corpo_file()}
+					{#if isOwner}
+						<!-- The Mac-shared folder (#571): part of the topic's files, not
+						     a connector — moved here from the connectors row (26 Oct 2026).
+						     One per topic: the topic sees it as `shared/`. -->
+						<div class="shared-folder">
+							{#each info?.meta.local_folders ?? [] as f (f.name)}
+								<span class="muted"><code>shared/</code> ↔ Mac <code>ClodiaShared/{f.name}/</code></span>
+								<button type="button" class="egress-remove" disabled={localFolderBusy}
+									title="Sgancia (il contenuto reale resta sul Mac)"
+									on:click={() => confirmRemoveLocalFolder(f.name)}>✕</button>
+							{:else}
+								<button type="button" class="egress-quick-btn" title="Aggancia una cartella condivisa Mac↔container"
+									on:click={openLocalFolderDialog}>🗂️ Cartella Mac</button>
+							{/each}
+						</div>
+					{/if}
+					<nav class="crumbs" aria-label="Percorso file">
+					<button type="button" class="crumb" on:click={() => gotoCrumb(-1)}>/</button>
+					{#each crumbs as seg, i}
+						<span class="crumb-sep">/</span>
+						<button type="button" class="crumb" on:click={() => gotoCrumb(i)}>{seg}</button>
+					{/each}
+					{#if filesLoading}<span class="files-spinner" aria-label="Caricamento…" title="Caricamento…"></span>{/if}
+				</nav>
+			{#if filesError}
+					<!-- Lo storage del topic è remoto e non risponde: dirlo, invece di
+					     mostrare una cartella vuota che sembra un topic senza file. -->
+					<p class="files-error" role="status">⚠ {filesError}</p>
+				{/if}
+				<ul class="files" class:loading={filesLoading} aria-busy={filesLoading}>
+					{#each files as f}
+						<li>
+							{#if f.kind === 'dir'}
+								<button type="button" class="dir" on:click={() => openDir(f)} disabled={filesLoading}>📂 {f.name}</button>
+							{:else}
+								<a href="#download"
+									title={f.name}
+									on:click|preventDefault={() => openSignedFile(tier, name, f.path)}>{f.name}</a>
+								{#if f.provenance === 'untrusted' || f.provenance === 'unknown'}
+									<!-- Etichetta visibile solo quando NON è verificata: marcare anche
+									     i file fidati farebbe rumore su ogni riga e nessuno la
+									     guarderebbe più. `unknown` = caricato prima della §3. -->
+									<span class="prov-tag" class:unknown={f.provenance === 'unknown'}
+										title={f.provenance === 'unknown'
+											? 'Provenienza non registrata: file caricato prima che la classificazione esistesse'
+											: 'Dichiarato come fonte esterna o non verificata'}>{f.provenance === 'unknown' ? '?' : '⚠'}</span>
+								{/if}
+								{#if /\.(html?|md|markdown|mdown|mkd)$/i.test(f.name)}
+									<button type="button" class="artifact-open" title="Apri anteprima renderizzata (finestra separata)"
+										on:click={() => openArtifact(f.path)}>🔎</button>
+								{/if}
+							{/if}
+						</li>
+					{:else}
+						<li class="muted">{filesLoading ? 'caricamento…' : 'cartella vuota'}</li>
+					{/each}
+					</ul>
+					<p class="files-hint">Carica i file dall'input della chat: 📎, trascinamento o incolla (⌘/Ctrl+V) di immagini.</p>
+{/snippet}
+
+<!-- /meta, /participants, /trigger, /data, /tools, /file (owner, 12 Nov 2026):
+     each command opens its sidebar component in a popup. -->
+<Modal open={comandoAperto !== null} maxWidth={720} on:close={() => (comandoAperto = null)}>
+	<h2 slot="title">{comandoAperto ? COMANDI[comandoAperto].titolo : ''}</h2>
+	<div class="cmd-body">
+		{#if comandoAperto === 'meta'}{@render corpo_meta()}
+		{:else if comandoAperto === 'participants'}{@render corpo_participants()}
+		{:else if comandoAperto === 'trigger'}{@render corpo_trigger()}
+		{:else if comandoAperto === 'data'}{@render corpo_data()}
+		{:else if comandoAperto === 'tools'}{@render corpo_tools(false)}
+		{:else if comandoAperto === 'file'}{@render corpo_file()}
+		{/if}
+	</div>
+</Modal>
 
 <style>
 	.channel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
@@ -3694,6 +3797,11 @@
 	.composer-modal-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--fg-muted); font-size: 12px; }
 	.modal-send { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font-weight: 700; padding: 8px 18px; border-radius: 8px; cursor: pointer; }
 	.modal-send:disabled { opacity: .5; cursor: not-allowed; }
+	.cmd-item { display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
+	.cmd-name { font-family: var(--mono); font-weight: 600; }
+	.cmd-desc { font-size: 11px; color: var(--fg-muted); }
+	.cmd-body { display: flex; flex-direction: column; gap: 8px; max-height: 70vh; overflow-y: auto; }
+	.cmd-body > :global(*) { flex: none; }
 	.mention-pop { position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 20; list-style: none; margin: 0; padding: 4px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.35); min-width: 180px; max-height: 220px; overflow-y: auto; }
 	.mention-item { display: flex; align-items: center; gap: 7px; width: 100%; background: transparent; border: none; color: var(--fg); font: inherit; font-size: 12.5px; padding: 5px 8px; border-radius: 6px; cursor: pointer; text-align: left; }
 	.mention-item.sel, .mention-item:hover { background: rgba(255, 107, 61, 0.12); }
