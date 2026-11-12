@@ -1553,9 +1553,6 @@
 	$: participants = Array.isArray(participantsRaw)
 		? participantsRaw
 		: Object.keys(participantsRaw ?? {});
-	// Il ruolo `reader` è abolito (24 ott 2026, epic #604): chi non è owner è
-	// contributor, anche se nel meta è rimasto scritto `reader`.
-	$: roleOf = (p: string): string => (p === info?.meta?.owner ? 'owner' : 'contributor');
 
 	// ── Who orchestrates the room (clodia-platform#667) ─────────────────────
 	// One per room, Segretario by default; the owner moves it to Clodia or
@@ -3025,12 +3022,11 @@
 							{#if p === info?.meta?.owner}
 								<span class="role-fixed" title="La proprietà dello scope, non un grado di accesso">owner</span>
 							{:else}
-								<!-- Il ruolo si LEGGE e basta (issue clodia-platform#292): la
-								     select che lo cambiava a mano non l'ha usata nessuno, e
-								     ogni partecipante è di fatto `contributor`, il default
-								     del server quando si invita senza ruolo. Il modello
-								     owner/contributor resta lato server e via API (`reader`
-								     è abolito dal 24 ott 2026, epic #604). -->
+								<!-- Nessuna etichetta di ruolo (owner, 12 Nov 2026): ogni
+								     partecipante è uguale agli altri, l'unica distinzione è
+								     l'owner. Prima c'era `contributor` accanto a tutti, che
+								     non distingueva niente; la select che lo cambiava era già
+								     stata tolta (clodia-platform#292). -->
 								{#if puoOrchestrare(p)}
 									{#if isOwner || $isAdmin}
 										<label class="orch-check" class:on={p === orchestratore}
@@ -3045,7 +3041,6 @@
 										<span class="orch-check on" title="Orchestra questa stanza">orchestratore</span>
 									{/if}
 								{/if}
-								<span class="role-fixed">{roleOf(p)}</span>
 								{#if isOwner}
 									<button class="x" type="button" on:click={() => removeParticipant(p)} aria-label="Rimuovi">×</button>
 								{/if}

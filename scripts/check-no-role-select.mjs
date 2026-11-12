@@ -25,6 +25,10 @@
  * con altre parole (radio, menu contestuale) o spostato in un componente nuovo.
  * Sopra questo soffitto serve un test di render (nel repo oggi non c'è un
  * runner di componenti).
+ *
+ * 12 Nov 2026 (owner): «eliminiamo il ruolo contributor … eliminiamo la label
+ * dalla sezione partecipanti». Every participant is the same; the only label
+ * left is the owner's. The non-owner label must not come back.
  */
 import { leggiSorgente, senzaCommenti } from './lib/sorgente.mjs';
 
@@ -36,14 +40,14 @@ const VIETATI = [
 	['roleBusy', 'il lucchetto anti-doppio-click della select'],
 	['role-sel', 'la select del ruolo e i suoi stili'],
 	["<option value=\"contributor\"", 'le opzioni del menu a tendina'],
-	["<option value=\"reader\"", 'le opzioni del menu a tendina']
+	["<option value=\"reader\"", 'le opzioni del menu a tendina'],
+	['roleOf', "l'etichetta `contributor` accanto a ogni partecipante (tolta il 12 nov 2026)"]
 ];
 
 /** Ciò che deve restare: la rimozione riguarda il CONTROLLO, non il ruolo né
  *  la gestione dei partecipanti. Se si porta via anche questi, ha sforato. */
 const RICHIESTI = [
-	['roleOf', 'il ruolo si continua a leggere accanto al nome del partecipante'],
-	['class="role-fixed"', "l'etichetta che mostra il ruolo"],
+	['class="role-fixed"', "l'etichetta dell'owner"],
 	['setChannelParticipant', "l'API dei partecipanti, usata da invito e rimozione"],
 	['removeParticipant', 'il pulsante × che toglie un partecipante (fuori scope della #292)']
 ];
@@ -68,13 +72,12 @@ if (src) {
 	// sabotando questa stessa guard: due casi su quattro sfuggivano.
 	//
 	// Qui si cerca la FORMA nel posto giusto. Sono le due cose che l'utente
-	// perde per davvero se la rimozione sfora: vedere il ruolo, e poter togliere
+	// perde per davvero se la rimozione sfora: riconoscere l'owner, e poter togliere
 	// qualcuno dalla stanza.
-	if (!/class="role-fixed"[^>]*>\s*\{roleOf\(/.test(codice)) {
-		guasti.push(
-			'il ruolo non è più RESO accanto al nome: `roleOf` compare nel file ma ' +
-				"non dentro l'etichetta `role-fixed`, quindi a schermo non si legge"
-		);
+	// Since 12 Nov 2026 the only role shown is the owner's: its label must
+	// still be rendered next to the owner's name.
+	if (!/class="role-fixed"[^>]*>\s*owner\s*</.test(codice)) {
+		guasti.push("l'etichetta `owner` non è più resa accanto al nome dell'owner");
 	}
 	const bottoneX = /<button[^>]*on:click=\{\(\)\s*=>\s*removeParticipant\(/.test(codice);
 	if (!bottoneX) {
