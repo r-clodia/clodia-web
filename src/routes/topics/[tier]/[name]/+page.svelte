@@ -2152,6 +2152,14 @@
 		// La .side è a destra: trascinando il divisore verso SINISTRA si allarga.
 		sideWidth = clampSideWidth(resizeStartW + (resizeStartX - e.clientX));
 	}
+	// The right column collapses like the left sidebar (owner, 12 Nov 2026):
+	// a strip with the reopen button, remembered per browser.
+	const SIDE_COLLAPSED_KEY = 'clodia.topicSideCollapsed';
+	let sideCollapsed = false;
+	function toggleSide() {
+		sideCollapsed = !sideCollapsed;
+		try { localStorage.setItem(SIDE_COLLAPSED_KEY, sideCollapsed ? '1' : '0'); } catch {}
+	}
 	function onSideResizeEnd() {
 		if (!resizingSide) return;
 		resizingSide = false;
@@ -2165,6 +2173,7 @@
 		try {
 			const raw = localStorage.getItem(SIDE_WIDTH_KEY);
 			if (raw) sideWidth = clampSideWidth(Number(raw) || sideWidth);
+			sideCollapsed = localStorage.getItem(SIDE_COLLAPSED_KEY) === '1';
 		} catch {}
 		schedaVisibile = typeof document === 'undefined' || !document.hidden;
 		document.addEventListener('visibilitychange', onVisibilityChange);
@@ -2901,6 +2910,12 @@
 			</div>
 		</main>
 
+		{#if sideCollapsed}
+			<aside class="side side-collapsed">
+				<button class="side-toggle" type="button" on:click={toggleSide}
+					title="Mostra il pannello laterale" aria-label="Mostra il pannello laterale">‹</button>
+			</aside>
+		{:else}
 		<div
 			class="side-resizer"
 			class:active={resizingSide}
@@ -2912,6 +2927,10 @@
 		></div>
 
 			<aside class="side" style="flex: 0 0 {sideWidth}px; width: {sideWidth}px;">
+				<div class="side-head">
+					<button class="side-toggle" type="button" on:click={toggleSide}
+						title="Nascondi il pannello laterale" aria-label="Nascondi il pannello laterale">›</button>
+				</div>
 				<ArtifactCanvas {tier} {name} />
 				<details class="side-section topic-meta" open>
 					<summary>
@@ -3188,6 +3207,7 @@
 						on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
 				</div>
 			</aside>
+		{/if}
 	</div>
 	{/if}
 </div>
@@ -3727,6 +3747,13 @@
 	/* Larghezza via inline style (resize); flex:0 0 evita che venga compressa.
 	   height:100% + min-height:0 → occupa tutta l'altezza del .body e scrolla
 	   internamente invece di allungare la pagina. */
+	.side.side-collapsed { flex: 0 0 32px; width: 32px; align-items: center; padding-top: 2px; }
+	.side-head { display: flex; justify-content: flex-end; margin-bottom: -8px; }
+	.side-toggle { background: transparent; border: 1px solid var(--border); color: var(--fg-muted);
+		border-radius: 4px; width: 22px; height: 22px; display: flex; align-items: center;
+		justify-content: center; font-size: 14px; cursor: pointer; line-height: 1; padding: 0;
+		flex-shrink: 0; transition: border-color 0.12s, color 0.12s; }
+	.side-toggle:hover { border-color: var(--accent); color: var(--accent); }
 	.side { flex: 0 0 220px; width: 220px; height: 100%; min-height: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
 	.side-section { flex: none; min-width: 0; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
 	.side-section > summary {
