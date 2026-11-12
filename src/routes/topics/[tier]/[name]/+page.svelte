@@ -12,6 +12,7 @@
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TopicDataPanel from '$lib/components/TopicDataPanel.svelte';
 	import TopicToolsPanel from '$lib/components/TopicToolsPanel.svelte';
+	import ListenPanel from '$lib/components/ListenPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
 	import { pushToast } from '$lib/stores/toasts';
 	import TopicMark from '$lib/components/TopicMark.svelte';
@@ -1252,6 +1253,8 @@
 	let registry: TopicConnectors | null = null;
 	/** The Strumenti panel: the connector actions live in its MCP cards. */
 	let toolsPanel: TopicToolsPanel | undefined;
+	let listenPanel: ListenPanel | undefined;
+	let listenCount: number | null = null;
 
 	// ── A link I post → «＋ Fonte» (clodia-platform#663) ──────────────────
 	// The room's Fonti come from the Strumenti panel (it loads the lists);
@@ -1361,6 +1364,7 @@
 			chiudiAzione();
 			// Linking implies authorising its MCP in the room (owner, 26 Oct 2026).
 			await toolsPanel?.afterLink(a.connettore);
+			void listenPanel?.reload();
 		} catch (e) {
 			azioneErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
@@ -1376,6 +1380,7 @@
 			const st = await applyConnectorAction(tier, name, a.connettore, a.azione, 'disconnect', campi);
 			if (st.binding === 'channel') statiCanale = { ...statiCanale, [`${a.connettore}/${a.azione}`]: st };
 			void toolsPanel?.reload();
+			void listenPanel?.reload();
 		} catch (e) {
 			azioneErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 			// The button lives in the Strumenti card now: say it there too.
@@ -1620,6 +1625,7 @@
 		participants: { titolo: 'Partecipanti', desc: 'Chi è nella stanza, orchestratore, inviti' },
 		trigger: { titolo: 'Trigger', desc: 'Ogni N minuti o posta in arrivo → prompt → agente' },
 		data: { titolo: 'Dati', desc: 'Datastore, collezioni RAG, indicizzazione' },
+		listen: { titolo: 'In ascolto', desc: 'Mittenti email, chat e gruppi che il canale ascolta' },
 		tools: { titolo: 'Strumenti', desc: 'MCP autorizzati, fonti, destinatari, caselle' },
 		file: { titolo: 'File', desc: 'I file del topic' }
 	} as const;
@@ -3024,6 +3030,15 @@
 					</summary>
 					{@render corpo_data()}
 				</details>
+				<!-- «In ascolto» (clodia-platform#675/#680): the sources the room
+				     listens to, one Add form; the technical lists stay in Strumenti. -->
+				<details class="side-section" open>
+					<summary>
+						<span>In ascolto</span>
+						<span class="section-count">{listenCount ?? '·'}</span>
+					</summary>
+					{@render corpo_listen(true)}
+				</details>
 				<!-- MCP/connector verbs this room enables for every participant, with
 				     per-agent exceptions (clodia-platform#609, epic #604). -->
 				<details class="side-section">
@@ -3428,6 +3443,18 @@
 							on:indexjob={(e) => (indexJobLabel = e.detail.running ? e.detail.label : '')} />
 					{/key}
 {/snippet}
+{#snippet corpo_listen(principale: boolean)}
+	{#key `${tier}/${name}`}
+		{#if principale}
+			<ListenPanel {tier} {name} bind:this={listenPanel} canEdit={isOwner || $isAdmin}
+				azioni={azioniTopic} {azioneBusy} on:count={(e) => (listenCount = e.detail)}
+				on:azione={(e) => onAzioneClick(e.detail)} />
+		{:else}
+			<ListenPanel {tier} {name} canEdit={isOwner || $isAdmin}
+				azioni={azioniTopic} {azioneBusy} on:azione={(e) => onAzioneClick(e.detail)} />
+		{/if}
+	{/key}
+{/snippet}
 {#snippet corpo_tools(principale: boolean)}
 					{#key `${tier}/${name}`}
 						{#if principale}
@@ -3519,6 +3546,7 @@
 		{:else if comandoAperto === 'participants'}{@render corpo_participants()}
 		{:else if comandoAperto === 'trigger'}{@render corpo_trigger()}
 		{:else if comandoAperto === 'data'}{@render corpo_data()}
+		{:else if comandoAperto === 'listen'}{@render corpo_listen(false)}
 		{:else if comandoAperto === 'tools'}{@render corpo_tools(false)}
 		{:else if comandoAperto === 'file'}{@render corpo_file()}
 		{/if}
