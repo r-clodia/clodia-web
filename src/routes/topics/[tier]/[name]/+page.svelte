@@ -1625,7 +1625,8 @@
 		participants: { titolo: 'Partecipanti', desc: 'Chi è nella stanza, orchestratore, inviti' },
 		trigger: { titolo: 'Trigger', desc: 'Ogni N minuti o posta in arrivo → prompt → agente' },
 		data: { titolo: 'Dati', desc: 'Datastore, collezioni RAG, indicizzazione' },
-		listen: { titolo: 'In ascolto', desc: 'Mittenti email, chat e gruppi che il canale ascolta' },
+		listen: { titolo: 'Ascolta una fonte', desc: 'Metti il canale in ascolto di un mittente, una chat, un gruppo' },
+		unlisten: { titolo: 'Smetti di ascoltare', desc: 'Togli una fonte dal canale' },
 		tools: { titolo: 'Strumenti', desc: 'MCP autorizzati, fonti, destinatari, caselle' },
 		file: { titolo: 'File', desc: 'I file del topic' }
 	} as const;
@@ -3037,7 +3038,7 @@
 						<span>In ascolto</span>
 						<span class="section-count">{listenCount ?? '·'}</span>
 					</summary>
-					{@render corpo_listen(true)}
+					{@render corpo_listen(true, 'view')}
 				</details>
 				<!-- MCP/connector verbs this room enables for every participant, with
 				     per-agent exceptions (clodia-platform#609, epic #604). -->
@@ -3443,14 +3444,14 @@
 							on:indexjob={(e) => (indexJobLabel = e.detail.running ? e.detail.label : '')} />
 					{/key}
 {/snippet}
-{#snippet corpo_listen(principale: boolean)}
+{#snippet corpo_listen(principale: boolean, modo: 'view' | 'add' | 'remove')}
 	{#key `${tier}/${name}`}
 		{#if principale}
 			<ListenPanel {tier} {name} bind:this={listenPanel} canEdit={isOwner || $isAdmin}
-				azioni={azioniTopic} {azioneBusy} on:count={(e) => (listenCount = e.detail)}
+				azioni={azioniTopic} {azioneBusy} mode={modo} on:count={(e) => (listenCount = e.detail)}
 				on:azione={(e) => onAzioneClick(e.detail)} />
 		{:else}
-			<ListenPanel {tier} {name} canEdit={isOwner || $isAdmin}
+			<ListenPanel {tier} {name} canEdit={isOwner || $isAdmin} mode={modo}
 				azioni={azioniTopic} {azioneBusy} on:azione={(e) => onAzioneClick(e.detail)} />
 		{/if}
 	{/key}
@@ -3546,7 +3547,8 @@
 		{:else if comandoAperto === 'participants'}{@render corpo_participants()}
 		{:else if comandoAperto === 'trigger'}{@render corpo_trigger()}
 		{:else if comandoAperto === 'data'}{@render corpo_data()}
-		{:else if comandoAperto === 'listen'}{@render corpo_listen(false)}
+		{:else if comandoAperto === 'listen'}{@render corpo_listen(false, 'add')}
+		{:else if comandoAperto === 'unlisten'}{@render corpo_listen(false, 'remove')}
 		{:else if comandoAperto === 'tools'}{@render corpo_tools(false)}
 		{:else if comandoAperto === 'file'}{@render corpo_file()}
 		{/if}
