@@ -17,7 +17,7 @@
 		type ListenKind,
 		type ListenSource
 	} from '$lib/api/client';
-	import { toastError } from '$lib/stores/toasts';
+	import { toastError, toastSuccess } from '$lib/stores/toasts';
 
 	export let tier: string;
 	export let name: string;
@@ -90,6 +90,18 @@
 		}
 	}
 
+	async function copy(addr: string) {
+		try {
+			await navigator.clipboard.writeText(addr);
+			toastSuccess('Indirizzo copiato');
+		} catch {
+			toastError('Copia non riuscita: seleziona l’indirizzo a mano');
+		}
+	}
+
+	// Sources the owner can remove: everything but the room's own inbox.
+	$: removibili = sources.filter((s) => !s.fixed);
+
 	async function remove(s: ListenSource) {
 		if (busy) return;
 		if (s.action) {
@@ -132,7 +144,7 @@
 		<p class="hint wrap">Nessun tipo di fonte disponibile: i connettori lo dichiarano dalla
 			versione che supporta «In ascolto» (comms-pack 2.7.0, Packs → Update).</p>
 	{/if}
-	{#if canEdit && mode === 'remove' && !sources.length}
+	{#if canEdit && mode === 'remove' && !removibili.length}
 		<p class="hint wrap">Nessuna fonte da rimuovere.</p>
 	{/if}
 	{#if canEdit && mode === 'add' && offerti.length}
@@ -160,11 +172,20 @@
 	{:else}
 		<ul class="list">
 			{#each sources as s (key(s) + s.address)}
-				<li>
+				<li class:fixed={s.fixed}>
 					<span class="kind">{s.label}</span>
 					<code title={s.address}>{s.address}</code>
+					{#if s.fixed}
+						{#if s.active}
+							<button type="button" class="copy" title="Copia l'indirizzo"
+								on:click={() => void copy(s.address)}>⧉</button>
+							<span class="badge" title="La posta inviata a questo indirizzo arriva nel canale, chiunque scriva">sempre</span>
+						{:else}
+							<span class="badge" title="La casella della colonia non è impostata: l'indirizzo non è ancora attivo">non attiva</span>
+						{/if}
+					{/if}
 					{#if s.reply}<span class="badge" title="Gli agenti possono rispondere qui">risponde</span>{/if}
-					{#if canEdit && mode === 'remove'}
+					{#if canEdit && mode === 'remove' && !s.fixed}
 						<button type="button" class="rm" disabled={busy || azioneBusy}
 							aria-label="Smetti di ascoltare {s.address}" on:click={() => void remove(s)}>Rimuovi</button>
 					{/if}
@@ -193,6 +214,10 @@
 	.actions .btn-rm { border-color: var(--danger, #dc2626); color: var(--danger, #dc2626); font-weight: 600; }
 	.actions .btn-rm:hover, .actions .btn-rm.on { background: var(--danger, #dc2626); color: #fff; }
 	.rm:disabled { opacity: .5; cursor: default; }
+	.list li.fixed code { font-weight: 600; }
+	.copy { background: transparent; border: none; color: var(--fg-muted); cursor: pointer;
+		font-size: 11px; padding: 0 2px; }
+	.copy:hover { color: var(--accent); }
 	.hint { font-size: 11px; color: var(--fg-muted); margin: 4px 0; }
 	.rm:hover:not(:disabled) { border-color: #dc2626; color: #dc2626; }
 	.add { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; align-items: center; }

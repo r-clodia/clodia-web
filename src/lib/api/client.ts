@@ -3476,6 +3476,10 @@ export interface ListenSource {
 	address: string;
 	reply: boolean;
 	action: string;
+	/** The room's own inbox (message box): always listening, not removable. */
+	fixed?: boolean;
+	/** For the inbox: false while the colony mailbox is not set. */
+	active?: boolean;
 }
 
 /** GET `/api/topics/{tier}/{name}/listen` — the room's «In ascolto». */
