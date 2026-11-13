@@ -121,11 +121,19 @@
 	</p>
 	{#if canEdit}
 		<div class="actions">
-			<button type="button" class:on={mode === 'add'} disabled={!offerti.length}
+			<button type="button" class="btn-add" class:on={mode === 'add'}
 				on:click={() => (mode = mode === 'add' ? 'view' : 'add')}>+ Ascolta</button>
-			<button type="button" class:on={mode === 'remove'} disabled={!sources.length}
+			<button type="button" class="btn-rm" class:on={mode === 'remove'}
 				on:click={() => (mode = mode === 'remove' ? 'view' : 'remove')}>− Smetti di ascoltare</button>
 		</div>
+	{/if}
+	{#if canEdit && mode === 'add' && !offerti.length}
+		<!-- Clickable even when there is nothing to offer: it says why. -->
+		<p class="hint wrap">Nessun tipo di fonte disponibile: i connettori lo dichiarano dalla
+			versione che supporta «In ascolto» (comms-pack 2.7.0, Packs → Update).</p>
+	{/if}
+	{#if canEdit && mode === 'remove' && !sources.length}
+		<p class="hint wrap">Nessuna fonte da rimuovere.</p>
 	{/if}
 	{#if canEdit && mode === 'add' && offerti.length}
 		<form class="add" on:submit|preventDefault={add}>
@@ -179,8 +187,13 @@
 	.actions { display: flex; gap: 6px; margin: 4px 0; }
 	.actions button, .rm { font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer;
 		border: 1px solid var(--border); border-radius: 4px; background: transparent; color: inherit; }
-	.actions button.on { border-color: var(--accent); color: var(--accent); }
-	.actions button:disabled, .rm:disabled { opacity: .5; cursor: default; }
+	.actions .btn-add { background: var(--success, #16a34a); border-color: var(--success, #16a34a);
+		color: #fff; font-weight: 600; }
+	.actions .btn-add:hover, .actions .btn-add.on { filter: brightness(1.1); }
+	.actions .btn-rm { border-color: var(--danger, #dc2626); color: var(--danger, #dc2626); font-weight: 600; }
+	.actions .btn-rm:hover, .actions .btn-rm.on { background: var(--danger, #dc2626); color: #fff; }
+	.rm:disabled { opacity: .5; cursor: default; }
+	.hint { font-size: 11px; color: var(--fg-muted); margin: 4px 0; }
 	.rm:hover:not(:disabled) { border-color: #dc2626; color: #dc2626; }
 	.add { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; align-items: center; }
 	.add select, .add input[type='text'] { font: inherit; font-size: 11px; padding: 2px 4px;

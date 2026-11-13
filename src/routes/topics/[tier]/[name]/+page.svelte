@@ -3886,7 +3886,11 @@
 	   height:100% + min-height:0 → occupa tutta l'altezza del .body e scrolla
 	   internamente invece di allungare la pagina. */
 	.side.side-collapsed { flex: 0 0 32px; width: 32px; align-items: center; padding-top: 2px; }
-	.side-head { display: flex; justify-content: flex-end; margin-bottom: -8px; }
+	/* Always visible: it stays at the top of the column while the sections
+	   scroll under it (owner, 13 Nov 2026). */
+	.side-head { display: flex; justify-content: flex-end; margin-bottom: -8px;
+		position: sticky; top: 0; z-index: 5; flex: none; background: var(--bg);
+		padding: 2px 0; }
 	.side-toggle { background: transparent; border: 1px solid var(--border); color: var(--fg-muted);
 		border-radius: 4px; width: 22px; height: 22px; display: flex; align-items: center;
 		justify-content: center; font-size: 14px; cursor: pointer; line-height: 1; padding: 0;
