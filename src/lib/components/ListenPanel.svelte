@@ -18,6 +18,7 @@
 		type ListenSource
 	} from '$lib/api/client';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
+	import McpMailboxes from '$lib/components/McpMailboxes.svelte';
 
 	export let tier: string;
 	export let name: string;
@@ -193,6 +194,13 @@
 			{/each}
 		</ul>
 	{/if}
+	<!-- A system mailbox linked to the room is a source too: its mail of the
+	     senders above reaches the channel. Moved here from Strumenti → Email
+	     (owner, 13 Nov 2026); linking stays an admin's act. -->
+	<details class="mailboxes">
+		<summary>Caselle collegate</summary>
+		<McpMailboxes {tier} {name} {canEdit} />
+	</details>
 {/if}
 
 <style>
@@ -218,6 +226,8 @@
 	.copy { background: transparent; border: none; color: var(--fg-muted); cursor: pointer;
 		font-size: 11px; padding: 0 2px; }
 	.copy:hover { color: var(--accent); }
+	.mailboxes { margin-top: 6px; }
+	.mailboxes > summary { font-size: 11px; color: var(--fg-muted); cursor: pointer; }
 	.hint { font-size: 11px; color: var(--fg-muted); margin: 4px 0; }
 	.rm:hover:not(:disabled) { border-color: #dc2626; color: #dc2626; }
 	.add { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; align-items: center; }
