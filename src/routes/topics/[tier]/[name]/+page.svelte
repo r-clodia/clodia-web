@@ -3461,7 +3461,6 @@
 						{#if principale}
 							<TopicToolsPanel {tier} {name} bind:this={toolsPanel}
 							canEdit={isOwner || $isAdmin} on:count={(e) => (toolsCount = e.detail)}
-							messageBox={info?.message_box}
 							on:fonti={(e) => (fontiStanza = e.detail)}
 							examples={{ ingress: esempiPerDirezione(registry, 'ingress'), egress: esempiPerDirezione(registry, 'egress') }}
 							azioni={azioniTopic} {statiCanale} {azioneBusy}
@@ -3469,7 +3468,6 @@
 						{:else}
 							<TopicToolsPanel {tier} {name}
 							canEdit={isOwner || $isAdmin} on:count={(e) => (toolsCount = e.detail)}
-							messageBox={info?.message_box}
 							on:fonti={(e) => (fontiStanza = e.detail)}
 							examples={{ ingress: esempiPerDirezione(registry, 'ingress'), egress: esempiPerDirezione(registry, 'egress') }}
 							azioni={azioniTopic} {statiCanale} {azioneBusy}
