@@ -41,7 +41,6 @@
 
 	let sel = '';
 	let address = '';
-	let reply = false;
 
 	const key = (k: { connector: string; kind: string }) => `${k.connector}/${k.kind}`;
 	const azioneDi = (connector: string, action: string) =>
@@ -77,10 +76,11 @@
 		try {
 			await setTopicListen(tier, name, {
 				action: 'add', connector: scelto.connector, kind: scelto.kind,
-				address: v, reply: scelto.reply === 'choice' ? reply : undefined
+				// No reply choice here (owner, 14 Nov 2026): listening is reading;
+				// mail recipients are Strumenti → Email → Destinatari.
+				address: v
 			});
 			address = '';
-			reply = false;
 			mode = 'view';
 			await reload();
 		} catch (e) {
@@ -156,9 +156,6 @@
 				<input type="text" bind:value={address} disabled={busy}
 					placeholder={scelto.field?.placeholder || scelto.field?.label || 'indirizzo'}
 					aria-label={scelto.field?.label || 'Indirizzo'} />
-				{#if scelto.reply === 'choice'}
-					<label class="reply"><input type="checkbox" bind:checked={reply} disabled={busy} /> può rispondere</label>
-				{/if}
 				<button type="submit" disabled={busy || !address.trim()}>Ascolta</button>
 			{:else if scelto}
 				<button type="submit" disabled={azioneBusy}>Collega…</button>
@@ -226,5 +223,4 @@
 	.add button { font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer;
 		border: 1px solid var(--border); border-radius: 4px; background: transparent; color: inherit; }
 	.add button:disabled { opacity: .5; cursor: default; }
-	.reply { font-size: 11px; color: var(--fg-muted); display: inline-flex; align-items: center; gap: 3px; }
 </style>
