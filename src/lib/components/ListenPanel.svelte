@@ -136,8 +136,6 @@
 		<div class="actions">
 			<button type="button" class="btn-add" class:on={mode === 'add'}
 				on:click={() => (mode = mode === 'add' ? 'view' : 'add')}>+ Ascolta</button>
-			<button type="button" class="btn-rm" class:on={mode === 'remove'}
-				on:click={() => (mode = mode === 'remove' ? 'view' : 'remove')}>− Smetti di ascoltare</button>
 		</div>
 	{/if}
 	{#if canEdit && mode === 'add' && !offerti.length}
@@ -146,7 +144,7 @@
 			versione che supporta «In ascolto» (comms-pack 2.7.0, Packs → Update).</p>
 	{/if}
 	{#if canEdit && mode === 'remove' && !removibili.length}
-		<p class="hint wrap">Nessuna fonte da rimuovere.</p>
+		<p class="hint wrap">Nessuna fonte da togliere: la inbox del canale resta sempre in ascolto.</p>
 	{/if}
 	{#if canEdit && mode === 'add' && offerti.length}
 		<form class="add" on:submit|preventDefault={add}>
@@ -186,9 +184,10 @@
 						{/if}
 					{/if}
 					{#if s.reply}<span class="badge" title="Gli agenti possono rispondere qui">risponde</span>{/if}
-					{#if canEdit && mode === 'remove' && !s.fixed}
+					{#if canEdit && !s.fixed}
 						<button type="button" class="rm" disabled={busy || azioneBusy}
-							aria-label="Smetti di ascoltare {s.address}" on:click={() => void remove(s)}>Rimuovi</button>
+							title="Smetti di ascoltare" aria-label="Smetti di ascoltare {s.address}"
+							on:click={() => void remove(s)}>Ⓧ</button>
 					{/if}
 				</li>
 			{/each}
@@ -214,13 +213,13 @@
 	.badge { font-size: 10px; border-radius: 3px; padding: 0 4px; border: 1px solid var(--border);
 		color: var(--fg-muted); white-space: nowrap; }
 	.actions { display: flex; gap: 6px; margin: 4px 0; }
-	.actions button, .rm { font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer;
+	.actions button { font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer;
 		border: 1px solid var(--border); border-radius: 4px; background: transparent; color: inherit; }
+	.rm { background: transparent; border: none; color: var(--fg-muted); cursor: pointer;
+		font-size: 13px; line-height: 1; padding: 0 2px; flex-shrink: 0; }
 	.actions .btn-add { background: var(--success, #16a34a); border-color: var(--success, #16a34a);
 		color: #fff; font-weight: 600; }
 	.actions .btn-add:hover, .actions .btn-add.on { filter: brightness(1.1); }
-	.actions .btn-rm { border-color: var(--danger, #dc2626); color: var(--danger, #dc2626); font-weight: 600; }
-	.actions .btn-rm:hover, .actions .btn-rm.on { background: var(--danger, #dc2626); color: #fff; }
 	.rm:disabled { opacity: .5; cursor: default; }
 	.list li.fixed code { font-weight: 600; }
 	.copy { background: transparent; border: none; color: var(--fg-muted); cursor: pointer;
@@ -229,7 +228,7 @@
 	.mailboxes { margin-top: 6px; }
 	.mailboxes > summary { font-size: 11px; color: var(--fg-muted); cursor: pointer; }
 	.hint { font-size: 11px; color: var(--fg-muted); margin: 4px 0; }
-	.rm:hover:not(:disabled) { border-color: #dc2626; color: #dc2626; }
+	.rm:hover:not(:disabled) { color: var(--danger, #dc2626); }
 	.add { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; align-items: center; }
 	.add select, .add input[type='text'] { font: inherit; font-size: 11px; padding: 2px 4px;
 		border: 1px solid var(--border); border-radius: 4px; background: transparent; color: inherit; }
