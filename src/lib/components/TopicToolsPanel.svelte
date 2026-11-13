@@ -35,7 +35,6 @@
 		type UriLabelInfo
 	} from '$lib/api/client';
 	import McpPicker from '$lib/components/McpPicker.svelte';
-	import McpMailboxes from '$lib/components/McpMailboxes.svelte';
 	import McpResources from '$lib/components/McpResources.svelte';
 	import ToolboxPicker from '$lib/components/ToolboxPicker.svelte';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
@@ -69,14 +68,16 @@
 
 	const dispatch = createEventDispatcher<{ count: number; azione: Azione; fonti: string[] | null }>();
 
-	// A mailbox is linked from the Email card (McpMailboxes): not repeated here.
+	// Chats bound to the channel and mailboxes are sources the room listens to:
+	// they are linked from «In ascolto», not here (owner, 13 Nov 2026). What
+	// stays is the rest — a Drive folder.
 	const isMailbox = (a: Azione) => a.campi.some((f) => f.options === 'mailboxes');
 	function mcpOf(a: Azione): string {
 		const ns = a.namespace || '';
 		const hit = Object.values(box?.mcp_catalogue ?? {}).find((m) => ns && m.namespaces.includes(ns));
 		return hit ? hit.id : a.connettore;
 	}
-	$: linkActions = azioni.filter((a) => !isMailbox(a));
+	$: linkActions = azioni.filter((a) => !isMailbox(a) && a.binding !== 'channel');
 	// `box` in the dependencies: `mcpOf` reads the catalogue it carries.
 	$: actionsFor = box && ((id: string) => linkActions.filter((a) => mcpOf(a) === id));
 	$: unauthorisedActions = linkActions.filter((a) => !authorised.includes(mcpOf(a)));
@@ -367,12 +368,6 @@
 									{/each}
 								</div>
 							{/if}
-							{#if id === 'email'}
-								<div class="mailboxes">
-									<span class="sub">Caselle collegate</span>
-									<McpMailboxes {tier} {name} {canEdit} />
-								</div>
-							{/if}
 							<details class="advanced">
 								<summary>Regole avanzate{(box.mcp?.[id]?.resources ?? []).length ? ` (${(box.mcp?.[id]?.resources ?? []).length})` : ''}</summary>
 								<McpResources mcp={m} rows={box.mcp?.[id]?.resources ?? []}
@@ -526,7 +521,7 @@
 	.advanced > summary { font-size: 11px; color: var(--fg-muted); cursor: pointer; }
 	.advanced { display: flex; flex-direction: column; gap: 4px; }
 	.sub { font-size: 11px; font-weight: 600; }
-	.room-list, .mailboxes { display: flex; flex-direction: column; gap: 2px; }
+	.room-list { display: flex; flex-direction: column; gap: 2px; }
 	.row { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	.other-add { display: flex; gap: 4px; margin-top: 4px; }
 	.other-add select, .other-add input { font: inherit; font-size: 11px; padding: 2px 4px;
