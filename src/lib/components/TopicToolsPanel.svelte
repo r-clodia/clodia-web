@@ -50,8 +50,8 @@
 	/** Examples for the «Altre voci» field, from the installed schemes. */
 	export let examples: { ingress: string; egress: string } = { ingress: '', egress: '' };
 
-	/** The connectors' topic actions (`azioniDiTopic`): linking a Telegram chat,
-	 *  a Drive folder… They used to be buttons in the sidebar; since 26 Oct 2026
+	/** The connectors' topic actions (`azioniDiTopic`): linking a chat of a
+	 *  pack connector, a Drive folder… They used to be buttons in the sidebar; since 26 Oct 2026
 	 *  they live in the card of their MCP. The dialog and its logic stay in the
 	 *  topic page: this panel only shows the buttons and hands the click back. */
 	type Azione = {
@@ -130,10 +130,6 @@
 				hint: 'La loro posta arriva in questo canale.', placeholder: 'nome@dominio.it oppure *@dominio.it' },
 			{ title: 'Destinatari', dirs: ['egress'], schemes: ['mailto'], scheme: 'mailto',
 				hint: 'Indirizzi a cui si scrive senza conferma.', placeholder: 'nome@dominio.it oppure *@dominio.it' }
-		],
-		telegram: [
-			{ title: 'Gruppi e contatti', dirs: ['ingress', 'egress'], schemes: ['tg'], scheme: 'tg',
-				placeholder: 'id della chat (es. -100…)' }
 		],
 		whatsapp: [
 			{ title: 'Gruppi e contatti', dirs: ['ingress', 'egress'], schemes: ['wa'], scheme: 'wa',

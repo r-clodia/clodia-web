@@ -43,12 +43,6 @@
 	<svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
 		<path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0 1-10 0V8zM12 16v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
 	</svg>
-{:else if key === 'telegram'}
-	<svg width={size} height={size} viewBox="0 0 240 240" aria-hidden="true">
-		<circle cx="120" cy="120" r="120" fill="#29b6f6" />
-		<path d="M180.5 72.1 156.9 172c-1.8 8-6.6 10-13.4 6.2l-37-27.3-17.9 17.2c-2 2-3.7 3.7-7.5 3.7l2.7-38 69.4-62.7c3-2.7-.7-4.2-4.6-1.5L60 130.6l-37.2-11.6c-8.1-2.5-8.2-8.1 1.7-12l145.4-56c6.7-2.5 12.6 1.6 10.6 12.1Z"
-			fill="#fff" />
-	</svg>
 {:else if key === 'drive'}
 	<svg width={size} height={size} viewBox="0 0 87.3 78" aria-hidden="true">
 		<path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da" />

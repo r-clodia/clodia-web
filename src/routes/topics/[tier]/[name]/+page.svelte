@@ -1326,8 +1326,8 @@
 			azioneValori = Object.fromEntries(
 				st.fields.map((f) => [f.name, f.options?.length ? f.options[0].value : ''] as const)
 			);
-			// A group the bot joined with this topic's link (#549): its id comes
-			// from Telegram, so it is offered ready instead of typed by hand.
+			// A chat the connector joined with this topic's link (#549): its id
+			// comes from the connector, so it is offered ready, not typed by hand.
 			if (st.suggestions?.length) azioneValori = { ...azioneValori, ...st.suggestions[0].values };
 		} catch (e) {
 			azioneErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
@@ -1391,7 +1391,7 @@
 	}
 
 	/** Il click sul bottone: un'azione con binding alterna collegato/scollegato
-	 *  come faceva quello di Telegram, le altre aprono sempre il dialog. */
+	 *  (un canale di un pack), le altre aprono sempre il dialog. */
 	function onAzioneClick(a: { connettore: string; azione: string; nome: string; binding: string; chiave: string }) {
 		const st = statiCanale[a.chiave];
 		if (a.binding === 'channel' && st?.connected) {
@@ -1402,7 +1402,7 @@
 	}
 
 	// Cartella condivisa Mac↔container (20 set 2026, seguito della richiesta di
-	// Davide su Telegram/Drive): a differenza del quick-add sopra, qui non si
+	// Davide): a differenza del quick-add sopra, qui non si
 	// scrive una whitelist ma si dichiara un BIND filesystem reale — verbo
 	// diverso lato server (topic.local_folder_add/remove), quindi stato e
 	// dialog separati anche qui.
@@ -2496,7 +2496,7 @@
 				<div class="stream" bind:this={stream} on:scroll={updateScrollPosition} on:click={handleStreamClick} role="presentation">
 					{#each shownMessages as m, i (m.id)}
 					<!-- `id="m-<id>"` è l'ancora che i link esterni citano — oggi la
-					     notifica di menzione su Telegram. Senza, il link porterebbe al
+					     notifica di menzione. Senza, il link porterebbe al
 					     topic e lascerebbe a cercare il messaggio: la meta ma non il
 					     punto, che su un telefono è quasi lo stesso che niente. -->
 					{@const cont = continuity[i] ?? { prev: false, next: false }}
@@ -3125,8 +3125,8 @@
 			<p class="meta-note"><b>⚠ {AVVISO_GRUPPO}.</b></p>
 		{/if}
 		{#if azioneStato.suggestions?.length}
-			<!-- clodia-platform#549: groups the bot joined through this topic's
-			     link. The id is Telegram's; approving is the same connect. -->
+			<!-- clodia-platform#549: chats the connector joined through this
+			     topic's link. Approving is the same connect. -->
 			<p class="meta-note">Il bot è stato aggiunto con il link di questo topic a:</p>
 			<div class="egress-quick-row">
 				{#each azioneStato.suggestions as s (JSON.stringify(s.values))}
@@ -4172,7 +4172,7 @@
 		display: inline-flex; align-items: center; gap: 5px; }
 	.egress-quick-btn:hover { border-color: var(--accent); }
 	/* Loghi ufficiali al posto delle emoji generiche (23 set 2026, richiesta di
-	   Davide): dimensione fissa così Telegram (cerchio) e Drive (triangolo)
+	   Davide): dimensione fissa così le icone (Drive, triangolo, e le altre)
 	   restano allineati sulla stessa riga di testo del bottone. */
 	.brand-icon { width: 14px; height: 14px; flex-shrink: 0; }
 	.egress-quick-btn:disabled { opacity: 0.6; cursor: default; }

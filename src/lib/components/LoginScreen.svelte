@@ -197,7 +197,7 @@
 				</label>
 				<label class="field">
 					<span>Contatto (opzionale)</span>
-					<input type="text" bind:value={regContact} placeholder="email o telegram per l’admin" disabled={busy} />
+					<input type="text" bind:value={regContact} placeholder="email per l’admin" disabled={busy} />
 				</label>
 				{#if error}<div class="err">{error}</div>{/if}
 				<button type="button" class="btn" on:click={sendRequest} disabled={busy}>

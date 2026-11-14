@@ -3,7 +3,7 @@
  *
  * clodia-platform#520. Fino a qui ogni connettore esisteva nel frontend per
  * NOME: la riga `BASE` della pagina Tools con cinque card scritte a mano, i
- * bottoni Telegram/Drive/Mailbox della pagina del topic con la loro modale e il
+ * bottoni Drive/Mailbox della pagina del topic con la loro modale e il
  * loro stato, le etichette degli schemi, i `WHY` del feed delle osservazioni.
  * Un connettore che arriva con un pack non poteva comparire da nessuna parte
  * senza un deploy di questo repository — cioè il registry di #518 e le rotte
@@ -441,7 +441,7 @@ export function esempiPerDirezione(registry, direzione) {
 }
 
 /**
- * L'etichetta leggibile di un URI (`tg:-100…` → «Chat Telegram»).
+ * L'etichetta leggibile di un URI (`gdrive:folder/…` → «Cartella Drive»).
  * @param {unknown} registry
  * @param {string} uri
  */

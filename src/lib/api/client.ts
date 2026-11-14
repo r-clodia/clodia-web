@@ -1583,7 +1583,6 @@ export interface AgentSettingsPatch {
 	avatar_color?: string;
 	clearance?: string;
 	email?: string;
-	telegram?: string;
 	model?: string;
 	agent_sdk?: string;
 	mailbox_parent?: string;
@@ -1609,7 +1608,7 @@ export async function createAgent(spec: Partial<Agent>, opts: RequestOptions = {
 
 /** Crea un principal umano (member) certificando una pubkey già fornita. */
 export async function createHumanAgent(
-	input: { name: string; pubkey: string; clearance: string; display_name?: string; email?: string; telegram?: string },
+	input: { name: string; pubkey: string; clearance: string; display_name?: string; email?: string },
 	opts: RequestOptions = {}
 ): Promise<unknown> {
 	return apiPost('/api/agents', { type: 'human', ...input }, opts);
@@ -3048,7 +3047,7 @@ export async function googleConnect(
 }
 
 /** POST `/clodia/cert-request` — un nuovo utente chiede all'admin di emettere il
- *  certificato per la propria pubkey (notifica telegram/email; non crea nulla). */
+ *  certificato per la propria pubkey (notifica all'admin; non crea nulla). */
 export async function requestCert(
 	body: { pubkey: string; name?: string; contact?: string },
 	opts: RequestOptions = {}
@@ -3354,15 +3353,6 @@ export async function downloadTopicZip(tier: string, name: string): Promise<void
 	URL.revokeObjectURL(url);
 }
 
-/* Il «collegamento» di un gruppo Telegram a uno scope (meccanismo A) non ha più
- * client qui: il pannello che lo configurava è stato rimosso con
- * clodia-platform#240 e il codice rimasto — il tipo del mount, il campo dei
- * gruppi collegati sul meta del topic e la POST su
- * `/api/topics/{tier}/{name}/telegram` — con #362. Telegram entra ora dalla
- * porta di tutti, come ingress `tg:` nella whitelist (epic #359); l'endpoint
- * lato server resta per i gruppi già collegati, ma non lo chiama più questa UI.
- * La guard scripts/check-no-telegram-panel.mjs tiene il posto vuoto. */
-
 /** POST `/api/topics/{tier}/{name}/logo` — immagine del topic (solo owner).
  *  I byte viaggiano in base64: un logo è piccolo per definizione. */
 export async function setTopicLogo(
@@ -3540,13 +3530,13 @@ export async function removeLocalFolder(tier: string, name: string, mount: strin
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/local-folder`, { action: 'remove', mount }, opts);
 }
 
-/** Il cap SEAL di un'azione che aggancia un canale (il bottone Telegram del
- *  topic, `ConnectorActionState.seal`, clodia-platform#405). */
-export interface TelegramSealState {
+/** The SEAL cap of an action that binds a channel (a pack connector's chat,
+ *  `ConnectorActionState.seal`, clodia-platform#405/#638). */
+export interface ChannelSealState {
 	/** Tier del topic, come lo vede il server. */
 	tier: string;
-	/** Tier massimo che il channel Telegram regge (provider extra-UE, gruppi
-	 *  non E2E). Oggi SEAL-1 — ma il valore lo dice il server, non questo file. */
+	/** The highest tier the channel can carry (non-EU provider, groups that
+	 *  are not end-to-end encrypted). The server says it, not this file. */
 	cap: string | null;
 	/** Il cap morde e l'owner non ha ancora preso atto del downgrade: senza la
 	 *  sua conferma esplicita il collegamento viene rifiutato. */
@@ -3559,8 +3549,8 @@ export interface TelegramSealState {
  *  del canale (clodia-platform#406): si sceglie una casella GIÀ configurata
  *  nel sistema e quella diventa in un colpo solo fonte (`inbox:`) e
  *  destinazione (`outbox:`) di questo topic. Owner-only lato server, in
- *  lettura e in scrittura. A differenza di Telegram non c'è nessun binding:
- *  qui si autorizza soltanto — la posta la leggono i verbi email. */
+ *  lettura e in scrittura. Non c'è nessun binding: qui si autorizza soltanto —
+ *  la posta la legge il corriere. */
 export interface TopicMailbox {
 	account: string;
 	email: string;
@@ -3602,12 +3592,12 @@ export interface ConnectorActionState {
 		options?: { value: string; label: string }[] | null;
 	}[];
 	entries: { ingress: string[]; egress: string[] };
-	seal?: TelegramSealState | null;
+	seal?: ChannelSealState | null;
 	bound?: string | null;
 	connected?: boolean;
 	/** Chats the bot joined for this topic by link (clodia-platform#549),
-	 *  ready for the owner: picking one fills the fields with the id Telegram
-	 *  gave. Nothing is authorised until the owner connects it. */
+	 *  ready for the owner: picking one fills the fields with the id the
+	 *  channel gave. Nothing is authorised until the owner connects it. */
 	suggestions?: {
 		label: string;
 		values: Record<string, string>;

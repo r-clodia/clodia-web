@@ -103,27 +103,12 @@
 		}
 	}
 
-	/** In quale campo va il `contact` di una cert-request.
-	 *
-	 *  Lo smistamento era `c.includes('@')`, e un handle Telegram comincia
-	 *  proprio con `@`: `@davide_c` finiva nel campo EMAIL, il campo telegram
-	 *  restava vuoto e la persona nasceva irraggiungibile senza che nessuno
-	 *  l'avesse deciso — l'altra strada per cui il recapito dell'owner non è mai
-	 *  arrivato dove lo cercano i lettori (clodia-platform#200).
-	 *
-	 *  Un'email ha la chiocciola in MEZZO e un dominio dopo; un handle ce l'ha
-	 *  davanti o non ce l'ha affatto. Ciò che non è né l'uno né l'altro non si
-	 *  indovina: si dice. Le due forme Telegram restano distinte perché solo il
-	 *  chat_id numerico è un destinatario. */
-	function smistaContatto(c: string): {
-		email?: string;
-		telegram?: string;
-		kind: 'vuoto' | 'email' | 'chat_id' | 'handle' | 'ignoto';
-	} {
+	/** The `contact` of a cert-request, when it is an email address: the
+	 *  only contact field a person has. Anything else is not guessed into a
+	 *  field: the approver is told (clodia-platform#200). */
+	function smistaContatto(c: string): { email?: string; kind: 'vuoto' | 'email' | 'ignoto' } {
 		if (!c) return { kind: 'vuoto' };
 		if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c)) return { email: c, kind: 'email' };
-		if (/^-?\d{5,20}$/.test(c)) return { telegram: c, kind: 'chat_id' };
-		if (/^@?[A-Za-z][A-Za-z0-9_]{4,31}$/.test(c)) return { telegram: c, kind: 'handle' };
 		return { kind: 'ignoto' };
 	}
 
@@ -132,13 +117,12 @@
 		busyReq = r.id;
 		try {
 			const c = (r.contact || '').trim();
-			const { email, telegram, kind } = smistaContatto(c);
+			const { email, kind } = smistaContatto(c);
 			await createHumanAgent({
 				name: r.name,
 				pubkey: r.pubkey,
 				clearance: reqClearance[r.id] || 'SEAL-0',
-				email,
-				telegram
+				email
 			});
 			await deleteCertRequest(r.id);
 			toastSuccess(`Approvato: ${r.name}`, `clearance ${reqClearance[r.id] || 'SEAL-0'}`);
@@ -148,12 +132,7 @@
 				// ha approvato sa che le manca un recapito.
 				toastError(
 					`Contatto non riconosciuto: «${c}»`,
-					`Né un'email né un recapito Telegram. ${r.name} è stato creato senza recapito: aggiungilo dalla sua scheda.`
-				);
-			} else if (kind === 'handle') {
-				toastError(
-					`${r.name}: handle Telegram, non riceve notifiche`,
-					'Un @handle identifica chi scrive ma non è un destinatario. Per le notifiche serve il chat_id numerico.'
+					`Non è un indirizzo email. ${r.name} è stato creato senza recapito: aggiungilo dalla sua scheda.`
 				);
 			}
 			await Promise.all([load(), refreshRequests()]);

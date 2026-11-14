@@ -299,8 +299,7 @@
 	//
 	// Il deposito resta quello di prima: per un connettore del gateway la rotta
 	// generica delega al suo handler nativo, che attorno alla scrittura fa
-	// quello che il deposito generico non fa (GitHub monta il backend MCP,
-	// Telegram valida il token con getMe e salva l'@username).
+	// quello che il deposito generico non fa (GitHub monta il backend MCP).
 	let credOpen = false;
 	let credCard: CardModel | null = null;
 	let credValues: Record<string, string> = {};
@@ -348,7 +347,7 @@
 	 *  lasciato `kind: oauth` fuori dalla rotta generica (consenso, stato fra le
 	 *  due gambe, callback), quindi un flusso generico non esiste ancora. */
 	/** La domanda che l'owner farebbe a Wainston per questo connettore. Prima
-	 *  era una frase su Telegram, scritta qui e disponibile solo a Telegram. */
+	 *  era una frase scritta qui per un solo connettore. */
 	function aiuto(c: CardModel) {
 		return `Aiuto, sto configurando l'integrazione ${c.name}. Da dove parto?`;
 	}
