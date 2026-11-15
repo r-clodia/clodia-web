@@ -77,7 +77,24 @@ if (mod) {
 		['platform filter excludes instances', names(mod.filterEntries(entries, { pack: '@platform' })), 'platform/note'],
 		['instance href', mod.datastoreHref('assetti-contabili/contabilita:tomato'),
 			'/databases/datastore/assetti-contabili/contabilita%3Atomato'],
-		['structures of a pack', mod.structuresOfPack([{ pack: 'a', id: 'a/x' }, { pack: 'b', id: 'b/y' }], 'a').length, 1]
+		['structures of a pack', mod.structuresOfPack([{ pack: 'a', id: 'a/x' }, { pack: 'b', id: 'b/y' }], 'a').length, 1],
+		// imported_by_scopes: a list, a bare COUNT (older backend), or nothing —
+		// "nessuno" only when known (empty list or 0), never from a number.
+		['imports: list rendered', JSON.stringify(mod.importsOf({ imported_by_scopes: ['SEAL-2/tomato', 'job:7'] }).scopes), '["SEAL-2/tomato","job:7"]'],
+		['imports: count 2 is not «nessuno»', mod.importsOf({ imported_by_scopes: 2 }).label, 'importata da 2 spazi'],
+		['imports: count 1', mod.importsOf({ imported_by_scopes: 1 }).label, 'importata da 1 spazio'],
+		['imports: count 2 has no list', mod.importsOf({ imported_by_scopes: 2 }).scopes, null],
+		['imports: count 0 is «nessuno»', mod.importsOf({ imported_by_scopes: 0 }).label, 'nessuno spazio lo importa'],
+		['imports: empty list is «nessuno»', mod.importsOf({ imported_by_scopes: [] }).label, 'nessuno spazio lo importa'],
+		['imports: empty list + imported_count 3', mod.importsOf({ imported_by_scopes: [], imported_count: 3 }).label, 'importata da 3 spazi'],
+		['imports: imported_count only', mod.importsOf({ imported_count: 4 }).label, 'importata da 4 spazi'],
+		['imports: unknown is not «nessuno»', mod.importsOf({}).label.includes('nessuno'), false],
+		['migration: status says failed', mod.needsMigration({ status: 'migration_failed' }), true],
+		['migration: flag', mod.needsMigration({ status: 'active', migration_error: 'boom' }), true],
+		['migration: schema behind latest', mod.needsMigration({ status: 'active', schema_version: 1 }, { latest_version: 2 }), true],
+		['migration: schema behind (structure schema_version)', mod.needsMigration({ schema_version: 2 }, { schema_version: 3 }), true],
+		['migration: up to date', mod.needsMigration({ status: 'active', schema_version: 2 }, { latest_version: 2 }), false],
+		['migration: no versions known', mod.needsMigration({ status: 'active' }, {}), false]
 	];
 	for (const [name, got, want] of cases) {
 		const ok = got === want;
@@ -111,7 +128,9 @@ if (pd !== null) {
 	if (!/Strutture dati/.test(src)) failures.push(`${PD}: no «Strutture dati» section`);
 	if (!/\{#if admin\}[\s\S]*?Crea db/.test(src)) failures.push(`${PD}: «Crea db» is not admin-only`);
 	if (!/datastoreHref\(i\.id\)/.test(src)) failures.push(`${PD}: instances do not link to their Databases page`);
-	if (!/imported_by_scopes/.test(src) || !/i\.tier/.test(src)) failures.push(`${PD}: instances without tier or importing scopes`);
+	if (!/importsOf\(i\)/.test(src) || !/i\.tier/.test(src)) failures.push(`${PD}: instances without tier or importing scopes (read through importsOf)`);
+	if (/#each i\.imported_by_scopes/.test(src)) failures.push(`${PD}: iterates imported_by_scopes directly — a count renders as «nessuno»`);
+	if (!/needsMigration\(i, s\)[\s\S]*?\{#if admin\}[\s\S]*?Riprova migrazione/.test(src)) failures.push(`${PD}: no admin-only «Riprova migrazione» on an instance to migrate`);
 }
 
 const dlg = leggiSorgente(DLG, failures, 'Crea db dialog');
@@ -130,6 +149,7 @@ if (client !== null) {
 	const src = senzaCommenti(client);
 	if (!/action: 'create_instance'/.test(src)) failures.push(`${CLIENT}: create_instance action missing`);
 	if (!/'\/clodia\/databases\/structures'/.test(src)) failures.push(`${CLIENT}: structures route missing`);
+	if (!/action: 'migrate_instance', id/.test(src)) failures.push(`${CLIENT}: migrate_instance action missing`);
 	if (!/e\.status === 404/.test(src)) failures.push(`${CLIENT}: an older backend (404) is not tolerated`);
 	if (!/caller_clearance/.test(src) || !/is_admin: typeof r\?\.is_admin === 'boolean'/.test(src)) failures.push(`${CLIENT}: caller_clearance / is_admin not read from the structures response`);
 }

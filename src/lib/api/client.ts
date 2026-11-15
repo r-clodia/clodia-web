@@ -2170,9 +2170,15 @@ export interface DatastoreInstance {
 	id: string;
 	name: string;
 	tier: string;
-	/** Scopes importing it (`"SEAL-2/name"`, `"job:7"`). */
-	imported_by_scopes: string[];
+	/** Scopes importing it (`"SEAL-2/name"`, `"job:7"`) — or, on backends
+	 *  that send only a count, that number. Read it through `importsOf`. */
+	imported_by_scopes?: string[] | number;
+	imported_count?: number;
 	status?: string;
+	schema_version?: string | number | null;
+	migration_failed?: boolean;
+	migration_error?: string | null;
+	needs_migration?: boolean;
 }
 
 export interface DatastoreStructure {
@@ -2184,6 +2190,8 @@ export interface DatastoreStructure {
 	pii?: boolean | null;
 	backup?: string | boolean | null;
 	schema_version?: string | number | null;
+	/** Latest migration of the structure, when the backend sends it. */
+	latest_version?: string | number | null;
 	instances: DatastoreInstance[];
 }
 
@@ -2231,6 +2239,18 @@ export async function createDatastoreInstance(
 ): Promise<Record<string, unknown> & { id?: string; name?: string; key?: string; tier?: string }> {
 	const r = await apiPost<Record<string, unknown>>(
 		'/clodia/databases', { action: 'create_instance', ...body }, opts
+	);
+	invalidateApiCache('/clodia/databases');
+	return r ?? {};
+}
+
+/** Admin: retry the schema migration of one instance (#687) — the server
+ *  backs it up first and applies the pending migrations in one transaction. */
+export async function migrateDatastoreInstance(
+	id: string, opts: RequestOptions = {}
+): Promise<Record<string, unknown>> {
+	const r = await apiPost<Record<string, unknown>>(
+		'/clodia/databases', { action: 'migrate_instance', id }, opts
 	);
 	invalidateApiCache('/clodia/databases');
 	return r ?? {};

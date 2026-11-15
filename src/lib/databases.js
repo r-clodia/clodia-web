@@ -256,3 +256,54 @@ export function structuresOf(entries) {
 export function structuresOfPack(structures, pack) {
 	return (structures || []).filter((s) => s.pack === pack);
 }
+
+/**
+ * Who imports an instance, from whatever the backend sends: a list of scope
+ * ids (`imported_by_scopes: [...]`), a bare count (`imported_by_scopes: N`, or
+ * `imported_count`), or nothing. "Nobody" is said only when it is KNOWN —
+ * an empty list or 0 — never because a count was mistaken for a list: before
+ * a delete that would be a dangerous lie.
+ * @param {{imported_by_scopes?: unknown, imported_count?: unknown} | null | undefined} inst
+ * @returns {{scopes: string[] | null, count: number | null, label: string}}
+ *   `scopes` when the list is known; `label` is the text to show when it is not
+ *   (or when it is empty).
+ */
+export function importsOf(inst) {
+	const raw = inst ? inst.imported_by_scopes : undefined;
+	const n = inst && typeof inst.imported_count === 'number' ? inst.imported_count : null;
+	if (Array.isArray(raw)) {
+		const scopes = raw.filter((s) => typeof s === 'string' && s);
+		if (scopes.length) return { scopes, count: scopes.length, label: '' };
+		// An empty list with a positive count = the scopes are not visible to this
+		// person, but they exist.
+		if (n && n > 0) return { scopes: null, count: n, label: importedByLabel(n) };
+		return { scopes, count: 0, label: 'nessuno spazio lo importa' };
+	}
+	const count = typeof raw === 'number' && Number.isFinite(raw) ? raw : n;
+	if (count === null) return { scopes: null, count: null, label: 'spazi che la importano: non noti' };
+	return { scopes: null, count, label: count > 0 ? importedByLabel(count) : 'nessuno spazio lo importa' };
+}
+
+/** @param {number} n */
+function importedByLabel(n) {
+	return `importata da ${n} ${n === 1 ? 'spazio' : 'spazi'}`;
+}
+
+/**
+ * Does an instance need its schema migration retried? (#687, #688)
+ * True when its status says a migration failed / is pending, when the backend
+ * flags it (`migration_failed`, `migration_error`, `needs_migration`), or when
+ * its `schema_version` is behind the structure's latest.
+ * @param {{status?: unknown, schema_version?: unknown, migration_failed?: unknown,
+ *   migration_error?: unknown, needs_migration?: unknown} | null | undefined} inst
+ * @param {{latest_version?: unknown, schema_version?: unknown} | null | undefined} [structure]
+ */
+export function needsMigration(inst, structure) {
+	if (!inst) return false;
+	if (inst.migration_failed || inst.migration_error || inst.needs_migration) return true;
+	if (/migra|schema[_-]?behind/i.test(String(inst.status || ''))) return true;
+	const have = Number(inst.schema_version);
+	const want = Number(structure ? (structure.latest_version ?? structure.schema_version) : NaN);
+	return Number.isFinite(have) && Number.isFinite(want) && inst.schema_version !== null &&
+		inst.schema_version !== undefined && inst.schema_version !== '' && have < want;
+}

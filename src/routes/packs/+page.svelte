@@ -3,6 +3,7 @@
 	import {
 		API_BASE_URL,
 		ApiError,
+		apiErrorDetail,
 		listPacks,
 		listPlugins,
 		importPackUrl,
@@ -17,6 +18,7 @@
 		checkPackUpdate as apiCheckPackUpdate,
 		checkPackDrift as apiCheckPackDrift,
 		getDatastoreStructures,
+		migrateDatastoreInstance,
 		type DatastoreStructure
 	} from '$lib/api/client';
 	import type { AvailablePack, Pack, PackDrift, PackDriftAgent, PackUpdateAllResult, Plugin } from '$lib/api/types';
@@ -256,6 +258,22 @@
 
 	function openCreateInstance(s: DatastoreStructure) {
 		creatingFor = s;
+	}
+
+	// Retry a failed / pending schema migration of one instance (admin, #687).
+	let migratingInstance = '';
+	async function retryMigration(id: string) {
+		if (migratingInstance) return;
+		migratingInstance = id;
+		try {
+			await migrateDatastoreInstance(id);
+			toastSuccess(`Migrato: ${id}`);
+		} catch (err) {
+			toastError('Migrazione fallita', apiErrorDetail(err));
+		} finally {
+			migratingInstance = '';
+			await loadStructures();
+		}
 	}
 
 	async function onInstanceCreated(id: string) {
@@ -707,7 +725,9 @@
 								</div>
 							{/if}
 							<PackDatastores structures={structuresOfPack(structures, p.name)} admin={canCreateDb}
-								highlight={justCreated} on:create={(e) => openCreateInstance(e.detail)} />
+								highlight={justCreated} migrating={migratingInstance}
+								on:create={(e) => openCreateInstance(e.detail)}
+								on:migrate={(e) => retryMigration(e.detail)} />
 							{#if !p.agents.length && !p.plugins.length && !structuresOfPack(structures, p.name).length}
 								<div class="child empty-child">pack vuoto</div>
 							{/if}

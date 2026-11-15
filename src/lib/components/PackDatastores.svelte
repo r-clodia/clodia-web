@@ -9,14 +9,16 @@
 	 */
 	import { createEventDispatcher } from 'svelte';
 	import type { DatastoreStructure } from '$lib/api/client';
-	import { datastoreHref, scopeHref } from '$lib/databases.js';
+	import { datastoreHref, importsOf, needsMigration, scopeHref } from '$lib/databases.js';
 
 	export let structures: DatastoreStructure[] = [];
 	export let admin = false;
 	/** Id of an instance just created here, highlighted until the next one. */
 	export let highlight = '';
+	/** Id of an instance whose migration is being retried. */
+	export let migrating = '';
 
-	const dispatch = createEventDispatcher<{ create: DatastoreStructure }>();
+	const dispatch = createEventDispatcher<{ create: DatastoreStructure; migrate: string }>();
 
 	function piiLabel(v: boolean | null | undefined): string {
 		return v ? 'PII' : '';
@@ -44,19 +46,32 @@
 				{#if s.instances.length}
 					<ul class="pd-instances">
 						{#each s.instances as i (i.id)}
+							{@const imp = importsOf(i)}
 							<li class:pd-new={i.id === highlight}>
 								<a class="pd-inst" href={datastoreHref(i.id)} title="Apri {i.id} in Databases">
 									<span class="pd-inst-name">{s.name} · {i.name}</span>
 								</a>
 								<span class="pd-tag tier">{i.tier}</span>
-								{#if i.status && i.status !== 'active'}<span class="pd-tag warn">{i.status}</span>{/if}
+								{#if i.status && i.status !== 'active' && !needsMigration(i, s)}<span class="pd-tag warn">{i.status}</span>{/if}
 								{#if i.id === highlight}<span class="pd-tag ok">nuovo</span>{/if}
+								{#if needsMigration(i, s)}
+									<span class="pd-tag warn" title={i.migration_error || 'Lo schema è indietro rispetto alla struttura: il db non viene servito finché non è migrato'}>
+										migrazione da completare{i.schema_version != null && i.schema_version !== '' ? ` (schema v${i.schema_version})` : ''}
+									</span>
+									{#if admin}
+										<button type="button" class="pd-create" disabled={migrating === i.id}
+											title="Backup del db, poi le migrazioni mancanti in un'unica transazione"
+											on:click={() => dispatch('migrate', i.id)}>{migrating === i.id ? 'Migro…' : 'Riprova migrazione'}</button>
+									{/if}
+								{/if}
 								<span class="pd-scopes">
-									{#each i.imported_by_scopes ?? [] as sc (sc)}
-										<a href={scopeHref(sc)} title="importato in {sc}">{sc}</a>
+									{#if imp.scopes && imp.scopes.length}
+										{#each imp.scopes as sc (sc)}
+											<a href={scopeHref(sc)} title="importato in {sc}">{sc}</a>
+										{/each}
 									{:else}
-										<span class="pd-muted">nessuno spazio lo importa</span>
-									{/each}
+										<span class="pd-muted">{imp.label}</span>
+									{/if}
 								</span>
 							</li>
 						{/each}
