@@ -2187,15 +2187,28 @@ export interface DatastoreStructure {
 	instances: DatastoreInstance[];
 }
 
+export interface DatastoreStructures {
+	structures: DatastoreStructure[];
+	/** The caller's clearance (`SEAL-n`); null when the backend does not say. */
+	caller_clearance: string | null;
+	/** Whether the caller is an admin; null when the backend does not say. */
+	is_admin: boolean | null;
+}
+
 /** GET `/clodia/databases/structures` — structures of the installed packs
- *  with their instances. `null` when the backend predates #685 (404/405):
- *  the caller hides the section instead of showing an error. */
+ *  with their instances, plus the caller's clearance and admin flag. `null`
+ *  when the backend predates #685 (404/405): the caller hides the section
+ *  instead of showing an error. Missing fields come back as null, never guessed. */
 export async function getDatastoreStructures(
 	opts: RequestOptions = {}
-): Promise<DatastoreStructure[] | null> {
+): Promise<DatastoreStructures | null> {
 	try {
-		const r = await apiGet<{ structures?: DatastoreStructure[] }>('/clodia/databases/structures', opts);
-		return (r && r.structures) || [];
+		const r = await apiGet<Partial<DatastoreStructures>>('/clodia/databases/structures', opts);
+		return {
+			structures: Array.isArray(r?.structures) ? r.structures : [],
+			caller_clearance: typeof r?.caller_clearance === 'string' && r.caller_clearance ? r.caller_clearance : null,
+			is_admin: typeof r?.is_admin === 'boolean' ? r.is_admin : null
+		};
 	} catch (e) {
 		if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return null;
 		throw e;
@@ -2223,22 +2236,13 @@ export async function createDatastoreInstance(
 	return r ?? {};
 }
 
-/** Id of a just-created instance, whatever shape the catalogue entry has. */
+/** Id of a just-created instance: the entry's top-level `id`
+ *  (`<pack>/<structure>:<name>`); if absent, the id the request implies. */
 export function createdInstanceId(
 	r: Record<string, unknown> | null | undefined, structure: string, name: string
 ): string {
-	const pick = (o: unknown): string => {
-		if (!o || typeof o !== 'object') return '';
-		const x = o as Record<string, unknown>;
-		for (const k of ['id', 'name']) {
-			const v = x[k];
-			if (typeof v === 'string' && v.includes(':') && v.includes('/')) return v;
-		}
-		const key = x.key;
-		if (typeof key === 'string' && key.startsWith('datastore:')) return key.slice('datastore:'.length);
-		return '';
-	};
-	return pick(r) || pick(r?.created) || `${structure}:${name}`;
+	const id = r?.id;
+	return typeof id === 'string' && id ? id : `${structure}:${name}`;
 }
 
 /** Admin: a new empty RAG collection. */

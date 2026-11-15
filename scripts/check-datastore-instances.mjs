@@ -96,7 +96,10 @@ const CLIENT = 'src/lib/api/client.ts';
 const packs = leggiSorgente(PACKS, failures, 'pack page');
 if (packs !== null) {
 	const src = senzaCommenti(packs);
-	if (!/<PackDatastores\b[^>]*admin=\{\$isAdmin\}/.test(src)) failures.push(`${PACKS}: PackDatastores not rendered with admin={$isAdmin}`);
+	if (!/<PackDatastores\b[^>]*admin=\{canCreateDb\}/.test(src)) failures.push(`${PACKS}: PackDatastores not rendered with admin={canCreateDb}`);
+	if (!/canCreateDb = structuresAdmin \?\? \$isAdmin/.test(src)) failures.push(`${PACKS}: admin flag not read from the structures response (with $isAdmin fallback)`);
+	if (!/myClearance = r \? r\.caller_clearance/.test(src)) failures.push(`${PACKS}: clearance not read from the structures response`);
+	if (/getAgents\(/.test(src)) failures.push(`${PACKS}: clearance must come from the structures response, not /api/agents`);
 	if (!/<CreateInstanceDialog\b/.test(src)) failures.push(`${PACKS}: no CreateInstanceDialog`);
 	if (!/getDatastoreStructures\(/.test(src)) failures.push(`${PACKS}: structures not loaded`);
 	if (!/clearance/.test(src)) failures.push(`${PACKS}: the person's clearance is not passed to the dialog`);
@@ -128,6 +131,7 @@ if (client !== null) {
 	if (!/action: 'create_instance'/.test(src)) failures.push(`${CLIENT}: create_instance action missing`);
 	if (!/'\/clodia\/databases\/structures'/.test(src)) failures.push(`${CLIENT}: structures route missing`);
 	if (!/e\.status === 404/.test(src)) failures.push(`${CLIENT}: an older backend (404) is not tolerated`);
+	if (!/caller_clearance/.test(src) || !/is_admin: typeof r\?\.is_admin === 'boolean'/.test(src)) failures.push(`${CLIENT}: caller_clearance / is_admin not read from the structures response`);
 }
 
 const cat = leggiSorgente(CAT, failures, 'catalogue');

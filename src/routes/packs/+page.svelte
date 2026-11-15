@@ -16,7 +16,6 @@
 		updateAllPacks as apiUpdateAllPacks,
 		checkPackUpdate as apiCheckPackUpdate,
 		checkPackDrift as apiCheckPackDrift,
-		getAgents,
 		getDatastoreStructures,
 		type DatastoreStructure
 	} from '$lib/api/client';
@@ -28,7 +27,7 @@
 	import { structuresOfPack } from '$lib/databases.js';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
-	import { isAdmin, me } from '$lib/stores/capabilities';
+	import { isAdmin } from '$lib/stores/capabilities';
 	import { askWainston } from '$lib/stores/helpdesk';
 
 	// Apre il widget di assistenza (steward/sysadmin) chiedendo il setup del pack:
@@ -235,33 +234,27 @@
 	// `structures` stays null and nothing is said about a feature it lacks.
 	let structures: DatastoreStructure[] | null = null;
 	let creatingFor: DatastoreStructure | null = null;
+	// Clearance and admin flag come with the structures response (the server
+	// that decides them). Safe fallbacks when a backend omits them: no
+	// clearance → the dialog offers no tier; no flag → the instance's admin list.
 	let myClearance: string | null = null;
+	let structuresAdmin: boolean | null = null;
 	let justCreated = '';
+	$: canCreateDb = structuresAdmin ?? $isAdmin;
 
 	async function loadStructures() {
 		try {
-			structures = await getDatastoreStructures();
+			const r = await getDatastoreStructures();
+			structures = r ? r.structures : null;
+			myClearance = r ? r.caller_clearance : null;
+			structuresAdmin = r ? r.is_admin : null;
 		} catch (err) {
 			structures = null;
 			toastError('Strutture dati', errorMessage(err).message);
 		}
 	}
 
-	/** The logged-in person's clearance, read from their principal in the
-	 *  registry: the tiers offered for a new instance are ≤ it. */
-	async function loadMyClearance() {
-		const who = me();
-		if (!who) return;
-		try {
-			const agents = await getAgents();
-			myClearance = agents.find((a) => a.name === who)?.clearance ?? null;
-		} catch {
-			myClearance = null;
-		}
-	}
-
-	async function openCreateInstance(s: DatastoreStructure) {
-		if (myClearance === null) await loadMyClearance();
+	function openCreateInstance(s: DatastoreStructure) {
 		creatingFor = s;
 	}
 
@@ -713,7 +706,7 @@
 									{/each}
 								</div>
 							{/if}
-							<PackDatastores structures={structuresOfPack(structures, p.name)} admin={$isAdmin}
+							<PackDatastores structures={structuresOfPack(structures, p.name)} admin={canCreateDb}
 								highlight={justCreated} on:create={(e) => openCreateInstance(e.detail)} />
 							{#if !p.agents.length && !p.plugins.length && !structuresOfPack(structures, p.name).length}
 								<div class="child empty-child">pack vuoto</div>
