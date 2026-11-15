@@ -65,11 +65,18 @@
 	$: indexCollection = status?.collection || topicIndex?.collection || '';
 	$: job = status?.job;
 	$: jobRunning = job?.state === 'indexing' || job?.state === 'deindexing';
-	$: jobLabel = !jobRunning
-		? ''
-		: `${job?.state === 'indexing' ? 'Indicizzazione' : 'Deindicizzazione'} in corso` +
-			(job?.total ? ` · ${job?.done ?? 0}/${job.total}` : '…');
-	$: dispatch('indexjob', { running: jobRunning, label: jobLabel });
+	// The periodic passes after the job (#689): 15 files per pass, so a big
+	// room stays «in corso» well after the toggle's job has ended.
+	$: progress = indexEnabled ? (status?.progress ?? null) : null;
+	$: passPending = !jobRunning && progress?.pending === true;
+	$: progressLabel = progress ? `${progress.indexed}/${progress.expected} file` : '';
+	$: jobLabel = jobRunning
+		? `${job?.state === 'indexing' ? 'Indicizzazione' : 'Deindicizzazione'} in corso` +
+			(job?.total ? ` · ${job?.done ?? 0}/${job.total}` : '…')
+		: passPending
+			? `Indicizzazione in corso · ${progressLabel}`
+			: '';
+	$: dispatch('indexjob', { running: jobRunning || passPending, label: jobLabel });
 
 	/** True while this panel has seen a job running: when it ends, the page
 	 *  reloads the meta (the collection may have changed). */
@@ -87,9 +94,15 @@
 		if (running) {
 			wasRunning = true;
 			if (!destroyed) pollTimer = setTimeout(() => void loadStatus(), 2000);
-		} else if (wasRunning) {
-			wasRunning = false;
-			dispatch('changed');
+		} else {
+			if (wasRunning) {
+				wasRunning = false;
+				dispatch('changed');
+			}
+			// Periodic passes still at work (#689): one pass every few minutes,
+			// so a slow poll is enough to see the count move.
+			if (status?.on && status?.progress?.pending && !destroyed)
+				pollTimer = setTimeout(() => void loadStatus(), 60000);
 		}
 	}
 
@@ -224,9 +237,25 @@
 					on:click={() => void switchIndex(indexEnabled)}>Riprova</button>
 			{/if}
 		</p>
+	{:else if indexEnabled && passPending && progress}
+		<p class="index-job" role="status">
+			<span class="spinner" aria-hidden="true"></span>{jobLabel}
+			<progress max={progress.expected || 1} value={progress.indexed}></progress>
+		</p>
+		<p class="muted">
+			Un lotto di file ogni pochi minuti; ultimo passaggio
+			{new Date(progress.at).toLocaleTimeString()}. I messaggi sono indicizzati dal
+			{status?.since ? new Date(status.since).toLocaleString() : 'momento dell\'attivazione'}.
+		</p>
 	{:else if indexEnabled}
 		<p class="muted">
-			Indicizzati tutti i file del canale (Drive collegato compreso) e i messaggi dal
+			{#if progress}
+				Indicizzati {progressLabel} del canale (Drive collegato compreso),
+				ultimo controllo {new Date(progress.at).toLocaleString()};
+			{:else}
+				File del canale in attesa del primo passaggio di indicizzazione;
+			{/if}
+			messaggi dal
 			{status?.since ? new Date(status.since).toLocaleString() : 'momento dell\'attivazione'}.
 		</p>
 	{:else}

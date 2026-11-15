@@ -2570,11 +2570,22 @@ export interface TopicIndexJob {
 	finished_at?: string | null;
 }
 
+/** How far the room's index is, as the last periodic pass saw it (#689):
+ *  `indexed` of `expected` documents (room files + linked Drive files). */
+export interface TopicIndexProgress {
+	expected: number;
+	indexed: number;
+	pending: boolean;
+	at: string;
+}
+
 export interface TopicIndexStatus {
 	on: boolean;
 	collection: string;
 	since: string;
 	job: TopicIndexJob;
+	/** `null` while the index is off or before its first pass (#689). */
+	progress?: TopicIndexProgress | null;
 }
 
 /** Any person of the room: the toggle and its running job (#648). */
