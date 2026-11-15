@@ -26,11 +26,14 @@
 		dateLabel,
 		entryHref,
 		filterEntries,
+		instanceLabel,
 		originLabel,
 		packsOf,
+		parseInstanceId,
 		scopeHref,
 		sizeLabel,
 		statusLabel,
+		structuresOf,
 		validName
 	} from '$lib/databases.js';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
@@ -53,11 +56,16 @@
 	let fKind = '';
 	let fPack = '';
 	let fTier = '';
+	let fStructure = '';
 	let fQ = '';
 
 	$: admin = !!cat?.is_admin;
-	$: shown = cat ? filterEntries(cat.entries, { kind: fKind, pack: fPack, tier: fTier, q: fQ }) : [];
+	$: shown = cat ? filterEntries(cat.entries, { kind: fKind, pack: fPack, tier: fTier, structure: fStructure, q: fQ }) : [];
 	$: packs = cat ? packsOf(cat.entries) : [];
+	// Instances of pack structures (#688): `<pack>/<structure>:<name>`, shown
+	// as `<structure> · <name>` with their origin pack; filterable by structure.
+	$: structures = cat ? structuresOf(cat.entries) : [];
+	$: if (fStructure && !structures.includes(fStructure)) fStructure = '';
 
 	async function load() {
 		loading = true;
@@ -237,6 +245,12 @@
 			<option value="">Tutti i tier</option>
 			{#each TIERS as t (t)}<option value={t}>{t}</option>{/each}
 		</select>
+		{#if structures.length}
+			<select bind:value={fStructure} aria-label="Struttura">
+				<option value="">Tutte le strutture</option>
+				{#each structures as st (st)}<option value={st}>{st}</option>{/each}
+			</select>
+		{/if}
 		<input type="search" placeholder="Cerca per nome…" bind:value={fQ} />
 		{#if cat && !cat.rag_available}
 			<span class="db-error">Servizio RAG non raggiungibile: le collection potrebbero mancare.</span>
@@ -269,7 +283,7 @@
 						{#each shown as e (e.key)}
 							<tr>
 								<td title={e.kind === 'rag' ? 'Collection RAG' : 'Datastore'}>{glyph(e)}</td>
-								<td class="mono"><a href={entryHref(e, admin)}>{e.name}</a>{#if e.pii} <span class="db-tag">PII</span>{/if}</td>
+								<td class="mono"><a href={entryHref(e, admin)} title={e.name}>{instanceLabel(e)}</a>{#if e.pii} <span class="db-tag">PII</span>{/if}</td>
 								<td>{originLabel(e)}</td>
 								<td><span class="db-tag tier">{e.tier}</span></td>
 								<td><span class="db-tag st-{e.status}">{statusLabel(e.status)}</span></td>
@@ -289,8 +303,10 @@
 						<div class="db-card-head">
 							<span class="db-glyph" aria-hidden="true">{glyph(e)}</span>
 							<div>
-								<div class="db-name"><a href={entryHref(e, admin)}>{e.name}</a></div>
-								<div class="db-small">{e.kind === 'rag' ? 'Collection RAG' : 'Datastore'} · {originLabel(e)}</div>
+								<div class="db-name"><a href={entryHref(e, admin)} title={e.name}>{instanceLabel(e)}</a></div>
+								<div class="db-small">
+									{e.kind === 'rag' ? 'Collection RAG' : parseInstanceId(e.name) ? 'Istanza' : 'Datastore'} · {originLabel(e)}
+								</div>
 							</div>
 						</div>
 						{#if e.purpose}<div class="db-small">{e.purpose}</div>{/if}

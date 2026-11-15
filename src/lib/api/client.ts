@@ -2159,6 +2159,88 @@ export async function createDatastore(
 	return apiPost('/clodia/databases', { action: 'create_datastore', ...body }, opts);
 }
 
+// ── Datastore structures and instances (clodia-platform#684, #685, #688) ──
+// A pack declares structures (`<pack>/<structure>`), never databases; every
+// structure is multi-instance (`<pack>/<structure>:<name>`). An instance is
+// created only explicitly ("Crea db", admin) and is then an ordinary
+// catalogue datastore, imported into scopes like any other.
+
+export interface DatastoreInstance {
+	/** `"<pack>/<structure>:<name>"` — the catalogue name of the datastore. */
+	id: string;
+	name: string;
+	tier: string;
+	/** Scopes importing it (`"SEAL-2/name"`, `"job:7"`). */
+	imported_by_scopes: string[];
+	status?: string;
+}
+
+export interface DatastoreStructure {
+	/** `"<pack>/<structure>"`. */
+	id: string;
+	pack: string;
+	name: string;
+	purpose?: string | null;
+	pii?: boolean | null;
+	backup?: string | boolean | null;
+	schema_version?: string | number | null;
+	instances: DatastoreInstance[];
+}
+
+/** GET `/clodia/databases/structures` — structures of the installed packs
+ *  with their instances. `null` when the backend predates #685 (404/405):
+ *  the caller hides the section instead of showing an error. */
+export async function getDatastoreStructures(
+	opts: RequestOptions = {}
+): Promise<DatastoreStructure[] | null> {
+	try {
+		const r = await apiGet<{ structures?: DatastoreStructure[] }>('/clodia/databases/structures', opts);
+		return (r && r.structures) || [];
+	} catch (e) {
+		if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return null;
+		throw e;
+	}
+}
+
+/** Admin: a new empty instance of a pack structure. The server checks the
+ *  name, that the tier is ≤ the caller's clearance and that the structure
+ *  belongs to an installed pack; purpose/pii/backup default to the structure's. */
+export async function createDatastoreInstance(
+	body: {
+		structure: string;
+		name: string;
+		tier: string;
+		purpose?: string;
+		pii?: boolean;
+		backup?: string | boolean;
+	},
+	opts: RequestOptions = {}
+): Promise<Record<string, unknown> & { id?: string; name?: string; key?: string; tier?: string }> {
+	const r = await apiPost<Record<string, unknown>>(
+		'/clodia/databases', { action: 'create_instance', ...body }, opts
+	);
+	invalidateApiCache('/clodia/databases');
+	return r ?? {};
+}
+
+/** Id of a just-created instance, whatever shape the catalogue entry has. */
+export function createdInstanceId(
+	r: Record<string, unknown> | null | undefined, structure: string, name: string
+): string {
+	const pick = (o: unknown): string => {
+		if (!o || typeof o !== 'object') return '';
+		const x = o as Record<string, unknown>;
+		for (const k of ['id', 'name']) {
+			const v = x[k];
+			if (typeof v === 'string' && v.includes(':') && v.includes('/')) return v;
+		}
+		const key = x.key;
+		if (typeof key === 'string' && key.startsWith('datastore:')) return key.slice('datastore:'.length);
+		return '';
+	};
+	return pick(r) || pick(r?.created) || `${structure}:${name}`;
+}
+
 /** Admin: a new empty RAG collection. */
 export async function createCollection(
 	body: { name: string; tier: string; description?: string },

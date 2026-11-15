@@ -9,6 +9,7 @@
 	import { createEventDispatcher } from 'svelte';
 	import { catalogLabel, type DataCatalogEntry } from '$lib/api/client';
 	import Modal from '$lib/components/Modal.svelte';
+	import { parseInstanceId } from '$lib/databases.js';
 
 	export let entries: DataCatalogEntry[] = [];
 	export let disabled = false;
@@ -17,6 +18,11 @@
 
 	const key = (e: DataCatalogEntry) => `${e.kind}:${e.name}`;
 	const kindLabel = (e: DataCatalogEntry) => (e.kind === 'rag' ? 'RAG' : 'DB');
+	// An instance of a pack structure (#688) is listed by its id
+	// `<pack>/<structure>:<name>` with its structure beside it: two instances
+	// of the same structure (e.g. two companies' books) must be told apart.
+	const structureLabel = (e: DataCatalogEntry) =>
+		(e.kind === 'datastore' && parseInstanceId(e.name)?.structureId) || '';
 
 	let open = false;
 	let query = '';
@@ -24,7 +30,7 @@
 
 	$: q = query.trim().toLowerCase();
 	$: list = entries
-		.filter((e) => !q || [catalogLabel(e), e.name, e.tier, kindLabel(e), e.topic ?? '']
+		.filter((e) => !q || [catalogLabel(e), e.name, e.tier, kindLabel(e), e.topic ?? '', structureLabel(e)]
 			.some((s) => s.toLowerCase().includes(q)))
 		.sort((a, b) => catalogLabel(a).localeCompare(catalogLabel(b)));
 	$: count = picked.size;
@@ -59,6 +65,8 @@
 	<div class="body">
 		<p class="muted wrap">
 			Raccolte RAG (anche l'indice di un altro topic) e database che puoi importare qui.
+			I database creati da una struttura di un pack compaiono col loro id
+			(<code>pack/struttura:nome</code>) e la struttura.
 			I topic archiviati non compaiono.
 		</p>
 		<input class="search" type="search" placeholder="Cerca per nome, topic, tier…"
@@ -73,6 +81,9 @@
 						<input type="checkbox" checked={picked.has(key(e))} on:change={() => toggle(e)} />
 						<span class="kind kind-{e.kind}">{kindLabel(e)}</span>
 						<span class="label">{catalogLabel(e)}</span>
+						{#if structureLabel(e)}
+							<span class="struct" title="Struttura dati del pack">struttura {structureLabel(e)}</span>
+						{/if}
 						<span class="muted">· {e.tier}</span>
 					</label>
 				</li>
@@ -109,6 +120,10 @@
 	.kind {
 		font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 999px;
 		border: 1px solid var(--border); white-space: nowrap; flex-shrink: 0;
+	}
+	.struct {
+		font-size: 10px; color: var(--fg-muted); border: 1px dashed var(--border);
+		border-radius: 999px; padding: 0 6px; white-space: nowrap; flex-shrink: 0;
 	}
 	.kind-rag { color: #a855f7; border-color: rgba(168, 85, 247, 0.5); }
 	.kind-datastore { color: #0ea5e9; border-color: rgba(14, 165, 233, 0.5); }

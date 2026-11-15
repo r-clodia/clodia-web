@@ -32,22 +32,34 @@ export function visibleEntries(entries) {
 /** Origin label: the pack, or "piattaforma" for resources created here.
  * @param {Entry} entry */
 export function originLabel(entry) {
-	return entry && entry.pack ? entry.pack : 'piattaforma';
+	return packOf(entry) || 'piattaforma';
+}
+
+/** The pack an entry comes from: its `pack`, else (an instance listed by a
+ * backend that does not fill `pack`) the pack of its id; '' = the platform.
+ * @param {Entry | null | undefined} entry */
+export function packOf(entry) {
+	if (!entry) return '';
+	if (entry.pack) return entry.pack;
+	const p = entry.kind !== 'rag' ? parseInstanceId(entry.name) : null;
+	return p ? p.pack : '';
 }
 
 /**
  * @template {Entry} T
  * @param {T[]} entries
- * @param {{kind?: string, pack?: string, tier?: string, q?: string}} f
+ * @param {{kind?: string, pack?: string, tier?: string, structure?: string, q?: string}} f
  *   `pack`: '' = all, '@platform' = created on the platform, else a pack name.
+ *   `structure`: '' = all, else a structure id `<pack>/<structure>` (#688).
  * @returns {T[]}
  */
 export function filterEntries(entries, f = {}) {
 	const q = String(f.q || '').trim().toLowerCase();
 	return visibleEntries(entries).filter((e) => {
 		if (f.kind && e.kind !== f.kind) return false;
-		if (f.pack === '@platform' && e.pack) return false;
-		if (f.pack && f.pack !== '@platform' && e.pack !== f.pack) return false;
+		if (f.structure && structureOf(e) !== f.structure) return false;
+		if (f.pack === '@platform' && packOf(e)) return false;
+		if (f.pack && f.pack !== '@platform' && packOf(e) !== f.pack) return false;
 		if (f.tier && e.tier !== f.tier) return false;
 		if (q && !String(e.name).toLowerCase().includes(q) &&
 			!String(e.purpose || '').toLowerCase().includes(q)) return false;
@@ -61,7 +73,10 @@ export function filterEntries(entries, f = {}) {
 export function packsOf(entries) {
 	/** @type {Set<string>} */
 	const out = new Set();
-	for (const e of visibleEntries(entries)) if (e.pack) out.add(e.pack);
+	for (const e of visibleEntries(entries)) {
+		const p = packOf(e);
+		if (p) out.add(p);
+	}
 	return [...out].sort();
 }
 
@@ -152,4 +167,92 @@ export function uploadProblem(file, maxBytes) {
 	if (maxBytes && file.size > maxBytes) return `file troppo grande (max ${bytesLabel(maxBytes)})`;
 	if (!file.size) return 'file vuoto';
 	return '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Datastore STRUCTURES and INSTANCES (clodia-platform#684, #688). A pack
+// declares structures (`<pack>/<structure>`: schema + migrations), never
+// databases; each structure has any number of instances
+// (`<pack>/<structure>:<name>`), created explicitly with "Crea db".
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Instance name rule (same as the server, #685). */
+export const INSTANCE_NAME_RE = /^[a-z0-9][a-z0-9-]{0,40}$/;
+
+/** @param {string} name */
+export function validInstanceName(name) {
+	return INSTANCE_NAME_RE.test(String(name || ''));
+}
+
+/** Why an instance name is refused ('' when it is fine). Live feedback for the dialog.
+ * @param {string} name @param {string[]} [taken] names already used in the structure */
+export function instanceNameProblem(name, taken = []) {
+	const n = String(name || '');
+	if (!n) return 'nome obbligatorio';
+	if (n.length > 41) return 'massimo 41 caratteri';
+	if (!/^[a-z0-9]/.test(n)) return 'deve iniziare con una minuscola o una cifra';
+	if (!INSTANCE_NAME_RE.test(n)) return 'solo minuscole, cifre e «-»';
+	if (taken.includes(n)) return 'esiste già un db con questo nome per questa struttura';
+	return '';
+}
+
+/** Legacy P0–P3 are SEAL-0…SEAL-3 (retro-compatibility of the tier scale). */
+/** @param {string | null | undefined} t */
+export function normalizeTier(t) {
+	const s = String(t || '').trim().toUpperCase();
+	const p = /^P([0-4])$/.exec(s);
+	if (p) return `SEAL-${p[1]}`;
+	return TIERS.includes(s) ? s : '';
+}
+
+/** Tiers the person may give a new instance: ≤ their clearance. Unknown
+ * clearance → [] (the caller says why; the server decides anyway).
+ * @param {string | null | undefined} clearance */
+export function tiersUpTo(clearance) {
+	const c = normalizeTier(clearance);
+	if (!c) return [];
+	return TIERS.slice(0, TIERS.indexOf(c) + 1);
+}
+
+/** `"<pack>/<structure>:<name>"` → its parts; null for anything else
+ * (a platform datastore, a legacy `<pack>/<name>`, a collection).
+ * @param {string | null | undefined} id */
+export function parseInstanceId(id) {
+	const m = /^([^/:]+)\/([^/:]+):([^/:]+)$/.exec(String(id || ''));
+	return m ? { pack: m[1], structure: m[2], name: m[3], structureId: `${m[1]}/${m[2]}` } : null;
+}
+
+/** Catalogue label: `<structure> · <name>` for an instance, else the name.
+ * @param {{kind?: string, name: string}} entry */
+export function instanceLabel(entry) {
+	const p = entry && entry.kind !== 'rag' ? parseInstanceId(entry.name) : null;
+	return p ? `${p.structure} · ${p.name}` : entry ? entry.name : '';
+}
+
+/** Structure id (`<pack>/<structure>`) of a catalogue entry, '' if not an instance.
+ * @param {{kind?: string, name: string}} entry */
+export function structureOf(entry) {
+	const p = entry && entry.kind !== 'rag' ? parseInstanceId(entry.name) : null;
+	return p ? p.structureId : '';
+}
+
+/** Distinct structures of the catalogue, sorted.
+ * @param {Entry[]} entries
+ * @returns {string[]} */
+export function structuresOf(entries) {
+	/** @type {Set<string>} */
+	const out = new Set();
+	for (const e of visibleEntries(entries)) {
+		const s = structureOf(e);
+		if (s) out.add(s);
+	}
+	return [...out].sort();
+}
+
+/** Structures declared by one pack (from `GET /clodia/databases/structures`).
+ * @template {{pack: string}} S
+ * @param {S[] | null | undefined} structures @param {string} pack
+ * @returns {S[]} */
+export function structuresOfPack(structures, pack) {
+	return (structures || []).filter((s) => s.pack === pack);
 }

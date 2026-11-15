@@ -20,7 +20,7 @@
 	import DeleteResourceDialog from '$lib/components/DeleteResourceDialog.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
-	import { TIERS, dateLabel, originLabel, scopeHref, sizeLabel } from '$lib/databases.js';
+	import { TIERS, dateLabel, instanceLabel, originLabel, parseInstanceId, scopeHref, sizeLabel } from '$lib/databases.js';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
 
 	// ─────────────────────────────────────────────────────────────────────────
@@ -36,6 +36,8 @@
 
 	$: key = `${$page.params.pack}/${$page.params.name}`;
 	$: urlScope = $page.url.searchParams.get('scope') || '';
+	// An instance of a pack structure (#688) reads `<structure> · <name>`.
+	$: inst = parseInstanceId(key);
 
 	let entry: DbCatalogueEntry | null = null;
 	let admin = false;
@@ -299,14 +301,19 @@
 </script>
 
 <svelte:head>
-	<title>{key} · Databases</title>
+	<title>{instanceLabel({ kind: 'datastore', name: key })} · Databases</title>
 </svelte:head>
 
 <div class="db-page">
-	<div class="db-crumbs"><a href="/databases">Databases</a> › datastore</div>
+	<div class="db-crumbs"><a href="/databases">Databases</a> › {inst ? 'istanza' : 'datastore'}</div>
 	<header class="db-head">
 		<div>
-			<h1 class="db-name" style="font-size:1.3rem">🗄️ {key}</h1>
+			<h1 class="db-name" style="font-size:1.3rem" title={key}>🗄️ {instanceLabel({ kind: 'datastore', name: key })}</h1>
+			{#if inst}
+				<div class="db-small">
+					Istanza <code>{key}</code> della struttura <code>{inst.structureId}</code> · pack <a href="/packs">{inst.pack}</a>
+				</div>
+			{/if}
 			{#if entry}
 				<div class="db-meta">
 					<span>{originLabel(entry)}</span>
