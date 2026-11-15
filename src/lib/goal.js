@@ -26,7 +26,7 @@ export const STATI_OBIETTIVO = Object.freeze([
  *  l'utente chiede, mentre la risposta di un agente è già l'esecuzione di
  *  qualcosa. Pinnarla farebbe eseguire a Clodia il proprio riassunto.
  */
-const GENERI_UMANI = Object.freeze(['human', 'telegram', 'proxy']);
+const GENERI_UMANI = Object.freeze(['human', 'proxy']);
 
 /**
  * Il bottone «fissa come obiettivo» va su questa bolla?

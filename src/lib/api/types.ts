@@ -71,15 +71,9 @@ export interface Agent {
 	readonly description?: string;
 	/** Categoria KYA: super (clodia/ophelia, poteri pieni) | normal (worker) | human. */
 	readonly type?: 'super' | 'normal' | 'bot' | 'human' | 'proxy';
-	/** Canali di contatto derivati (email/telegram). Scheda agent E lista.
-	 *  `telegram_delivers` lo decide il server: solo il chat_id numerico è un
-	 *  destinatario (`sendMessage` risolve `@nome` per i canali, mai per una
-	 *  persona). Non ridedurlo qui: due copie della regola sono il modo in cui
-	 *  una schermata dice «raggiungibile» mentre la notifica cade per terra. */
+	/** Derived contact channels (email). Agent card AND list. */
 	readonly contact_channels?: {
 		email?: string | null;
-		telegram?: string | null;
-		telegram_delivers?: boolean;
 	};
 	/** Riferimento alla costituzione (constitution-catalog) fusa nel system prompt
 	 *  al materialize. null/assente = nessuna costituzione. Es. "platform-core". */
@@ -142,7 +136,6 @@ export interface Agent {
 	readonly clearance?: string | null;
 	/** Canali di contatto espliciti (editabili dall'admin). */
 	readonly email?: string | null;
-	readonly telegram?: string | null;
 	/** Super genitore per il subaddress email dei regular (default clodia). */
 	readonly mailbox_parent?: string | null;
 	/** Priorità di selezione (default server-side: 100). */

@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * GATE DECISION — /gate/{token}. Pagina SENZA login: il token firmato
-	 * one-time (dalla notifica Telegram/email) autorizza la sola decisione di
+	 * one-time (dal link della notifica) autorizza la sola decisione di
 	 * questo gate. Mostra artefatto + riepilogo + pills go/nogo + campo commento.
 	 */
 	import { onMount } from 'svelte';

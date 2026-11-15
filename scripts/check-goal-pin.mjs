@@ -46,7 +46,6 @@ if (goal) {
 			['la stessa richiesta, ma non sono owner → niente bottone', { kind: 'human', text: 'porta il sito live' }, { isOwner: false }, false],
 			['risposta di un agente → MAI un obiettivo', { kind: 'ai', text: 'ho fatto' }, { isOwner: true }, false],
 			['riga di sistema → MAI un obiettivo', { kind: 'system', text: 'obiettivo rimosso' }, { isOwner: true }, false],
-			['messaggio arrivato da Telegram: è pur sempre una persona', { kind: 'telegram', text: 'fai X' }, { isOwner: true }, true],
 			['bolla vuota: non c’è nessun requisito da fissare', { kind: 'human', text: '   ' }, { isOwner: true }, false],
 			['kind assente = messaggio umano (forma legacy)', { text: 'fai X' }, { isOwner: true }, true],
 			['nessun messaggio', null, { isOwner: true }, false]

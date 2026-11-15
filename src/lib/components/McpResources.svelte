@@ -32,7 +32,6 @@
 		gsheets: 'Fogli Google',
 		mailto: 'Destinatari email',
 		mailfrom: 'Mittenti email',
-		tg: 'Chat Telegram',
 		https: 'Siti e repository',
 		http: 'Siti',
 		datastore: 'Archivi dati'
@@ -41,7 +40,6 @@
 		gdrive: 'folder/<id> oppure link della cartella',
 		mailto: 'nome@dominio.it oppure *@dominio.it',
 		mailfrom: 'nome@dominio.it oppure *@dominio.it',
-		tg: 'id della chat (es. -100…)',
 		https: 'github.com/owner/repo oppure URL'
 	};
 

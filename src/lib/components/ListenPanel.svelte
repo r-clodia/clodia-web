@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * The room's «In ascolto» (clodia-platform#675/#680): the sources the room
-	 * listens to — mail senders, Telegram chats, a pack connector's chats — and
+	 * listens to — mail senders, a pack connector's chats — and
 	 * one Add form. Listening = trusted (owner, 12 Nov 2026).
 	 *
 	 * The list is the gateway's, derived from the room's lists and channel
@@ -139,8 +139,8 @@
 	{/if}
 	{#if canEdit && mode === 'add' && !offerti.length}
 		<!-- Clickable even when there is nothing to offer: it says why. -->
-		<p class="hint wrap">Nessun tipo di fonte disponibile: i connettori lo dichiarano dalla
-			versione che supporta «In ascolto» (comms-pack 2.7.0, Packs → Update).</p>
+		<p class="hint wrap">Nessun tipo di fonte disponibile su questa istanza: i mittenti email
+			li offre il gateway stesso, e la posta può essere esclusa dall'edizione.</p>
 	{/if}
 	{#if canEdit && mode === 'remove' && !removibili.length}
 		<p class="hint wrap">Nessuna fonte da togliere: la inbox del canale resta sempre in ascolto.</p>
