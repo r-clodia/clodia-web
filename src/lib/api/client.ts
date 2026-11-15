@@ -2159,6 +2159,112 @@ export async function createDatastore(
 	return apiPost('/clodia/databases', { action: 'create_datastore', ...body }, opts);
 }
 
+// ── Datastore structures and instances (clodia-platform#684, #685, #688) ──
+// A pack declares structures (`<pack>/<structure>`), never databases; every
+// structure is multi-instance (`<pack>/<structure>:<name>`). An instance is
+// created only explicitly ("Crea db", admin) and is then an ordinary
+// catalogue datastore, imported into scopes like any other.
+
+export interface DatastoreInstance {
+	/** `"<pack>/<structure>:<name>"` — the catalogue name of the datastore. */
+	id: string;
+	name: string;
+	tier: string;
+	/** Scopes importing it (`"SEAL-2/name"`, `"job:7"`) — or, on backends
+	 *  that send only a count, that number. Read it through `importsOf`. */
+	imported_by_scopes?: string[] | number;
+	imported_count?: number;
+	status?: string;
+	schema_version?: string | number | null;
+	migration_failed?: boolean;
+	migration_error?: string | null;
+	needs_migration?: boolean;
+}
+
+export interface DatastoreStructure {
+	/** `"<pack>/<structure>"`. */
+	id: string;
+	pack: string;
+	name: string;
+	purpose?: string | null;
+	pii?: boolean | null;
+	backup?: string | boolean | null;
+	schema_version?: string | number | null;
+	/** Latest migration of the structure, when the backend sends it. */
+	latest_version?: string | number | null;
+	instances: DatastoreInstance[];
+}
+
+export interface DatastoreStructures {
+	structures: DatastoreStructure[];
+	/** The caller's clearance (`SEAL-n`); null when the backend does not say. */
+	caller_clearance: string | null;
+	/** Whether the caller is an admin; null when the backend does not say. */
+	is_admin: boolean | null;
+}
+
+/** GET `/clodia/databases/structures` — structures of the installed packs
+ *  with their instances, plus the caller's clearance and admin flag. `null`
+ *  when the backend predates #685 (404/405): the caller hides the section
+ *  instead of showing an error. Missing fields come back as null, never guessed. */
+export async function getDatastoreStructures(
+	opts: RequestOptions = {}
+): Promise<DatastoreStructures | null> {
+	try {
+		const r = await apiGet<Partial<DatastoreStructures>>('/clodia/databases/structures', opts);
+		return {
+			structures: Array.isArray(r?.structures) ? r.structures : [],
+			caller_clearance: typeof r?.caller_clearance === 'string' && r.caller_clearance ? r.caller_clearance : null,
+			is_admin: typeof r?.is_admin === 'boolean' ? r.is_admin : null
+		};
+	} catch (e) {
+		if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return null;
+		throw e;
+	}
+}
+
+/** Admin: a new empty instance of a pack structure. The server checks the
+ *  name, that the tier is ≤ the caller's clearance and that the structure
+ *  belongs to an installed pack; purpose/pii/backup default to the structure's. */
+export async function createDatastoreInstance(
+	body: {
+		structure: string;
+		name: string;
+		tier: string;
+		purpose?: string;
+		pii?: boolean;
+		backup?: string | boolean;
+	},
+	opts: RequestOptions = {}
+): Promise<Record<string, unknown> & { id?: string; name?: string; key?: string; tier?: string }> {
+	const r = await apiPost<Record<string, unknown>>(
+		'/clodia/databases', { action: 'create_instance', ...body }, opts
+	);
+	invalidateApiCache('/clodia/databases');
+	return r ?? {};
+}
+
+/** Admin: retry the schema migration of one instance (#687) — the server
+ *  backs it up first and applies the pending migrations in one transaction. */
+export async function migrateDatastoreInstance(
+	id: string, opts: RequestOptions = {}
+): Promise<Record<string, unknown>> {
+	const r = await apiPost<Record<string, unknown>>(
+		'/clodia/databases', { action: 'migrate_instance', id }, opts
+	);
+	invalidateApiCache('/clodia/databases');
+	return r ?? {};
+}
+
+/** Id of a just-created instance: the entry's top-level `id`
+ *  (`<pack>/<structure>:<name>`); if absent, the id the request implies. */
+export function createdInstanceId(
+	r: Record<string, unknown> | null | undefined, structure: string, name: string
+): string {
+	const id = r?.id;
+	return typeof id === 'string' && id ? id : `${structure}:${name}`;
+}
+
 /** Admin: a new empty RAG collection. */
 export async function createCollection(
 	body: { name: string; tier: string; description?: string },

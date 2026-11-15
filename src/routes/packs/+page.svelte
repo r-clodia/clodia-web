@@ -3,6 +3,7 @@
 	import {
 		API_BASE_URL,
 		ApiError,
+		apiErrorDetail,
 		listPacks,
 		listPlugins,
 		importPackUrl,
@@ -15,11 +16,17 @@
 		updatePack as apiUpdatePack,
 		updateAllPacks as apiUpdateAllPacks,
 		checkPackUpdate as apiCheckPackUpdate,
-		checkPackDrift as apiCheckPackDrift
+		checkPackDrift as apiCheckPackDrift,
+		getDatastoreStructures,
+		migrateDatastoreInstance,
+		type DatastoreStructure
 	} from '$lib/api/client';
 	import type { AvailablePack, Pack, PackDrift, PackDriftAgent, PackUpdateAllResult, Plugin } from '$lib/api/types';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import PluginNode from '$lib/components/PluginNode.svelte';
+	import PackDatastores from '$lib/components/PackDatastores.svelte';
+	import CreateInstanceDialog from '$lib/components/CreateInstanceDialog.svelte';
+	import { structuresOfPack } from '$lib/databases.js';
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import { isAdmin } from '$lib/stores/capabilities';
@@ -213,12 +220,68 @@
 
 	async function load() {
 		state = { kind: 'loading' };
+		void loadStructures();
 		try {
 			const [packs, plugins] = await Promise.all([listPacks(), listPlugins(), loadAvailable()]);
 			state = { kind: 'ok', packs, plugins };
 		} catch (err) {
 			state = { kind: 'error', ...errorMessage(err) };
 		}
+	}
+
+	// --- Strutture dati e istanze (clodia-platform#684, #688) ---
+	// A pack declares datastore STRUCTURES, never databases: each has any
+	// number of instances `<pack>/<structure>:<name>`, created only with
+	// "Crea db" (admin). A backend without the route (404) hides the section:
+	// `structures` stays null and nothing is said about a feature it lacks.
+	let structures: DatastoreStructure[] | null = null;
+	let creatingFor: DatastoreStructure | null = null;
+	// Clearance and admin flag come with the structures response (the server
+	// that decides them). Safe fallbacks when a backend omits them: no
+	// clearance → the dialog offers no tier; no flag → the instance's admin list.
+	let myClearance: string | null = null;
+	let structuresAdmin: boolean | null = null;
+	let justCreated = '';
+	$: canCreateDb = structuresAdmin ?? $isAdmin;
+
+	async function loadStructures() {
+		try {
+			const r = await getDatastoreStructures();
+			structures = r ? r.structures : null;
+			myClearance = r ? r.caller_clearance : null;
+			structuresAdmin = r ? r.is_admin : null;
+		} catch (err) {
+			structures = null;
+			toastError('Strutture dati', errorMessage(err).message);
+		}
+	}
+
+	function openCreateInstance(s: DatastoreStructure) {
+		creatingFor = s;
+	}
+
+	// Retry a failed / pending schema migration of one instance (admin, #687).
+	let migratingInstance = '';
+	async function retryMigration(id: string) {
+		if (migratingInstance) return;
+		migratingInstance = id;
+		try {
+			await migrateDatastoreInstance(id);
+			toastSuccess(`Migrato: ${id}`);
+		} catch (err) {
+			toastError('Migrazione fallita', apiErrorDetail(err));
+		} finally {
+			migratingInstance = '';
+			await loadStructures();
+		}
+	}
+
+	async function onInstanceCreated(id: string) {
+		justCreated = id;
+		toastSuccess(`Creato: ${id}`);
+		await loadStructures();
+		// Keep the dialog's structure in sync (its taken-names list).
+		if (creatingFor) creatingFor = structures?.find((x) => x.id === creatingFor?.id) ?? creatingFor;
 	}
 
 	function togglePack(name: string) {
@@ -237,16 +300,17 @@
 		return `${p.name} ${p.description} ${children.join(' ')} ${mcp.join(' ')}`.toLowerCase();
 	}
 
-	function packText(p: Pack): string {
+	function packText(p: Pack, ds_: DatastoreStructure[] | null): string {
 		const agents = p.agents.map((a) => `${a.name} ${a.description}`);
 		const plugins = p.plugins.map((c) => (isPluginResolved(c) ? pluginText(c) : c.name));
-		return `${p.name} ${p.description} ${agents.join(' ')} ${plugins.join(' ')}`.toLowerCase();
+		const ds = structuresOfPack(ds_, p.name).flatMap((s) => [s.name, s.purpose ?? '', ...s.instances.map((i) => i.name)]);
+		return `${p.name} ${p.description} ${agents.join(' ')} ${plugins.join(' ')} ${ds.join(' ')}`.toLowerCase();
 	}
 
 	// Ricerca cross-livello: un pack/plugin matcha se il testo aggregato dei
 	// suoi discendenti contiene la query; con query attiva i nodi sono espansi.
 	$: q = query.trim().toLowerCase();
-	$: packs = state.kind === 'ok' ? state.packs.filter((p) => !q || packText(p).includes(q)) : [];
+	$: packs = state.kind === 'ok' ? state.packs.filter((p) => !q || packText(p, structures).includes(q)) : [];
 	$: packPluginNames =
 		state.kind === 'ok'
 			? new Set(state.packs.flatMap((p) => p.plugins.map((c) => c.name)))
@@ -259,10 +323,12 @@
 			: [];
 	$: isPackOpen = (name: string) => q !== '' || expandedPacks.has(name);
 
-	function packSummary(p: Pack): string {
+	function packSummary(p: Pack, ds_: DatastoreStructure[] | null): string {
 		const parts: string[] = [];
 		if (p.counts.agents) parts.push(`${p.counts.agents} agent`);
 		if (p.counts.plugins) parts.push(`${p.counts.plugins} plugin`);
+		const ds = structuresOfPack(ds_, p.name).length;
+		if (ds) parts.push(`${ds} ${ds === 1 ? 'struttura dati' : 'strutture dati'}`);
 		return parts.join(' · ') || 'vuoto';
 	}
 
@@ -521,6 +587,10 @@
 	on:cancel={() => (pendingDelete = null)}
 />
 
+<CreateInstanceDialog structure={creatingFor} clearance={myClearance}
+	on:close={() => (creatingFor = null)}
+	on:created={(e) => onInstanceCreated(e.detail.id)} />
+
 <div class="toolbar">
 	<input type="search" bind:value={query} placeholder="Cerca pack, agent, plugin, skill, rule, MCP…" aria-label="Search packs" />
 </div>
@@ -552,7 +622,7 @@
 							<span class="kind-chip">pack</span>
 							<span class="pack-name">{p.name}</span>
 							{#if p.version}<span class="version">v{p.version}</span>{/if}
-							<span class="counts">{packSummary(p)}</span>
+							<span class="counts">{packSummary(p, structures)}</span>
 						</button>
 						<span class="pack-badges">
 							{#if p.license}<span class="lic-badge" title={p.license_note || 'Licenza dichiarata'}>{p.license}</span>
@@ -654,7 +724,11 @@
 									{/each}
 								</div>
 							{/if}
-							{#if !p.agents.length && !p.plugins.length}
+							<PackDatastores structures={structuresOfPack(structures, p.name)} admin={canCreateDb}
+								highlight={justCreated} migrating={migratingInstance}
+								on:create={(e) => openCreateInstance(e.detail)}
+								on:migrate={(e) => retryMigration(e.detail)} />
+							{#if !p.agents.length && !p.plugins.length && !structuresOfPack(structures, p.name).length}
 								<div class="child empty-child">pack vuoto</div>
 							{/if}
 						</div>
