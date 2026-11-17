@@ -3650,8 +3650,9 @@ export async function setTopicListen(
 	return apiPost(`/api/topics/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/listen`, body, opts);
 }
 
-/** The seeds that can orchestrate a room (clodia-platform#667); the first is
- *  the default. */
+/** The FALLBACK order of a room's orchestrator (clodia-platform#667); the
+ *  first is the default. Not an allowlist since #695: any AI participant of
+ *  the room may be chosen. */
 export const ORCHESTRATOR_SEEDS = ['segretario', 'clodia', 'ophelia'] as const;
 
 /** POST `/api/topics/{tier}/{name}/orchestrator` — who orchestrates the room
