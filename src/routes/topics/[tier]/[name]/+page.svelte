@@ -85,6 +85,7 @@
 	import { decideBatch, gateBatch, gateCardState, gateCardVisibile, gateDestination, recordDecision } from '$lib/gateCard';
 	import { CHOICES_RE, leggiChoices, pillsAttive } from '$lib/pillPersistenti';
 	import GateBatchBar from '$lib/components/GateBatchBar.svelte';
+	import GateMatrix from '$lib/components/GateMatrix.svelte';
 	import RetierDialog from '$lib/components/RetierDialog.svelte';
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import { puoDiventareObiettivo, eObiettivoFissato, statoObiettivo, attendeOwner } from '$lib/goal';
@@ -813,7 +814,9 @@
 	type GateInfo = { crosses?: string; decided_by?: string; decider_name?: string;
 	                  scope?: string; asker_role?: string; asker_note?: string;
 	                  /** Fields the approver may correct before approving (#448). */
-	                  editable?: Record<string, unknown> };
+	                  editable?: Record<string, unknown>;
+	                  /** The cells of the approval matrix this gate has (#693). */
+	                  remember?: Record<string, string> };
 	let gateInfo: Record<string, GateInfo> = {};
 	/** Gate ancora APERTI. Serve a distinguere «da decidere» da «già deciso»:
 	 *  senza, dopo un ricarico un gate risolto tornava a mostrare i bottoni,
@@ -839,7 +842,7 @@
 				m[k] = { crosses: q.crosses, decided_by: q.decided_by,
 				         decider_name: q.decider_name, scope: q.scope,
 				         asker_role: q.asker_role, asker_note: q.asker_note,
-				         editable: q.editable };
+				         editable: q.editable, remember: q.remember };
 			}
 			gateInfo = m;
 			gateAperti = aperti;
@@ -904,15 +907,18 @@
 		msgId: string,
 		g: { id: string; agent: string; instance: string; verb: string },
 		approve: boolean,
-		remember: 'once' | 'topic' | 'global' = 'once',
+		cell: { who: 'spawn' | 'seed' | 'all'; where?: 'chat' | 'global' } = { who: 'spawn' },
 		corrections?: Record<string, unknown>
 	) {
 		if (gateDeciding) return;
 		gateDeciding = true;
 		try {
+			// The approval matrix (#693): WHO × WHERE; `spawn` is today's consent.
 			const r = await apiPost<{ memory?: { remembered?: boolean; error?: string } }>(
 				approve ? '/api/gate/approve' : '/api/gate/deny',
-				{ agent: g.agent, instance: g.instance, verb: g.verb, remember,
+				{ agent: g.agent, instance: g.instance, verb: g.verb,
+				  ...(approve ? { who: cell.who, ...(cell.where ? { where: cell.where } : {}) }
+				      : { remember: 'once' }),
 				  ...(approve && corrections ? { arguments: corrections } : {}) });
 			// Se il ricordo non è riuscito, l'approvazione resta valida ma vale
 			// solo per stavolta: dirlo, altrimenti la stessa domanda torna domani
@@ -923,10 +929,10 @@
 				{ id: msgId },
 				!approve ? 'negato'
 					: corrections ? 'approvato con modifiche'
-					: remember === 'once' ? 'approvato'
+					: cell.who === 'spawn' ? 'approvato'
 					: mem && mem.remembered === false ? 'approvato (solo per stavolta)'
-					: remember === 'topic' ? 'approvato e ricordato qui'
-					: 'approvato ovunque'
+					: `approvato e ricordato per ${cell.who === 'seed' ? g.agent : 'tutti gli agenti'}`
+						+ (cell.where === 'chat' ? ' in questa stanza' : ' in tutte le stanze')
 			);
 			if (mem && mem.remembered === false && mem.error) loadErr = mem.error;
 		} catch (e) {
@@ -2744,8 +2750,10 @@
 									{:else}
 										<span class="jobprop-q">🛡️ <b>{g.agent}</b> {gateLabel(g.verb).azione} <code>{gateLabel(g.verb).oggetto}</code> — approvi?</span>
 									{/if}
-									<button type="button" class="jobprop-ok" disabled={gateDeciding}
-										on:click={() => decideGate(m.id, g, true)}>{gateDeciding ? '…' : isDestinationGate(g.verb) ? '✓ Approva ora' : '✓ Approva'}</button>
+									<GateMatrix compact agent={g.agent} instance={g.instance} verb={g.verb}
+										cells={gateInfo[g.id]?.remember} hasRoom isAdmin={$isAdmin}
+										busy={gateDeciding}
+										on:decide={(e) => decideGate(m.id, g, true, e.detail)} />
 									{#if !isDestinationGate(g.verb) && gateInfo[g.id]?.editable}
 										<!-- Approve WITH CORRECTIONS (clodia-platform#448): only on a verb
 										     gate. On a destination gate the destination IS the question,
@@ -2763,30 +2771,12 @@
 												{/each}
 												<button type="button" class="jobprop-ok" disabled={gateDeciding || !gateCorrections(g.id)}
 													title="Esegue l'azione con i campi corretti; le regole di destinazione valutano la versione corretta"
-													on:click={() => decideGate(m.id, g, true, 'once', gateCorrections(g.id))}>✓ Approva con modifiche</button>
+													on:click={() => decideGate(m.id, g, true, { who: 'spawn' }, gateCorrections(g.id))}>✓ Approva con modifiche</button>
 												<button type="button" class="jobprop-no" on:click={() => (gateEditing[g.id] = false)}>Annulla</button>
 											</span>
 										{:else}
 											<button type="button" class="jobprop-ok" disabled={gateDeciding}
 												on:click={() => startGateEdit(g.id)}>✎ Correggi</button>
-										{/if}
-									{/if}
-									{#if isDestinationGate(g.verb)}
-										<!-- Solo per i gate su una DESTINAZIONE: «sempre» ha senso
-										     su un indirizzo, non su un'azione. E le due portate hanno
-										     titolari diversi — la stanza è dell'owner, l'istanza è
-										     dell'admin — quindi il secondo bottone compare solo a chi
-										     può usarlo: offrirlo a chi verrà rifiutato è insegnare a
-										     ignorare i bottoni. -->
-										<button type="button" class="jobprop-ok" disabled={gateDeciding}
-											title={g.verb.startsWith('ingress:')
-												? 'Aggiunge questo sito alle fonti di questa stanza: non verrà più chiesto qui e ciò che arriva da lì non contaminerà più la conversazione'
-												: 'Aggiunge questa destinazione alla whitelist di questa stanza: non verrà più chiesto qui'}
-											on:click={() => decideGate(m.id, g, true, 'topic')}>✓ Approva sempre</button>
-										{#if $isAdmin}
-											<button type="button" class="jobprop-ok" disabled={gateDeciding}
-												title="Aggiunge questa destinazione alla whitelist dell'INTERA istanza, tutte le stanze comprese"
-												on:click={() => decideGate(m.id, g, true, 'global')}>✓ Ovunque</button>
 										{/if}
 									{/if}
 									<button type="button" class="jobprop-no" disabled={gateDeciding}

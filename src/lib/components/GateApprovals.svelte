@@ -2,6 +2,8 @@
 	import { gateLabel } from '$lib/gateLabel';
 	import { decideBatch } from '$lib/gateCard';
 	import GateBatchBar from './GateBatchBar.svelte';
+	import GateMatrix from './GateMatrix.svelte';
+	import { isAdmin } from '$lib/stores/capabilities';
 	// Popup di approvazione GATE (M-gate): mostra all'utente loggato AUTORIZZATO
 	// le richieste di conferma su verbi *gated* innescate dagli agenti, con
 	// Approva/Nega. Il backend (/api/gate/pending) ritorna [] a chi non è
@@ -27,6 +29,9 @@
 		 *  perché una presenza legittima che sembra un'intrusione costa quanto
 		 *  un'intrusione, finché qualcuno non la spiega. */
 		asker_role?: string; asker_note?: string;
+		/** The cells of the approval matrix this gate has (#693), from the
+		 *  gateway: an empty reason applies. */
+		remember?: Record<string, string>;
 	};
 	let requests: Req[] = [];
 	let busy = '';
@@ -44,23 +49,19 @@
 		}
 	}
 
-	/** Un gate su una DESTINAZIONE si può ricordare; uno su un'azione no.
-	 *  «Approva sempre l'invio di mail» non è una decisione prendibile guardando
-	 *  un dialog — non si sa a chi. «Approva sempre questo indirizzo» sì. */
-	function isDestinationGate(verb: string): boolean {
-		return /^(egress|ingress):/.test(verb || '');
-	}
-
-	async function approve(q: Req, remember: 'once' | 'topic' | 'global' = 'once') {
+	/** Una casella della matrice (#693): CHI (spawn · seed · tutti) × DOVE
+	 *  (questa stanza · tutta l'istanza). */
+	async function approve(q: Req, cell: { who: 'spawn' | 'seed' | 'all'; where?: 'chat' | 'global' } = { who: 'spawn' }) {
 		busy = q.id;
 		try {
 			const r = await apiPost<{ memory?: { remembered?: boolean; error?: string } }>(
 				'/api/gate/approve', {
-				agent: q.agent, instance: q.instance, verb: q.verb, chat: q.chat, remember
+				agent: q.agent, instance: q.instance, verb: q.verb, chat: q.chat,
+				who: cell.who, ...(cell.where ? { where: cell.where } : {})
 			});
 			// Un ricordo fallito non annulla l'approvazione, ma la riduce a
 			// «stavolta»: dirlo, o la stessa domanda torna e il gate sembra rotto.
-			if (remember !== 'once' && r?.memory && r.memory.remembered === false) {
+			if (cell.who !== 'spawn' && r?.memory && r.memory.remembered === false) {
 				toastError('Approvato solo per stavolta', r.memory.error ?? 'ricordo non riuscito');
 			}
 			toastSuccess('Gate approvato', `${q.agent} · ${q.verb}`);
@@ -150,19 +151,9 @@
 				</div>
 				<div class="gate-actions">
 					<button class="btn deny" on:click={() => deny(q)} disabled={busy === q.id}>Nega</button>
-					{#if isDestinationGate(q.verb) && q.scope}
-						<button class="btn ok" on:click={() => approve(q, 'topic')} disabled={busy === q.id}
-							title={q.verb.startsWith('ingress:')
-								? `Rende questo sito una fonte fidata di ${q.scope}: non verrà più chiesto e ciò che arriva da lì non contaminerà più la conversazione`
-								: `Aggiunge questa destinazione alla whitelist di ${q.scope}`}>Approva sempre</button>
-					{/if}
-					{#if isDestinationGate(q.verb) && q.decided_by === 'admin'}
-						<button class="btn ok" on:click={() => approve(q, 'global')} disabled={busy === q.id}
-							title="Aggiunge questa destinazione alla whitelist dell'intera istanza">Ovunque</button>
-					{/if}
-					<button class="btn ok" on:click={() => approve(q)} disabled={busy === q.id}>
-						{busy === q.id ? '…' : isDestinationGate(q.verb) ? 'Approva ora' : 'Approva'}
-					</button>
+					<GateMatrix agent={q.agent} instance={q.instance} verb={q.verb}
+						cells={q.remember} hasRoom={!!q.scope} isAdmin={$isAdmin}
+						busy={busy === q.id} on:decide={(e) => approve(q, e.detail)} />
 				</div>
 			</div>
 		{/each}
@@ -180,9 +171,8 @@
 	.gate-crosses code { font-family: var(--mono); font-size: 11px; }
 	.gate-who { font-size: 12px; margin: 0 0 4px; }
 	.gate-meta { font-size: 11px; color: var(--fg-muted); margin-bottom: 10px; }
-	.gate-actions { display: flex; gap: 8px; justify-content: flex-end; }
+	.gate-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: flex-start; flex-wrap: wrap; }
 	.btn { font: inherit; font-size: 12px; padding: 5px 12px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--fg); }
-	.btn.ok { background: #2563eb; border-color: #2563eb; color: #fff; font-weight: 700; }
 	.btn.deny:hover { border-color: #dc2626; color: #dc2626; }
 	.btn:disabled { opacity: .5; }
 </style>

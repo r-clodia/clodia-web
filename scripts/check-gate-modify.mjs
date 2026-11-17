@@ -25,8 +25,9 @@ if (p) {
 	if (!p.includes("{#if !isDestinationGate(g.verb) && gateInfo[g.id]?.editable}")) {
 		guasti.push('card: «Correggi» solo sui gate di verbo con campi modificabili');
 	}
-	if (!p.includes("decideGate(m.id, g, true, 'once', gateCorrections(g.id))")) {
-		guasti.push("card: una correzione vale solo per stavolta (remember 'once')");
+	// Since #693 «only this time» is the matrix cell `{ who: 'spawn' }`.
+	if (!p.includes("decideGate(m.id, g, true, { who: 'spawn' }, gateCorrections(g.id))")) {
+		guasti.push("card: una correzione vale solo per stavolta (who 'spawn')");
 	}
 }
 if (guasti.length) {
