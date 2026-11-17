@@ -2603,6 +2603,44 @@ export async function getTopicIndexStatus(
 	);
 }
 
+/** An explicit A·V·R·Q rule (#693): of a room or of the instance, written by
+ *  a gate (`origin: gate`) or by hand / the migration plan. */
+export interface AuthzRule {
+	id: string;
+	level: 'topic' | 'global';
+	agent: string;
+	verb: string;
+	resource: string;
+	rule: Array<{ effect: 'allow' | 'ask' | 'deny'; match: string }>;
+	origin: 'gate' | 'manual' | 'plan' | string;
+	by: string;
+	at?: number | null;
+}
+
+/** The room's explicit rules (any person of the room). */
+export async function getRoomRules(tier: string, name: string): Promise<AuthzRule[]> {
+	const r = await apiGet<{ rules: AuthzRule[] }>(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/rules`);
+	return r?.rules ?? [];
+}
+
+/** Remove one room rule (owner or admin). */
+export async function removeRoomRule(tier: string, name: string, id: string): Promise<void> {
+	await apiDelete(
+		`/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/rules/${encodeURIComponent(id)}`);
+}
+
+/** The global rules (admin). */
+export async function getGlobalRules(): Promise<AuthzRule[]> {
+	const r = await apiGet<{ rules: AuthzRule[] }>('/clodia/authz/rules');
+	return r?.rules ?? [];
+}
+
+/** Remove one global rule (admin). */
+export async function removeGlobalRule(id: string): Promise<void> {
+	await apiDelete(`/clodia/authz/rules/${encodeURIComponent(id)}`);
+}
+
 /** Topic owner or admin: flip the room's RAG toggle (#648). On: every file of
  *  the room (Drive included) is indexed now, the chat from now on. Off:
  *  everything of the room leaves the RAG. Returns at once; poll the status. */

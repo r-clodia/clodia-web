@@ -8,6 +8,7 @@
  *   of the rule here; the instance column needs an admin, the room column a room.
  * - «tutti gli agenti · globale» asks a second confirmation.
  * - The approval sends `who`/`where`; a correction stays `{ who: 'spawn' }`.
+ * - The rules a gate writes are listed and removable (room page, Tools for admins).
  * Checked on the TEXT of the sources.
  */
 import { leggiSorgente } from './lib/sorgente.mjs';
@@ -34,6 +35,16 @@ if (popup) {
 	if (!popup.includes('<GateMatrix')) guasti.push('popup: non usa GateMatrix');
 	if (!popup.includes('who: cell.who')) guasti.push('popup: deve inviare who/where');
 }
+const rules = leggiSorgente('src/lib/components/RulesPanel.svelte', guasti);
+if (rules) {
+	if (!rules.includes('removeRoomRule') || !rules.includes('removeGlobalRule')) {
+		guasti.push('RulesPanel: le regole si tolgono (stanza e istanza)');
+	}
+	if (!rules.includes("r.origin === 'gate'")) guasti.push('RulesPanel: le regole dei gate vanno riconoscibili');
+}
+if (pagina && !pagina.includes('<RulesPanel {tier} {name}')) guasti.push('pagina stanza: manca «Regole della stanza»');
+const tools = leggiSorgente('src/routes/tools/+page.svelte', guasti);
+if (tools && !tools.includes('<RulesPanel canEdit />')) guasti.push('Tools: mancano le regole globali per gli admin');
 if (guasti.length) {
 	console.error('check-gate-matrix:\n  ' + guasti.join('\n  '));
 	process.exit(1);

@@ -12,6 +12,7 @@
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TopicDataPanel from '$lib/components/TopicDataPanel.svelte';
 	import TopicToolsPanel from '$lib/components/TopicToolsPanel.svelte';
+	import RulesPanel from '$lib/components/RulesPanel.svelte';
 	import ListenPanel from '$lib/components/ListenPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
 	import { pushToast } from '$lib/stores/toasts';
@@ -3463,6 +3464,12 @@
 							azioni={azioniTopic} {statiCanale} {azioneBusy}
 							on:azione={(e) => onAzioneClick(e.detail)} />
 						{/if}
+						<!-- The room's explicit rules, those the gates wrote included
+						     (#693): seen and taken back where the tools are. -->
+						<details class="room-rules">
+							<summary>Regole della stanza</summary>
+							<RulesPanel {tier} {name} canEdit={isOwner || $isAdmin} />
+						</details>
 					{/key}
 {/snippet}
 {#snippet corpo_file()}
@@ -4060,6 +4067,8 @@
 	.addp button { font-size: 11.5px; border: 1px solid var(--border); border-radius: 6px; padding: 5px 9px; background: transparent; color: var(--fg); cursor: pointer; white-space: nowrap; }
 	.muted { color: var(--fg-muted); font-size: 12px; }
 
+	.room-rules { margin-top: 8px; font-size: 12px; }
+	.room-rules summary { cursor: pointer; font-size: 12px; color: var(--fg-muted); }
 	/* Regole dello scope: distinte dai file del topic anche visivamente, perché
 	   sono control-plane e non contenuto. */
 	.rules-btn { display: inline-flex; align-items: center; gap: .4rem; background: none;

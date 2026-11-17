@@ -12,6 +12,7 @@
 	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
 	import { toastSuccess, toastError, toastInfo } from '$lib/stores/toasts';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
+	import RulesPanel from '$lib/components/RulesPanel.svelte';
 	import ViewToggle from '$lib/components/ViewToggle.svelte';
 	import { readView } from '$lib/viewPref.js';
 
@@ -967,6 +968,15 @@
 </div>
 {/if}
 
+{#if $isAdmin}
+	<!-- The instance's explicit rules (#693): «approva … globale» on a gate
+	     writes one, and here an admin sees and takes them back. -->
+	<section class="regole-globali">
+		<h2>Regole globali</h2>
+		<RulesPanel canEdit />
+	</section>
+{/if}
+
 {#if servizi.length}
 	<!-- I processi lungo-vivi che i pack dichiarano (clodia-platform#515): un
 	     connettore che ha bisogno di un processo è rotto quanto quel processo, e
@@ -1356,6 +1366,8 @@
 	/* Servizi dei pack (#515): stato, ultimo errore. Stessa grammatica visiva
 	   delle card — verde se gira, triangolo se si è rotto. */
 	.servizi { margin: 18px 0 0; }
+	.regole-globali { margin: 18px 0 0; }
+	.regole-globali h2 { font-size: 14px; margin: 0 0 8px; }
 	.servizi h2 { font-size: 14px; margin: 0 0 8px; }
 	.servizi ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 	.servizi li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 13px;
