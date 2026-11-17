@@ -2363,6 +2363,12 @@ export interface CollectionUploadResult {
 	version: string;
 	chunks: number | null;
 	bytes: number;
+	/** A `.zip` upload (#698): one entry per file in the archive. */
+	archive?: boolean;
+	members?: { path: string; document?: string; chunks?: number | null; status: 'indexed' | 'skipped' | 'error'; reason?: string }[];
+	indexed?: number;
+	skipped?: number;
+	errors?: number;
 	characters: number;
 }
 

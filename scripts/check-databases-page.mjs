@@ -52,7 +52,7 @@ if (mod) {
 		['collection href with scope', mod.collectionHref('manuali', 'SEAL-2/commerciale'), '/databases/collection/manuali?scope=SEAL-2%2Fcommerciale'],
 		['admin href carries no scope', mod.entryHref(entries[1], true), '/databases/collection/manuali'],
 		['non-admin href carries the first scope', mod.entryHref(entries[1], false), '/databases/collection/manuali?scope=SEAL-2%2Fcommerciale'],
-		['upload formats', mod.UPLOAD_FORMATS.join(','), '.pdf,.docx,.pptx,.md,.txt'],
+		['upload formats', mod.UPLOAD_FORMATS.join(','), '.pdf,.docx,.pptx,.md,.txt,.zip'],
 		['pptx accepted', mod.uploadProblem({ name: 'Deck.PPTX', size: 10 }, 100), ''],
 		['xlsx refused', mod.uploadProblem({ name: 'a.xlsx', size: 10 }, 100).startsWith('formato'), true],
 		['too big refused', mod.uploadProblem({ name: 'a.pdf', size: 101 }, 100).startsWith('file troppo grande'), true],

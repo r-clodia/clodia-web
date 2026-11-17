@@ -26,7 +26,9 @@
 		originLabel,
 		scopeHref,
 		sizeLabel,
-		uploadProblem
+		uploadProblem,
+		uploadNote,
+		uploadDetail
 	} from '$lib/databases.js';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
 
@@ -107,48 +109,95 @@
 	}
 
 	// ── Upload ───────────────────────────────────────────────────────────────
+	// Several files at once (#698): each one is uploaded and indexed in turn,
+	// with its own progress; an error on one file does not stop the others.
+	type QueueItem = {
+		file: File;
+		docName: string;
+		problem: string;
+		status: 'pending' | 'upload' | 'index' | 'done' | 'error';
+		progress: number;
+		note: string;
+		detail: string;
+	};
 	let over = false;
-	let file: File | null = null;
-	let docName = '';
+	let queue: QueueItem[] = [];
 	let version = '1';
-	let phase: 'idle' | 'upload' | 'index' = 'idle';
-	let progress = 0;
+	let running = false;
 	let fileInput: HTMLInputElement;
 
-	$: problem = file ? uploadProblem(file, maxBytes) : '';
+	$: valid = queue.filter((q) => !q.problem);
 
-	function choose(f: File | null | undefined) {
-		if (!f) return;
-		file = f;
-		docName = f.name.replace(/\.[^.]+$/, '');
+	function choose(list: FileList | File[] | null | undefined) {
+		if (!list || running) return;
+		const names = new Set(queue.map((q) => q.file.name));
+		for (const f of Array.from(list)) {
+			if (names.has(f.name)) continue;
+			names.add(f.name);
+			queue = [...queue, {
+				file: f,
+				docName: f.name.replace(/\.[^.]+$/, ''),
+				problem: uploadProblem(f, maxBytes),
+				status: 'pending',
+				progress: 0,
+				note: '',
+				detail: ''
+			}];
+		}
+		if (fileInput) fileInput.value = '';
 	}
 
 	function onDrop(e: DragEvent) {
 		e.preventDefault();
 		over = false;
-		choose(e.dataTransfer?.files?.[0]);
+		choose(e.dataTransfer?.files);
+	}
+
+	function drop(i: number) {
+		if (running) return;
+		queue = queue.filter((_, k) => k !== i);
+	}
+
+	function clearQueue() {
+		if (running) return;
+		queue = [];
+		version = '1';
 	}
 
 	async function upload() {
-		if (!file || problem || phase !== 'idle') return;
-		phase = 'upload';
-		progress = 0;
-		try {
-			const r = await uploadToCollection(name, file, { docName, version, scope: scope || null }, (sent, total) => {
-				progress = total ? Math.round((sent / total) * 100) : 0;
-				if (sent >= total) phase = 'index';
-			});
-			toastSuccess(`Indicizzato: ${r.document}`, `${r.chunks ?? '?'} chunk da ${bytesLabel(r.bytes)}`);
-			file = null;
-			docName = '';
-			version = '1';
-			if (fileInput) fileInput.value = '';
-			await loadDocs();
-		} catch (e) {
-			toastError('Caricamento', apiErrorDetail(e));
-		} finally {
-			phase = 'idle';
+		if (running || !valid.length) return;
+		running = true;
+		let ok = 0;
+		let ko = 0;
+		for (let i = 0; i < queue.length; i++) {
+			const q = queue[i];
+			if (q.problem || q.status === 'done') continue;
+			q.status = 'upload';
+			q.progress = 0;
+			queue = queue;
+			try {
+				const r = await uploadToCollection(name, q.file, { docName: q.docName, version, scope: scope || null }, (sent, total) => {
+					q.progress = total ? Math.round((sent / total) * 100) : 0;
+					if (sent >= total) q.status = 'index';
+					queue = queue;
+				});
+				q.status = 'done';
+				q.note = uploadNote(r);
+				q.detail = uploadDetail(r);
+				if (r.archive && r.errors && !r.indexed) { q.status = 'error'; ko++; } else ok++;
+			} catch (e) {
+				q.status = 'error';
+				q.note = apiErrorDetail(e);
+				ko++;
+			}
+			queue = queue;
 		}
+		running = false;
+		if (ok) toastSuccess(`Indicizzati ${ok} file`, ko ? `${ko} con errore: vedi l'elenco` : '');
+		else if (ko) toastError('Caricamento', `${ko} file non caricati: vedi l'elenco`);
+		// Keep only what still needs attention (errors), so a retry is one click.
+		queue = queue.filter((q) => q.status === 'error' || q.problem).map((q) => (q.problem ? q : { ...q, status: 'pending' }));
+		await loadDocs();
 	}
 
 	// ── Remove a document ────────────────────────────────────────────────────
@@ -255,31 +304,49 @@
 		<div class="db-error">{err} <button type="button" class="db-btn" on:click={loadAll}>Riprova</button></div>
 	{:else}
 		<section class="db-section">
-			<div class="db-drop" class:over role="region" aria-label="Carica un documento"
+			<div class="db-drop" class:over role="region" aria-label="Carica uno o più documenti"
 				on:dragover|preventDefault={() => (over = true)}
 				on:dragleave={() => (over = false)}
 				on:drop={onDrop}>
-				{#if file}
+				{#if queue.length}
+					<ul class="db-queue">
+						{#each queue as q, i (q.file.name)}
+							<li class="db-colrow">
+								<b class="mono">{q.file.name}</b> <span class="db-small">{bytesLabel(q.file.size)}</span>
+								<label class="db-small">Nome documento <input type="text" bind:value={q.docName} disabled={running} /></label>
+								{#if q.problem}
+									<span class="db-error">{q.problem}</span>
+								{:else if q.status === 'upload'}
+									<span class="db-small">Carico… {q.progress}%</span>
+								{:else if q.status === 'index'}
+									<span class="db-small">Indicizzo…</span>
+								{:else if q.status === 'done'}
+									<span class="db-small" title={q.detail}>✓ {q.note}</span>
+								{:else if q.status === 'error'}
+									<span class="db-error" title={q.detail}>{q.note}</span>
+								{/if}
+								<button type="button" class="db-btn" on:click={() => drop(i)} disabled={running} aria-label="Togli {q.file.name}">✕</button>
+								{#if q.status === 'upload' || q.status === 'index'}
+									<div class="db-progress"><div style="width:{q.status === 'index' ? 100 : q.progress}%"></div></div>
+								{/if}
+							</li>
+						{/each}
+					</ul>
 					<div class="db-colrow" style="justify-content:center">
-						<b class="mono">{file.name}</b> <span class="db-small">{bytesLabel(file.size)}</span>
-						<label class="db-small">Nome documento <input type="text" bind:value={docName} disabled={phase !== 'idle'} /></label>
-						<label class="db-small">Versione <input type="text" bind:value={version} size="6" disabled={phase !== 'idle'} /></label>
-						<button type="button" class="db-btn primary" on:click={upload} disabled={!!problem || phase !== 'idle'}>
-							{phase === 'upload' ? `Carico… ${progress}%` : phase === 'index' ? 'Indicizzo…' : 'Carica e indicizza'}
+						<label class="db-small">Versione <input type="text" bind:value={version} size="6" disabled={running} /></label>
+						<button type="button" class="db-btn primary" on:click={upload} disabled={running || !valid.length}>
+							{running ? 'Carico e indicizzo…' : `Carica e indicizza ${valid.length} file`}
 						</button>
-						<button type="button" class="db-btn" on:click={() => (file = null)} disabled={phase !== 'idle'}>Annulla</button>
+						<button type="button" class="db-btn" on:click={() => fileInput.click()} disabled={running}>Aggiungi file</button>
+						<button type="button" class="db-btn" on:click={clearQueue} disabled={running}>Annulla</button>
 					</div>
-					{#if problem}<p class="db-error" style="justify-content:center">{problem}</p>{/if}
-					{#if phase !== 'idle'}
-						<div class="db-progress"><div style="width:{phase === 'index' ? 100 : progress}%"></div></div>
-						{#if phase === 'index'}<p class="db-small">Estrazione del testo e calcolo degli embedding: può richiedere qualche minuto per un documento grande.</p>{/if}
-					{/if}
+					{#if running}<p class="db-small">Estrazione del testo e calcolo degli embedding, un file alla volta: può richiedere qualche minuto.</p>{/if}
 				{:else}
-					Trascina qui un file ({UPLOAD_FORMATS.join(', ')}, max {bytesLabel(maxBytes)}) oppure
-					<button type="button" class="db-btn" on:click={() => fileInput.click()}>scegli un file</button>
+					Trascina qui uno o più file ({UPLOAD_FORMATS.join(', ')}, max {bytesLabel(maxBytes)} ciascuno; uno ZIP viene aperto sul server e ne viene indicizzato ogni file) oppure
+					<button type="button" class="db-btn" on:click={() => fileInput.click()}>scegli i file</button>
 				{/if}
-				<input type="file" hidden bind:this={fileInput} accept={UPLOAD_FORMATS.join(',')}
-					on:change={(e) => choose(e.currentTarget.files?.[0])} />
+				<input type="file" hidden multiple bind:this={fileInput} accept={UPLOAD_FORMATS.join(',')}
+					on:change={(e) => choose(e.currentTarget.files)} />
 			</div>
 			<p class="db-small">
 				Il testo viene estratto dal gateway e indicizzato come contenuto esterno (non fidato). Serve una

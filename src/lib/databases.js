@@ -11,7 +11,7 @@
  */
 
 /** Formats an upload may have; the server checks the same list. */
-export const UPLOAD_FORMATS = ['.pdf', '.docx', '.pptx', '.md', '.txt'];
+export const UPLOAD_FORMATS = ['.pdf', '.docx', '.pptx', '.md', '.txt', '.zip'];
 
 export const TIERS = ['SEAL-0', 'SEAL-1', 'SEAL-2', 'SEAL-3', 'SEAL-4'];
 
@@ -167,6 +167,34 @@ export function uploadProblem(file, maxBytes) {
 	if (maxBytes && file.size > maxBytes) return `file troppo grande (max ${bytesLabel(maxBytes)})`;
 	if (!file.size) return 'file vuoto';
 	return '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+/**
+ * One line for the result of an upload (#698): a `.zip` reports how many of
+ * its files were indexed, skipped or failed; a single file its chunks.
+ * @param {any} r
+ */
+export function uploadNote(r) {
+	if (!r) return '';
+	if (r.archive) {
+		const parts = [`${r.indexed ?? 0} indicizzati`];
+		if (r.skipped) parts.push(`${r.skipped} saltati`);
+		if (r.errors) parts.push(`${r.errors} con errore`);
+		return `archivio: ${parts.join(', ')}`;
+	}
+	return `${r.chunks ?? '?'} chunk`;
+}
+
+/**
+ * Tooltip with the per-file detail of a `.zip` upload.
+ * @param {any} r
+ */
+export function uploadDetail(r) {
+	if (!r || !r.archive || !Array.isArray(r.members)) return '';
+	return r.members
+		.map((/** @type {any} */ m) => `${m.status === 'indexed' ? '✓' : m.status === 'skipped' ? '–' : '✗'} ${m.path}${m.reason ? ` (${m.reason})` : ''}`)
+		.join('\n');
 }
 
 // ─────────────────────────────────────────────────────────────────────────
