@@ -12,6 +12,8 @@
 		installPack as apiInstallPack,
 		setPackEnabled,
 		listAvailablePacks,
+		getPackCatalogue,
+		installFromCatalogue,
 		deletePlugin,
 		updatePack as apiUpdatePack,
 		updateAllPacks as apiUpdateAllPacks,
@@ -21,7 +23,17 @@
 		migrateDatastoreInstance,
 		type DatastoreStructure
 	} from '$lib/api/client';
-	import type { AvailablePack, Pack, PackDrift, PackDriftAgent, PackUpdateAllResult, Plugin } from '$lib/api/types';
+	import type {
+		AvailablePack,
+		Pack,
+		PackCatalogue,
+		PackCatalogueEntry,
+		PackDeprecation,
+		PackDrift,
+		PackDriftAgent,
+		PackUpdateAllResult,
+		Plugin
+	} from '$lib/api/types';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import PluginNode from '$lib/components/PluginNode.svelte';
 	import PackDatastores from '$lib/components/PackDatastores.svelte';
@@ -218,11 +230,62 @@
 		}
 	}
 
+	// The catalogue (clodia-platform#700): every public pack with its state.
+	// Admin-only like the install routes; an older backend without the route
+	// (404) leaves `catalogue` null and the «Pack ufficiali disponibili» list
+	// above keeps working.
+	let catalogue: PackCatalogue | null = null;
+	let installingCat: string | null = null;
+
+	async function loadCatalogue(refresh = false) {
+		if (!$isAdmin) {
+			catalogue = null;
+			return;
+		}
+		try {
+			catalogue = await getPackCatalogue(refresh);
+		} catch {
+			catalogue = null;
+		}
+	}
+
+	async function installCatalogue(e: PackCatalogueEntry) {
+		if (installingCat || !e.installable) return;
+		installingCat = e.name;
+		try {
+			const r = await installFromCatalogue(e.name);
+			toastSuccess(`${e.name} installato (v${r.version}) · ${r.agents_restarted} agenti riavviati`);
+			await load();
+		} catch (err) {
+			toastError('Installazione fallita', errorMessage(err).message);
+		} finally {
+			installingCat = null;
+		}
+	}
+
+	$: catByName = new Map((catalogue?.packs ?? []).map((e) => [e.name, e] as const));
+	const catOf = (name: string) => catByName.get(name);
+	const deprecationOf = (p: Pack): PackDeprecation | null =>
+		p.deprecated ?? catOf(p.name)?.deprecated ?? null;
+	const deprecationText = (d: PackDeprecation): string =>
+		[
+			d.reason || 'pack deprecato',
+			d.replacement ? `sostituito da ${d.replacement}` : '',
+			d.since ? `dal ${d.since}` : ''
+		]
+			.filter(Boolean)
+			.join(' · ');
+	// Catalogue packs that are not installed: in the SAME list as the
+	// installed ones, greyed, with Install (or the deprecation instead).
+	$: notInstalled = (catalogue?.packs ?? []).filter(
+		(e) => !e.installed && (!q || `${e.name} ${e.description}`.toLowerCase().includes(q))
+	);
+
 	async function load() {
 		state = { kind: 'loading' };
 		void loadStructures();
 		try {
-			const [packs, plugins] = await Promise.all([listPacks(), listPlugins(), loadAvailable()]);
+			const [packs, plugins] = await Promise.all([listPacks(), listPlugins(), loadAvailable(), loadCatalogue()]);
 			state = { kind: 'ok', packs, plugins };
 		} catch (err) {
 			state = { kind: 'error', ...errorMessage(err) };
@@ -489,7 +552,10 @@
 			{#each updateAllReport as r (r.name)}
 				<li class:failed={!r.updated} class:has-gaps={r.updated && !r.setup_done}>
 					<span class="pack-name">{r.name}</span>
-					{#if !r.updated}
+					{#if r.deprecated}<span class="dep-badge" title={deprecationText(r.deprecated)}>⚠ deprecato</span>{/if}
+					{#if !r.updated && r.removed_from_catalogue}
+						<span class="report-detail"><span class="removed-badge">✕ rimosso dal catalogo</span> disinstallalo da Packs</span>
+					{:else if !r.updated}
 						<span class="report-detail">update fallito — {r.error}</span>
 					{:else if r.setup_done}
 						<span class="report-detail">v{r.version} · setup completo</span>
@@ -611,8 +677,21 @@
 		<button class="retry" type="button" on:click={load}>Retry</button>
 	</div>
 {:else}
-	{#if packs.length}
+	{#if packs.length || notInstalled.length}
 		<div class="section-label">Packs</div>
+		{#if catalogue}
+			<div class="cat-legend">
+				<span class="inst-badge">● installato</span>
+				<span class="upd-cat-badge">⬆ aggiornamento</span>
+				<span class="avail-badge">○ disponibile</span>
+				<span class="dep-badge">⚠ deprecato</span>
+				<span class="removed-badge">✕ rimosso dal catalogo</span>
+				<button type="button" class="ghost" title="Rilegge il catalogo dal repository" on:click={() => loadCatalogue(true)}>↻ catalogo</button>
+			</div>
+			{#if catalogue.catalogue_error}
+				<div class="cat-error" role="alert">Catalogo non aggiornato: {catalogue.catalogue_error}</div>
+			{/if}
+		{/if}
 		<div class="tree" role="tree">
 			{#each packs as p (p.name)}
 				<div class="pack" class:disabled-pack={p.disabled} role="treeitem" aria-expanded={isPackOpen(p.name)} aria-selected="false">
@@ -625,6 +704,16 @@
 							<span class="counts">{packSummary(p, structures)}</span>
 						</button>
 						<span class="pack-badges">
+							{#if catOf(p.name)?.state === 'removed_from_catalogue'}
+								<span class="removed-badge" title="Il suo repository non contiene più questo pack: non riceverà aggiornamenti. Rimuovilo.">✕ rimosso dal catalogo</span>
+							{:else if catOf(p.name)?.update_available}
+								<span class="upd-cat-badge" title="Nel catalogo c'è una versione più recente">⬆ {catOf(p.name)?.installed_version} → {catOf(p.name)?.version}</span>
+							{:else if catOf(p.name)?.installed}
+								<span class="inst-badge" title="Installato e aggiornato rispetto al catalogo">● installato</span>
+							{/if}
+							{#if deprecationOf(p)}
+								<span class="dep-badge" title={deprecationText(deprecationOf(p) ?? { reason: '', replacement: '', since: '' })}>⚠ deprecato</span>
+							{/if}
 							{#if p.license}<span class="lic-badge" title={p.license_note || 'Licenza dichiarata'}>{p.license}</span>
 							{:else if p.licenses && p.licenses.length}<span class="lic-badge" title="Licenze effettive">{p.licenses.join(' · ')}</span>{/if}
 							{#if p.third_party}<span class="tp-badge" title="Pack di terze parti: download opt-in, accetti la licenza">3ª parte</span>{/if}
@@ -684,6 +773,17 @@
 					{#if p.description}
 						<div class="pack-desc">{p.description}</div>
 					{/if}
+					{#if deprecationOf(p)}
+						<div class="dep-note" role="note">
+							⚠ Deprecato: {deprecationText(deprecationOf(p) ?? { reason: '', replacement: '', since: '' })}.
+							Continua a funzionare, ma va sostituito{deprecationOf(p)?.replacement ? ` con ${deprecationOf(p)?.replacement}` : ''} e poi rimosso.
+						</div>
+					{/if}
+					{#if catOf(p.name)?.state === 'removed_from_catalogue'}
+						<div class="removed-note" role="note">
+							✕ Non è più nel catalogo: non riceverà aggiornamenti. Rimuovilo con «Rimuovi».
+						</div>
+					{/if}
 					{#if isPackOpen(p.name)}
 						<div class="children" role="group">
 							{#if p.agents.length}
@@ -735,10 +835,37 @@
 					{/if}
 				</div>
 			{/each}
+			{#each notInstalled as e (e.name)}
+				<div class="pack catalogue-only" class:deprecated-pack={!!e.deprecated}>
+					<div class="pack-head">
+						<span class="kind-chip">pack</span>
+						<span class="pack-name">{e.name}</span>
+						{#if e.version}<span class="version">v{e.version}</span>{/if}
+						<span class="pack-badges">
+							{#if e.deprecated}
+								<span class="dep-badge" title={deprecationText(e.deprecated)}>⚠ deprecato</span>
+							{:else}
+								<span class="avail-badge" title="Nel catalogo, non installato">○ disponibile</span>
+							{/if}
+							{#if e.source === 'first-party'}<span class="lic-badge" title="Pack di prima parte">ufficiale</span>{/if}
+						</span>
+						{#if e.installable}
+							<button type="button" class="update-btn" disabled={installingCat === e.name}
+								on:click={() => installCatalogue(e)}>{installingCat === e.name ? 'Installo…' : 'Installa'}</button>
+						{/if}
+					</div>
+					{#if e.description}<div class="pack-desc">{e.description}</div>{/if}
+					{#if e.deprecated}
+						<div class="dep-note" role="note">
+							⚠ Deprecato, non installabile: {deprecationText(e.deprecated)}.
+						</div>
+					{/if}
+				</div>
+			{/each}
 		</div>
 	{/if}
 
-	{#if available.length}
+	{#if available.length && !catalogue}
 		<div class="section-label">Pack ufficiali disponibili</div>
 		<div class="tree available">
 			{#each available as a (a.name)}
@@ -957,6 +1084,22 @@
 	.drift-badge.unknown { color: var(--fg-muted); font-weight: 400; }
 	.ok-badge { color: #16a34a; border-color: rgba(22,163,74,0.4); }
 	.tp-badge { color: #a855f7; border-color: rgba(168,85,247,0.5); }
+	/* #700: the catalogue states. Deprecated must be seen at a glance. */
+	.inst-badge, .upd-cat-badge, .avail-badge, .dep-badge, .removed-badge {
+		font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px solid; white-space: nowrap;
+	}
+	.inst-badge { color: #16a34a; border-color: rgba(22,163,74,0.5); }
+	.upd-cat-badge { color: #16a34a; border-color: #16a34a; font-weight: 600; }
+	.avail-badge { color: var(--fg-muted); border-color: var(--border); }
+	.dep-badge { color: #fff; background: #ea580c; border-color: #ea580c; font-weight: 700; }
+	.removed-badge { color: #fff; background: #dc2626; border-color: #dc2626; font-weight: 700; }
+	.dep-note, .removed-note { margin: 4px 0 2px 0; padding: 4px 8px; border-radius: 6px; font-size: 12px; }
+	.dep-note { background: rgba(234,88,12,0.12); border-left: 3px solid #ea580c; }
+	.removed-note { background: rgba(220,38,38,0.12); border-left: 3px solid #dc2626; }
+	.catalogue-only { opacity: 0.85; border-style: dashed; }
+	.catalogue-only.deprecated-pack { opacity: 0.7; }
+	.cat-legend { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 8px; }
+	.cat-error { font-size: 12px; color: #dc2626; margin: 0 0 8px; }
 	.warn-badge { color: #e0a800; border-color: rgba(224,168,0,0.5); font-weight: 600; }
 	.pack-desc {
 		margin: 2px 0 0 24px;

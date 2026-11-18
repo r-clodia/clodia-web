@@ -278,6 +278,7 @@ import type {
 	Pack,
 	PackDrift,
 	PackUpdateAllResult,
+	PackCatalogue,
 	Plugin,
 	Rule,
 	RuleDetail,
@@ -2811,6 +2812,24 @@ export async function listAvailablePacks(
 	opts: RequestOptions = {}
 ): Promise<AvailablePack[]> {
 	return apiGet<AvailablePack[]>('/clodia/packs/available', opts);
+}
+
+/** GET `/clodia/packs/catalogue` — every public pack with its state here
+ * (clodia-platform#700). Admin only. */
+export async function getPackCatalogue(
+	refresh = false,
+	opts: RequestOptions = {}
+): Promise<PackCatalogue> {
+	return apiGet<PackCatalogue>(`/clodia/packs/catalogue${refresh ? '?refresh=1' : ''}`, opts);
+}
+
+/** POST `/clodia/packs/catalogue/{name}/install` — install a pack of the
+ * catalogue from its upstream (refused when deprecated; #700). */
+export async function installFromCatalogue(
+	name: string,
+	opts: RequestOptions = {}
+): Promise<{ installed: string; version: string; agents_restarted: number }> {
+	return apiPost(`/clodia/packs/catalogue/${encodeURIComponent(name)}/install`, {}, opts);
 }
 
 /** POST `/clodia/packs/{name}/install` — reinstalla un pack ufficiale rimosso

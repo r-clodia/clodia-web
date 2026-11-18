@@ -691,10 +691,48 @@ export interface AvailablePack {
 	readonly first_party: true;
 }
 
+/** `deprecated: true | {reason, replacement, since}` of a pack.yaml,
+ *  normalised by the agent-server (clodia-platform#700). */
+export interface PackDeprecation {
+	readonly reason: string;
+	readonly replacement: string;
+	readonly since: string;
+}
+
+export type PackCatalogueState =
+	| 'installed'
+	| 'update_available'
+	| 'available'
+	| 'deprecated'
+	| 'removed_from_catalogue';
+
+/** One pack of the catalogue (`GET /clodia/packs/catalogue`, #700). */
+export interface PackCatalogueEntry {
+	readonly name: string;
+	readonly description: string;
+	/** Catalogue version ("" when not in the catalogue). */
+	readonly version: string;
+	readonly installed_version: string;
+	readonly installed: boolean;
+	readonly update_available: boolean;
+	readonly source: 'clodia-packs' | 'first-party' | 'other' | 'unknown';
+	readonly upstream: { readonly repo?: string; readonly path?: string; readonly ref?: string };
+	readonly deprecated: PackDeprecation | null;
+	readonly state: PackCatalogueState;
+	readonly installable: boolean;
+}
+
+export interface PackCatalogue {
+	readonly packs: ReadonlyArray<PackCatalogueEntry>;
+	/** Why the public catalogue is missing, "" when it was read. */
+	readonly catalogue_error: string;
+}
+
 export interface Pack {
 	readonly name: string;
 	readonly description: string;
 	readonly version: string;
+	readonly deprecated?: PackDeprecation | null;
 	// first-party con upstream dichiarato → la UI mostra "Check update".
 	readonly first_party?: boolean;
 	// Pack spento ma non rimosso (clodia-platform#563): agenti non caricati,
@@ -777,6 +815,9 @@ export interface PackUpdateAllResult {
 	readonly name: string;
 	readonly updated: boolean;
 	readonly error?: string;
+	/** The pack's upstream no longer holds it (clodia-platform#700). */
+	readonly removed_from_catalogue?: boolean;
+	readonly deprecated?: PackDeprecation | null;
 	readonly version?: string;
 	readonly setup_done?: boolean;
 	readonly setup_gaps?: ReadonlyArray<{ readonly kind: string; readonly detail: string }>;
