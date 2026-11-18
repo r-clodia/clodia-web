@@ -53,7 +53,6 @@
 		clearTopicLogo,
 		editTopicEgressScope,
 		setTopicOrchestrator,
-		ORCHESTRATOR_SEEDS,
 		API_BASE_URL,
 		setTopicStatus,
 		setTopicGoal,
@@ -1566,12 +1565,14 @@
 		? participantsRaw
 		: Object.keys(participantsRaw ?? {});
 
-	// ── Who orchestrates the room (clodia-platform#667) ─────────────────────
-	// One per room, Segretario by default; the owner moves it to Clodia or
-	// Ophelia with one click. The server answers with the effective one (a
-	// choice that cannot serve, e.g. past its tier, falls back).
+	// ── Who orchestrates the room (clodia-platform#667, #695) ───────────────
+	// One per room, Segretario by default; the owner moves it to ANY AI agent
+	// of the room with one click (#695: not only Clodia or Ophelia). People
+	// and proxies do not orchestrate. The server answers with the effective
+	// one (a choice that cannot serve, e.g. past its tier, falls back).
 	$: orchestratore = info?.orchestrator ?? null;
-	$: puoOrchestrare = (p: string) => (ORCHESTRATOR_SEEDS as readonly string[]).includes(p);
+	const TIPI_AI = ['bot', 'normal', 'super'];
+	$: puoOrchestrare = (p: string) => TIPI_AI.includes(tipoDi[p] ?? '');
 	let orchBusy = false;
 	async function scegliOrchestratore(p: string) {
 		if (orchBusy || p === orchestratore) return;
