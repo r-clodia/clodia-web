@@ -100,7 +100,8 @@ if (src) {
 		guasti.push(`${PAGINA}: le pill non sono più guidate da pillsAttive — se il guardiano torna a essere ` +
 			'la posizione nella timeline, la issue#407 è tornata con lui');
 	}
-	const gate = codice.indexOf('decideGate(m.id, g, true)');
+	// The approve call of the card; since #693 it carries the matrix cell.
+	const gate = codice.indexOf('decideGate(m.id, g, true');
 	if (gate < 0) guasti.push(`${PAGINA}: card di gate non trovata`);
 	else if (!codice.slice(Math.max(0, gate - 2000), gate).includes('gateVisibile')) {
 		guasti.push(`${PAGINA}: la card di gate non passa da gateCardVisibile (issue#408)`);
