@@ -16,8 +16,10 @@
 		deleteTopicCronTrigger,
 		deleteTopicMailTrigger,
 		getTopicCronTrigger,
+		getTopicMailTldr,
 		getTopicMailTrigger,
 		putTopicCronTrigger,
+		putTopicMailTldr,
 		putTopicMailTrigger,
 		type TopicCronTrigger,
 		type TopicMailTrigger
@@ -56,6 +58,32 @@
 	let enabled = true;
 	let loading = true;
 	let busy = false;
+	/** segretario's mail TLDR (#708): ON unless the owner switched it off.
+	 *  `null` = not readable (an older agent-server): the switch is hidden. */
+	let tldr: boolean | null = null;
+	let tldrBusy = false;
+
+	async function loadTldr() {
+		try {
+			tldr = (await getTopicMailTldr(tier, name)).tldr.enabled;
+		} catch {
+			tldr = null;
+		}
+	}
+
+	async function toggleTldr() {
+		if (tldrBusy || !canEdit || tldr === null) return;
+		tldrBusy = true;
+		const next = !tldr;
+		try {
+			tldr = (await putTopicMailTldr(tier, name, next)).tldr.enabled;
+			toastSuccess(TITLE, next ? 'TLDR della posta attivato' : 'TLDR della posta disattivato');
+		} catch (error) {
+			toastError(TITLE, error instanceof Error ? error.message : String(error));
+		} finally {
+			tldrBusy = false;
+		}
+	}
 
 	function apply(cron: TopicCronTrigger | null, mail: TopicMailTrigger | null) {
 		cronTrigger = cron;
@@ -187,7 +215,10 @@
 		}
 	}
 
-	onMount(load);
+	onMount(() => {
+		void load();
+		void loadTldr();
+	});
 </script>
 
 <section class="trigger-kind">
@@ -318,10 +349,24 @@
 			{#if kind === 'inbox' && current.last_status}— {STATI[current.last_status] ?? current.last_status}{/if}
 		</p>
 	{/if}
+	{#if !loading && tldr !== null}
+		<div class="tldr">
+			<label class="check opzione">
+				<input type="checkbox" checked={tldr} disabled={!canEdit || tldrBusy}
+					on:change={() => void toggleTldr()} />
+				<span>TLDR della posta (segretario)</span>
+			</label>
+			<p class="muted">
+				Quando il corriere consegna posta in questo canale, segretario scrive in chat
+				1–2 righe di riassunto per ogni mail.
+			</p>
+		</div>
+	{/if}
 </section>
 
 <style>
 	.trigger-kind { min-width: 0; }
+	.tldr { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 11px; }
 	.info { position: relative; border: 0; padding: 0; background: none; color: var(--fg-muted); cursor: help; font: inherit; line-height: 1; outline: none; }
 	.info:hover, .info:focus { color: var(--accent); }
 	.tooltip {

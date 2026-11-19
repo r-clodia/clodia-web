@@ -1019,6 +1019,32 @@ export async function deleteTopicMailTrigger(
 ): Promise<{ deleted: boolean }> {
 	return apiDelete(topicMailTriggerPath(tier, name));
 }
+/** segretario's TLDR of the mail the courier delivers (clodia-platform#708):
+ *  ON in every room unless the owner switches it off. */
+export interface TopicMailTldr {
+	enabled: boolean;
+	agent: string;
+	by?: string;
+	updated_at?: string | null;
+	/** ok | not_started | rate_limited | null */
+	last_status?: string | null;
+}
+function topicMailTldrPath(tier: string, name: string): string {
+	return `/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mail-tldr`;
+}
+export async function getTopicMailTldr(
+	tier: string,
+	name: string
+): Promise<{ tldr: TopicMailTldr }> {
+	return apiGet(topicMailTldrPath(tier, name));
+}
+export async function putTopicMailTldr(
+	tier: string,
+	name: string,
+	enabled: boolean
+): Promise<{ tldr: TopicMailTldr }> {
+	return apiPut(topicMailTldrPath(tier, name), { enabled });
+}
 function topicCronPath(tier: string, name: string): string {
 	return `/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/cron-trigger`;
 }
