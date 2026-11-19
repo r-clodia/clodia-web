@@ -15,6 +15,8 @@
 	 *     EventSource. The lease is only taken once the user is authenticated.
 	 *
 	 * `<Toaster />` is mounted here so toasts can be pushed from anywhere.
+	 * `<ChatWidget />` (helpdesk on the DM with sysadmin, #702) sits beside the
+	 * shell, for admins only.
 	 */
 	import { onDestroy, onMount } from 'svelte';
 	import { sendPresenceBeat } from '$lib/api/client';
@@ -27,6 +29,8 @@
 	import SetupScreen from '$lib/components/SetupScreen.svelte';
 	import GateApprovals from '$lib/components/GateApprovals.svelte';
 	import ObserveFeed from '$lib/components/ObserveFeed.svelte';
+	import ChatWidget from '$lib/components/ChatWidget.svelte';
+	import { isAdmin } from '$lib/stores/capabilities';
 	import {
 		onEventStream,
 		startEventStream
@@ -186,6 +190,9 @@
 			<slot />
 		</main>
 	</div>
+	<!-- Helpdesk: the person's DM with sysadmin, beside every page of the app
+	     shell (clodia-platform#702). Admin-only by owner decision (19 Nov 2026). -->
+	{#if $isAdmin}<ChatWidget />{/if}
 {/if}
 
 <Toaster />

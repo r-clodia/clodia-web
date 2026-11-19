@@ -42,16 +42,18 @@
 	import Skeleton from '$lib/components/Skeleton.svelte';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import { isAdmin } from '$lib/stores/capabilities';
-	import { askWainston } from '$lib/stores/helpdesk';
+	import { askHelpdesk } from '$lib/stores/helpdesk';
 
-	// Apre il widget di assistenza (steward/sysadmin) chiedendo il setup del pack:
+	// Apre il widget di assistenza (DM con sysadmin, #702) chiedendo il setup del pack:
 	// deps + MCP + provisioning RAG (rag_collections) seguendo il SETUP.md. Le
 	// mutazioni sono gated → l'owner conferma in contesto.
 	function setupPack(name: string): void {
-		askWainston(
+		askHelpdesk(
 			`Esegui il setup del pack \`${name}\` sul server MCP seguendo il suo SETUP.md: ` +
 			`installa le dipendenze dichiarate, monta i server MCP e fai il provisioning ` +
-			`delle collection RAG (rag_collections). Chiedimi conferma prima di ogni mutazione gated.`
+			`delle collection RAG (rag_collections). Chiedimi conferma prima di ogni mutazione gated.`,
+			// The page reference names the pack (identifier only, #702).
+			{ kind: 'pack', pack: name }
 		);
 	}
 
@@ -746,7 +748,7 @@
 							{#if p.has_upstream && checkResults[p.name]?.update_available}
 								<button type="button" class="update-btn" disabled={updating === p.name} on:click={() => updatePack(p)}>{updating === p.name ? 'Aggiorno…' : `Update v${checkResults[p.name].remote}`}</button>
 							{:else if p.setup_pending}
-								<button type="button" class="setup-btn" title="Apri la chat con lo steward (sysadmin) ed esegui il setup del pack sul server MCP" on:click={() => setupPack(p.name)}>Finish setup</button>
+								<button type="button" class="setup-btn" title="Apri l'assistenza (sysadmin) ed esegui il setup del pack sul server MCP" on:click={() => setupPack(p.name)}>Finish setup</button>
 							{:else if p.has_upstream && checkResults[p.name]}
 								<span class="update-badge" title="Sei alla versione più recente">✓ aggiornato</span>
 							{:else if p.has_upstream}

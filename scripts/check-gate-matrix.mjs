@@ -24,9 +24,14 @@ if (m) {
 	}
 	if (!m.includes('span2')) guasti.push('GateMatrix: la riga dello spawn è una casella sola');
 }
+// The inline channel card is GateCard since #702: the topic page and the
+// helpdesk widget render it, and it is GateCard that holds the matrix.
+const card = leggiSorgente('src/lib/components/GateCard.svelte', guasti);
+if (card && !card.includes('<GateMatrix')) guasti.push('card di canale (GateCard): non usa GateMatrix');
+if (card && !card.includes('cells={info?.remember}')) guasti.push('GateCard: le caselle del gateway non arrivano alla matrice');
 const pagina = leggiSorgente('src/routes/topics/[tier]/[name]/+page.svelte', guasti);
 if (pagina) {
-	if (!pagina.includes('<GateMatrix')) guasti.push('card di canale: non usa GateMatrix');
+	if (!pagina.includes('<GateCard')) guasti.push('card di canale: la pagina non usa GateCard');
 	if (!pagina.includes('remember: q.remember')) guasti.push('card di canale: le caselle del gateway non arrivano alla card');
 	if (!pagina.includes('who: cell.who')) guasti.push('decideGate: deve inviare who/where');
 }

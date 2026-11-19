@@ -12,7 +12,8 @@ import { leggiSorgente } from './lib/sorgente.mjs';
 
 const guasti = [];
 const HELPER = 'src/lib/gateLabel.ts';
-const RENDER = ['src/routes/topics/[tier]/[name]/+page.svelte', 'src/lib/components/GateApprovals.svelte'];
+// The inline channel card lives in GateCard since #702 (topic page + helpdesk widget).
+const RENDER = ['src/lib/components/GateCard.svelte', 'src/lib/components/GateApprovals.svelte'];
 
 const helper = leggiSorgente(HELPER, guasti);
 if (helper && !helper.includes("startsWith('copybrain:')")) {

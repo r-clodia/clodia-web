@@ -70,7 +70,6 @@
 	import { openSignedFile } from '$lib/download';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
-	import { gateLabel } from '$lib/gateLabel';
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
 	import { liveBoxEntries } from '$lib/liveBox';
 	import {
@@ -82,10 +81,12 @@
 	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
 	import { fondiConEcho } from '$lib/echoLocale';
-	import { decideBatch, gateBatch, gateCardState, gateCardVisibile, gateDestination, recordDecision } from '$lib/gateCard';
+	import { decideBatch, gateBatch, gateCardState, gateCardVisibile, recordDecision } from '$lib/gateCard';
 	import { CHOICES_RE, leggiChoices, pillsAttive } from '$lib/pillPersistenti';
 	import GateBatchBar from '$lib/components/GateBatchBar.svelte';
-	import GateMatrix from '$lib/components/GateMatrix.svelte';
+	import GateCard from '$lib/components/GateCard.svelte';
+	import { PAGE_CONTEXT_RE } from '$lib/pageContext';
+	import { currentRoom } from '$lib/stores/helpdesk';
 	import RetierDialog from '$lib/components/RetierDialog.svelte';
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import { puoDiventareObiettivo, eObiettivoFissato, statoObiettivo, attendeOwner } from '$lib/goal';
@@ -119,6 +120,10 @@
 	onDestroy(() => activeTopic.set(null));
 
 	let info: ChannelInfo | null = null;
+	// The helpdesk widget names the page it is opened from (#702): for a room it
+	// says whether it is a DM. Only `meta.kind` leaves this page — never content.
+	$: currentRoom.set(info ? { tier, name, kind: info.meta?.kind } : null);
+	onDestroy(() => currentRoom.set(null));
 
 	// Transient warning when the channel's trifecta reaches 3/3 (untrusted input
 	// in, private data reachable, a way out). Shown once when the page opens on a
@@ -867,14 +872,6 @@
 		if (!info?.decided_by) return isOwner;
 		return info.decided_by.startsWith('owner:') ? isOwner : $isAdmin;
 	}
-	/** Un gate su una DESTINAZIONE (egress/ingress) si può ricordare; uno su
-	 *  un'azione no. «Approva sempre l'invio di mail» non è una decisione che un
-	 *  umano possa prendere guardando un dialog: non sa a chi. «Approva sempre
-	 *  questo indirizzo» sì — ed è precisamente la differenza fra un gate che
-	 *  informa e uno che si spegne per riflesso. */
-	function isDestinationGate(verb: string): boolean {
-		return /^(egress|ingress):/.test(verb || '');
-	}
 	let gateDeciding = false;
 	/** Esiti presi in questa pagina, per id di **MESSAGGIO** e non per tripla
 	 *  `agent|instance|verb`: la tripla ne copre N, e indicizzarci l'esito
@@ -882,27 +879,9 @@
 	 *  agente/verbo — sette round di gate a vuoto il 17 ago 2026
 	 *  (clodia-platform#232). Una card, una richiesta. */
 	let gateDecided: Record<string, string> = {};
-	/** Approve with corrections (clodia-platform#448): the draft of the fields
-	 *  being corrected, per gate. Only CHANGED fields are sent: the gateway
-	 *  re-judges the corrected call, and an unchanged field is not a correction. */
-	let gateEditing: Record<string, boolean> = {};
-	let gateDraft: Record<string, Record<string, string>> = {};
-	function startGateEdit(id: string) {
-		const src = gateInfo[id]?.editable ?? {};
-		gateDraft[id] = Object.fromEntries(Object.entries(src).map(([k, v]) =>
-			[k, Array.isArray(v) ? v.join(', ') : v == null ? '' : String(v)]));
-		gateEditing[id] = true;
-	}
-	function gateCorrections(id: string): Record<string, unknown> | undefined {
-		const src = gateInfo[id]?.editable ?? {};
-		const out: Record<string, unknown> = {};
-		for (const [k, v] of Object.entries(gateDraft[id] ?? {})) {
-			const orig = src[k];
-			const was = Array.isArray(orig) ? orig.join(', ') : orig == null ? '' : String(orig);
-			if (v !== was) out[k] = Array.isArray(orig) ? v.split(',').map((x) => x.trim()).filter(Boolean) : v;
-		}
-		return Object.keys(out).length ? out : undefined;
-	}
+	/** Approve with corrections (clodia-platform#448): the draft and the diff of
+	 *  the CHANGED fields live in GateCard, one draft per card; here they arrive
+	 *  as `corrections` and travel as `arguments`, only when approving. */
 	async function decideGate(
 		msgId: string,
 		g: { id: string; agent: string; instance: string; verb: string },
@@ -988,6 +967,7 @@
 			.replace(_GATE_RE, '')
 			.replace(_ROUTE_RE, '')
 			.replace(_ROUTEREQ_RE, '')
+			.replace(PAGE_CONTEXT_RE, '')
 			.trim();
 	}
 	// Agenti deselezionati nel widget di invito (default: tutti selezionati).
@@ -2714,95 +2694,14 @@
 						     Quando sparire lo dice `gateCardVisibile`, non la posizione. -->
 						{#if gateVisibile && gate}
 							{@const g = gate}
-							{@const gDest = gateDestination(g.verb)}
-							<div class="jobprop">
-								{#if gStato === 'decisa'}
-									<!-- L'esito NON cancella la domanda: la richiesta resta
-									     leggibile accanto alla risposta. Un «approvato» da solo
-									     racconta che qualcuno ha premuto un bottone, non cosa ha
-									     concesso — ed è precisamente ciò che serve rileggere mesi
-									     dopo. Il testo del messaggio porta il motivo; qui restano
-									     chi e cosa, che vengono dal marcatore e non dalla coda. -->
-									<span class="jobprop-done">
-										🛡️ <b>{g.agent}</b> · <code>{gateLabel(g.verb).oggetto}</code>
-										— {gateDecided[m.id]}
-									</span>
-								{:else if gStato === 'chiusa'}
-									<!-- Già deciso, ma non da questa pagina (o prima di un
-									     ricarico): la richiesta non è più in coda, e la coda è
-									     stata letta DOPO che questo messaggio è arrivato. Si dice,
-									     invece di riproporre bottoni che il backend rifiuterebbe.
-									     Senza quel confronto di tempi, una richiesta appena nata
-									     finiva qui per la durata di un poll: un «già deciso» su
-									     ciò che nessuno aveva deciso. -->
-									<span class="jobprop-done">
-										🛡️ <b>{g.agent}</b> · <code>{gateLabel(g.verb).oggetto}</code>
-										— già deciso
-									</span>
-								{:else if canDecideGate(g.id)}
-									{#if gDest}
-										<!-- La DESTINAZIONE, non solo il verbo: `egress:email:mailto:hr@x.io`
-										     stampato tutto attaccato in un `<code>` dice a chi decide che
-										     si tratta di «egress», non verso cosa sta aprendo — ed è
-										     l'unica cosa che serve sapere per decidere. -->
-										<span class="jobprop-q">
-											🛡️ <b>{g.agent}</b> vuole {gDest.direzione === 'egress' ? 'raggiungere' : 'ricevere da'}
-											<code>{gDest.dest}</code> ({gDest.canale}) — approvi?
-										</span>
-									{:else}
-										<span class="jobprop-q">🛡️ <b>{g.agent}</b> {gateLabel(g.verb).azione} <code>{gateLabel(g.verb).oggetto}</code> — approvi?</span>
-									{/if}
-									<GateMatrix compact agent={g.agent} instance={g.instance} verb={g.verb}
-										cells={gateInfo[g.id]?.remember} hasRoom isAdmin={$isAdmin}
-										busy={gateDeciding}
-										on:decide={(e) => decideGate(m.id, g, true, e.detail)} />
-									{#if !isDestinationGate(g.verb) && gateInfo[g.id]?.editable}
-										<!-- Approve WITH CORRECTIONS (clodia-platform#448): only on a verb
-										     gate. On a destination gate the destination IS the question,
-										     and editing it would answer a different one. -->
-										{#if gateEditing[g.id]}
-											<span class="gate-edit" data-testid="gate-edit">
-												{#each Object.keys(gateDraft[g.id] ?? {}) as campo (campo)}
-													<label>{campo}
-														{#if campo === 'body' || campo === 'text'}
-															<textarea rows="4" bind:value={gateDraft[g.id][campo]}></textarea>
-														{:else}
-															<input type="text" bind:value={gateDraft[g.id][campo]} />
-														{/if}
-													</label>
-												{/each}
-												<button type="button" class="jobprop-ok" disabled={gateDeciding || !gateCorrections(g.id)}
-													title="Esegue l'azione con i campi corretti; le regole di destinazione valutano la versione corretta"
-													on:click={() => decideGate(m.id, g, true, { who: 'spawn' }, gateCorrections(g.id))}>✓ Approva con modifiche</button>
-												<button type="button" class="jobprop-no" on:click={() => (gateEditing[g.id] = false)}>Annulla</button>
-											</span>
-										{:else}
-											<button type="button" class="jobprop-ok" disabled={gateDeciding}
-												on:click={() => startGateEdit(g.id)}>✎ Correggi</button>
-										{/if}
-									{/if}
-									<button type="button" class="jobprop-no" disabled={gateDeciding}
-										on:click={() => decideGate(m.id, g, false)}>Nega</button>
-								{:else}
-									<span class="invite-note">
-										{#if gateInfo[g.id]?.decided_by === 'admin'}
-											lo sblocca un admin della piattaforma
-										{:else if gateInfo[g.id]?.decider_name}
-											lo sblocca <b>{gateInfo[g.id].decider_name}</b>, owner di questo topic
-										{:else}
-											solo l'owner può approvare
-										{/if}
-									</span>
-								{/if}
-								{#if gateInfo[g.id]?.asker_note}
-									<span class="gate-crosses">🔎 {gateInfo[g.id].asker_note}</span>
-								{/if}
-								{#if gateInfo[g.id]?.crosses}
-									<!-- Cosa si attraversa: senza, la richiesta è solo il nome
-									     di una funzione, e chi decide non sa cosa sta decidendo. -->
-									<span class="gate-crosses">↦ attraversa {gateInfo[g.id].crosses}</span>
-								{/if}
-							</div>
+							<!-- The card itself lives in GateCard (shared with the helpdesk
+							     widget, clodia-platform#702); the state, who may decide and the
+							     call to the gateway stay here, per MESSAGE id. -->
+							<GateCard {g} stato={gStato} decided={gateDecided[m.id]} info={gateInfo[g.id]}
+								canDecide={canDecideGate(g.id)} busy={gateDeciding} isAdmin={$isAdmin}
+								on:decide={(e) => e.detail.approve
+									? decideGate(m.id, g, true, e.detail.cell, e.detail.corrections)
+									: decideGate(m.id, g, false)} />
 						{/if}
 						{#if m.attachments?.length}
 							<div class="atts">
@@ -4195,14 +4094,9 @@
 		border: 1px solid var(--warn, #b7791f); background: var(--warn-bg, rgba(183,121,31,.08)); }
 	.seal-ack input { margin-top: 2px; flex: none; }
 
-	/* Cosa attraversa il gate: sotto la domanda, prima dei bottoni. */
-	.gate-crosses { display: block; font-size: 11px; opacity: .75; margin-top: 4px; }
 
 	/* Ruolo nello scope: si legge e basta, per tutti (#292). */
 	.role-fixed { font-size: .7rem; opacity: .55; padding: 0 .3rem; }
-	.gate-edit { display: flex; flex-direction: column; gap: 0.3rem; width: 100%; margin: 0.3rem 0; }
-	.gate-edit label { display: flex; flex-direction: column; font-size: 0.8rem; gap: 0.15rem; }
-	.gate-edit textarea, .gate-edit input { width: 100%; font: inherit; }
 	.think-steps {
 		list-style: none;
 		margin: 0 0 0.4rem;

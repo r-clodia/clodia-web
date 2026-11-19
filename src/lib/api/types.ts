@@ -510,7 +510,6 @@ export interface InstanceFeatures {
 	readonly providers_ui: boolean;
 	readonly databases_ui: boolean;
 	readonly activity: boolean;
-	readonly helpdesk: boolean;
 	readonly colony: boolean;
 }
 
@@ -529,7 +528,6 @@ export interface InstanceProfile {
 	readonly features: InstanceFeatures;
 	readonly branding: InstanceBranding;
 	readonly rag: { readonly collection?: string };
-	readonly helpdesk?: { readonly agent?: string };
 	readonly vocabulary?: Record<string, string | { singolare?: string; plurale?: string }>;
 	readonly integrations?: {
 		readonly allow_manual_mcp?: boolean;
