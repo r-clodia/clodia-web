@@ -16,8 +16,10 @@
 		deleteTopicCronTrigger,
 		deleteTopicMailTrigger,
 		getTopicCronTrigger,
+		getTopicMailSummary,
 		getTopicMailTrigger,
 		putTopicCronTrigger,
+		putTopicMailSummary,
 		putTopicMailTrigger,
 		type TopicCronTrigger,
 		type TopicMailTrigger
@@ -56,6 +58,32 @@
 	let enabled = true;
 	let loading = true;
 	let busy = false;
+	/** The courier's mail summary (#708): ON unless the owner switched it off.
+	 *  `null` = not readable (an older agent-server): the switch is hidden. */
+	let riassunto: boolean | null = null;
+	let riassuntoBusy = false;
+
+	async function loadRiassunto() {
+		try {
+			riassunto = (await getTopicMailSummary(tier, name)).summary.enabled;
+		} catch {
+			riassunto = null;
+		}
+	}
+
+	async function toggleRiassunto() {
+		if (riassuntoBusy || !canEdit || riassunto === null) return;
+		riassuntoBusy = true;
+		const next = !riassunto;
+		try {
+			riassunto = (await putTopicMailSummary(tier, name, next)).summary.enabled;
+			toastSuccess(TITLE, next ? 'Riassunto della posta attivato' : 'Riassunto della posta disattivato');
+		} catch (error) {
+			toastError(TITLE, error instanceof Error ? error.message : String(error));
+		} finally {
+			riassuntoBusy = false;
+		}
+	}
 
 	function apply(cron: TopicCronTrigger | null, mail: TopicMailTrigger | null) {
 		cronTrigger = cron;
@@ -187,7 +215,10 @@
 		}
 	}
 
-	onMount(load);
+	onMount(() => {
+		void load();
+		void loadRiassunto();
+	});
 </script>
 
 <section class="trigger-kind">
@@ -318,10 +349,24 @@
 			{#if kind === 'inbox' && current.last_status}— {STATI[current.last_status] ?? current.last_status}{/if}
 		</p>
 	{/if}
+	{#if !loading && riassunto !== null}
+		<div class="riassunto">
+			<label class="check opzione">
+				<input type="checkbox" checked={riassunto} disabled={!canEdit || riassuntoBusy}
+					on:change={() => void toggleRiassunto()} />
+				<span>Riassunto della posta</span>
+			</label>
+			<p class="muted">
+				Il corriere aggiunge a ogni mail consegnata un riassunto di 1–2 righe, scritto in
+				automatico da un modello senza strumenti: non verificato, non agisce sulla mail.
+			</p>
+		</div>
+	{/if}
 </section>
 
 <style>
 	.trigger-kind { min-width: 0; }
+	.riassunto { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 11px; }
 	.info { position: relative; border: 0; padding: 0; background: none; color: var(--fg-muted); cursor: help; font: inherit; line-height: 1; outline: none; }
 	.info:hover, .info:focus { color: var(--accent); }
 	.tooltip {
