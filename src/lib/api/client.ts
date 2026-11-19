@@ -1019,6 +1019,29 @@ export async function deleteTopicMailTrigger(
 ): Promise<{ deleted: boolean }> {
 	return apiDelete(topicMailTriggerPath(tier, name));
 }
+/** The courier's «Riassunto della posta» (clodia-platform#708): ON in every
+ *  room unless the owner switches it off. */
+export interface TopicMailSummary {
+	enabled: boolean;
+	by?: string;
+	updated_at?: string | null;
+}
+function topicMailSummaryPath(tier: string, name: string): string {
+	return `/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/mail-summary`;
+}
+export async function getTopicMailSummary(
+	tier: string,
+	name: string
+): Promise<{ summary: TopicMailSummary }> {
+	return apiGet(topicMailSummaryPath(tier, name));
+}
+export async function putTopicMailSummary(
+	tier: string,
+	name: string,
+	enabled: boolean
+): Promise<{ summary: TopicMailSummary }> {
+	return apiPut(topicMailSummaryPath(tier, name), { enabled });
+}
 function topicCronPath(tier: string, name: string): string {
 	return `/clodia/channels/${encodeURIComponent(tier)}/${encodeURIComponent(name)}/cron-trigger`;
 }
