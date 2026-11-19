@@ -8,7 +8,7 @@
 	import type { Pack } from '$lib/api/types';
 	import { cardsDiTools, serviziDiPack, pairingFinito, etichettaPairing, pairingDaErrore, messaggioErrorePairing } from '$lib/connettori';
 	import { isAdmin } from '$lib/stores/capabilities';
-	import { askWainston } from '$lib/stores/helpdesk';
+	import { askHelpdesk } from '$lib/stores/helpdesk';
 	import { instanceProfile, ensureProfileLoaded } from '$lib/stores/instance';
 	import { toastSuccess, toastError, toastInfo } from '$lib/stores/toasts';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
@@ -347,8 +347,8 @@
 	 *  non il suo nome. L'OAuth resta sul flusso Google esistente — #519 ha
 	 *  lasciato `kind: oauth` fuori dalla rotta generica (consenso, stato fra le
 	 *  due gambe, callback), quindi un flusso generico non esiste ancora. */
-	/** La domanda che l'owner farebbe a Wainston per questo connettore. Prima
-	 *  era una frase scritta qui per un solo connettore. */
+	/** La domanda che l'owner farebbe all'assistenza (sysadmin, #702) per questo
+	 *  connettore. Prima era una frase scritta qui per un solo connettore. */
 	function aiuto(c: CardModel) {
 		return `Aiuto, sto configurando l'integrazione ${c.name}. Da dove parto?`;
 	}
@@ -877,10 +877,10 @@
 			</span>
 		{/if}
 		<button type="button" class="btn ghost" on:click={() => testConn(c.id)} disabled={testing[c.id]}>{testing[c.id] ? '…' : 'Test'}</button>
-		<button type="button" class="btn ghost" on:click={() => askWainston(aiuto(c))}>💬 Aiuto</button>
+		<button type="button" class="btn ghost" on:click={() => askHelpdesk(aiuto(c))}>💬 Aiuto</button>
 		<button type="button" class="btn ghost" on:click={() => connetti(c)}>Riconnetti</button>
 	{:else}
-		<button type="button" class="btn ghost" on:click={() => askWainston(aiuto(c))}>💬 Aiuto setup</button>
+		<button type="button" class="btn ghost" on:click={() => askHelpdesk(aiuto(c))}>💬 Aiuto setup</button>
 		<button type="button" class="btn primary" on:click={() => connetti(c)}>{c.setupLabel || 'Connetti'}</button>
 	{/if}
 {/snippet}

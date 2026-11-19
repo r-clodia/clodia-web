@@ -198,3 +198,20 @@ export async function decideBatch(voci, scelte, decidi) {
 	}
 	return { ok, falliti };
 }
+
+/**
+ * The gate marker of a channel message — `<!-- gate=agent|instance|verb -->` —
+ * read the way the topic page reads it. Used by the helpdesk widget
+ * (clodia-platform#702), which renders the same `GateCard`.
+ *
+ * @param {string} text
+ * @returns {{ id: string, agent: string, instance: string, verb: string } | null}
+ */
+export function parseGateMarker(text) {
+	const m = (text || '').match(/<!--\s*gate\s*=\s*([^>]+?)\s*-->/i);
+	if (!m) return null;
+	const id = m[1].trim();
+	const parts = id.split('|');
+	if (parts.length < 3) return null;
+	return { id, agent: parts[0], instance: parts[1], verb: parts.slice(2).join('|') };
+}

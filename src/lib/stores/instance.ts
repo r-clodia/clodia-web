@@ -23,14 +23,12 @@ export const FULL_PROFILE: InstanceProfile = {
 		providers_ui: true,
 		databases_ui: true,
 		activity: true,
-		helpdesk: true,
 		colony: false
 	},
 	// Vuoto = nessuna opinione → l'interfaccia resta com'è. Un default non vuoto
 	// qui rinominerebbe ogni istanza che non ha configurato niente.
 	branding: { name: '', legal_name: '', logo: '', accent: '' },
 	rag: {},
-	helpdesk: { agent: 'wainston' },
 	vocabulary: {},
 	integrations: { allow_manual_mcp: false },
 	topics_single: {},

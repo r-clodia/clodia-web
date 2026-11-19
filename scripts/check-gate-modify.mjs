@@ -9,7 +9,8 @@
  * - «Correggi» is offered only on a VERB gate: on a destination gate the
  *   destination is the question, and editing it answers a different one.
  * - A correction is «per stavolta»: it is sent with remember 'once'.
- * Checked on the TEXT of the page.
+ * Checked on the TEXT of the page and of GateCard, where the card's markup and
+ * its draft live since #702 (shared with the helpdesk widget).
  */
 import { leggiSorgente } from './lib/sorgente.mjs';
 
@@ -19,14 +20,21 @@ if (p) {
 	if (!p.includes('...(approve && corrections ? { arguments: corrections } : {})')) {
 		guasti.push('decideGate: le correzioni vanno inviate come `arguments`, solo approvando');
 	}
-	if (!/if \(v !== was\)/.test(p)) {
+	// The card hands the corrections and its cell over: the page forwards both.
+	if (!p.includes('decideGate(m.id, g, true, e.detail.cell, e.detail.corrections)')) {
+		guasti.push('pagina: la decisione della card deve portare cella e correzioni a decideGate');
+	}
+}
+const c = leggiSorgente('src/lib/components/GateCard.svelte', guasti);
+if (c) {
+	if (!/if \(v !== was\)/.test(c)) {
 		guasti.push('gateCorrections: vanno inviati solo i campi cambiati');
 	}
-	if (!p.includes("{#if !isDestinationGate(g.verb) && gateInfo[g.id]?.editable}")) {
+	if (!c.includes("{#if !isDestinationGate(g.verb) && info?.editable}")) {
 		guasti.push('card: «Correggi» solo sui gate di verbo con campi modificabili');
 	}
 	// Since #693 «only this time» is the matrix cell `{ who: 'spawn' }`.
-	if (!p.includes("decideGate(m.id, g, true, { who: 'spawn' }, gateCorrections(g.id))")) {
+	if (!c.includes("dispatch('decide', { approve: true, cell: { who: 'spawn' }, corrections: gateCorrections() })")) {
 		guasti.push("card: una correzione vale solo per stavolta (who 'spawn')");
 	}
 }
