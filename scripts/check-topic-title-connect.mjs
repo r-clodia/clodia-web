@@ -26,9 +26,15 @@ if (!pop.includes('<ConnectPopup')) fail('the Connetti popup must be ConnectPopu
 if (/corpo_tools|corpo_data|TopicToolsPanel|TopicDataPanel/.test(pop))
 	fail('the Connetti popup must not embed the sidebar panels');
 const comp = readFileSync('src/lib/components/ConnectPopup.svelte', 'utf8');
-for (const s of ["'MCP'", "'Dati (RAG e database)'", 'setChannelMcp', 'importTopicData',
+for (const s of ['setChannelMcp', 'importTopicData',
 	'removeTopicData', 'importableEntries', 'type="search"'])
 	if (!comp.includes(s)) fail(`ConnectPopup: missing ${s}`);
 if (/RoomList|McpResources|setTopicIndex|TopicToolsPanel|TopicDataPanel/.test(comp))
 	fail('ConnectPopup must hold only MCPs and data: no room lists, resources or index switch');
+// ONE list (owner, 21 Nov 2026): no section headers, the type badge is the
+// only distinction, the search matches the type label.
+if ((comp.match(/<ul class="rows"/g) || []).length !== 1) fail('ConnectPopup: exactly one list');
+if (/<h3>|<section|Dati \(RAG e database\)/.test(comp)) fail('ConnectPopup: no section headers');
+if (!/\[\.\.\.mcpRows, \.\.\.dataRows\]/.test(comp)) fail('ConnectPopup: MCPs and data merged in one list');
+if (!/kindLabel\(r\)\.toLowerCase\(\)\.includes\(q\)/.test(comp)) fail('ConnectPopup: search by type label');
 console.log('check-topic-title-connect: ok');
