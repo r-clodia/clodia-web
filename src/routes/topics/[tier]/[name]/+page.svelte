@@ -1616,6 +1616,10 @@
 		listen: { titolo: 'Ascolta una fonte', desc: 'Metti il canale in ascolto di un mittente, una chat, un gruppo' },
 		unlisten: { titolo: 'Smetti di ascoltare', desc: 'Togli una fonte dal canale' },
 		tools: { titolo: 'Strumenti', desc: 'MCP autorizzati, fonti, destinatari, caselle' },
+		// One place to connect and disconnect (owner, 21 Nov 2026, #709): the
+		// room's MCPs and the data imported into the topic, the same components
+		// as the sidebar — not a copy that could diverge.
+		connect: { titolo: 'Connetti', desc: 'MCP autorizzati e dati importati (RAG, database)' },
 		file: { titolo: 'File', desc: 'I file del topic' }
 	} as const;
 	type Comando = keyof typeof COMANDI;
@@ -1640,6 +1644,14 @@
 		comandoAperto = c;
 		draft = '';
 		commandQuery = null;
+	}
+	/** Closing a popup that may have changed the room's tools or data: the
+	 *  sidebar's own panels read them again (#709). */
+	function chiudiComando() {
+		const era = comandoAperto;
+		comandoAperto = null;
+		if (era === 'connect' || era === 'tools') void toolsPanel?.reload();
+		if (era === 'connect' || era === 'data') void refreshInfo();
 	}
 
 	// --- @mention autocomplete -----------------------------------------------
@@ -2354,7 +2366,8 @@
 				<TopicMark {tier} {name} logo={info?.meta?.logo} title={info?.meta?.title}
 					size={22} rev={logoRev} />
 			{/if}
-			<h1>#{info?.meta?.title || name}</h1>
+			<!-- The code-name is the title; the long title only on hover (#709). -->
+			<h1 title={info?.meta?.title || name} aria-label={info?.meta?.title ? `${name} — ${info.meta.title}` : name}>#{name}</h1>
 			{#if isOwner || $isAdmin}
 				<!-- Riclassificazione (clodia-platform#426): owner o admin. -->
 				<button type="button" class="tier tier-btn" title="Riclassifica il livello SEAL del topic"
@@ -2365,6 +2378,8 @@
 			<TrifectaBadge profile={info?.trifecta} taint={info?.taint}
 				canReset={isOwner}
 				onReset={doResetTrifecta} />
+			<button type="button" class="connect-btn" on:click={() => apriComando('connect')}
+				title="Connetti: MCP autorizzati e dati importati" aria-label="Connetti MCP e dati">🔌</button>
 			<button type="button" class="reset-context" on:click={resetContext} disabled={resetting || sending}>
 				{resetting ? 'Reset…' : 'Reset contesto'}
 			</button>
@@ -3435,7 +3450,7 @@
 
 <!-- /meta, /participants, /trigger, /data, /tools, /file (owner, 12 Nov 2026):
      each command opens its sidebar component in a popup. -->
-<Modal open={comandoAperto !== null} maxWidth={720} on:close={() => (comandoAperto = null)}>
+<Modal open={comandoAperto !== null} maxWidth={720} on:close={chiudiComando}>
 	<h2 slot="title">{comandoAperto ? COMANDI[comandoAperto].titolo : ''}</h2>
 	<div class="cmd-body">
 		{#if comandoAperto === 'meta'}{@render corpo_meta()}
@@ -3445,6 +3460,15 @@
 		{:else if comandoAperto === 'listen'}{@render corpo_listen(false, 'add')}
 		{:else if comandoAperto === 'unlisten'}{@render corpo_listen(false, 'remove')}
 		{:else if comandoAperto === 'tools'}{@render corpo_tools(false)}
+		{:else if comandoAperto === 'connect'}
+			<section class="connect-sec" aria-label="MCP autorizzati">
+				<h3>MCP</h3>
+				{@render corpo_tools(false)}
+			</section>
+			<section class="connect-sec" aria-label="Importa dati nel topic">
+				<h3>Dati: RAG e database</h3>
+				{@render corpo_data()}
+			</section>
 		{:else if comandoAperto === 'file'}{@render corpo_file()}
 		{/if}
 	</div>
@@ -3457,6 +3481,11 @@
 	.title-row { display: flex; align-items: baseline; gap: 10px; }
 	h1 { margin: 4px 0 0; font-size: 22px; }
 	.tier { font-size: 11px; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+	.connect-btn { background: transparent; border: 1px solid var(--border); border-radius: 7px;
+		padding: 2px 7px; font-size: 13px; cursor: pointer; line-height: 1.3; }
+	.connect-btn:hover { border-color: var(--accent); background: rgba(255,107,61,.08); }
+	.connect-sec { margin-bottom: 14px; }
+	.connect-sec h3 { font-size: 13px; margin: 0 0 6px; color: var(--fg-muted); }
 	.reset-context { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--fg-muted); border-radius: 7px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; }
 	.reset-context:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(255,107,61,.08); }
 	.reset-context:disabled { opacity: .5; cursor: default; }
