@@ -18,6 +18,7 @@
 		getChannelTools,
 		getDataCatalog,
 		importTopicData,
+		mcpVerbsLabel,
 		removeTopicData,
 		setChannelMcp,
 		type DataCatalogEntry,
@@ -75,7 +76,7 @@
 		kind: 'mcp',
 		id: m.id,
 		label: m.label,
-		detail: m.enumerable ? `${m.verbs.length} verbi` : 'verbi del backend',
+		detail: mcpVerbsLabel(m),
 		connected: authorised.has(m.id),
 		search: [m.label, m.id, ...m.namespaces].join(' ').toLowerCase()
 	}));

@@ -23,6 +23,8 @@
 		editTopicEgressScope,
 		getChannelTools,
 		getTopicEgressScope,
+		isCapabilityOnly,
+		mcpVerbsLabel,
 		setChannelMcp,
 		setChannelTool,
 		toolMayAsk,
@@ -199,7 +201,9 @@
 		.sort((a, b) => catalogue[a].label.localeCompare(catalogue[b].label));
 	// Single verbs enabled in the old form and not covered by an authorised
 	// MCP: still in force, so still shown (and removable).
-	$: coveredNs = new Set(authorised.flatMap((id) => catalogue[id].namespaces.map((n) => `${n}.*`)));
+	// A capability with no agent verb (Email, #697) covers none.
+	$: coveredNs = new Set(authorised.filter((id) => !isCapabilityOnly(catalogue[id]))
+		.flatMap((id) => catalogue[id].namespaces.map((n) => `${n}.*`)));
 	$: legacyEnabled = (box?.enabled ?? []).filter((e) => !coveredNs.has(e));
 	const mayAsk = (m: McpInfo) => m.namespaces.some((ns) => toolMayAsk(`${ns}.*`, box?.gated ?? []));
 	const effectWord: Record<McpEffect, string> = { allow: 'allow', ask: 'ask', deny: 'deny' };
@@ -315,9 +319,9 @@
 					<details>
 						<summary>
 							<span class="label" title={m.namespaces.join(', ')}>{m.label}</span>
-							<span class="muted">{m.enumerable ? `${m.verbs.length} verbi` : 'verbi del backend'}</span>
+							<span class="muted">{mcpVerbsLabel(m)}</span>
 							{#if m.write.length > 0}<span class="badge w">scrive</span>{/if}
-							{#if m.verbs.length > m.write.length || !m.enumerable}<span class="badge">legge</span>{/if}
+							{#if !isCapabilityOnly(m) && (m.verbs.length > m.write.length || !m.enumerable)}<span class="badge">legge</span>{/if}
 							{#if mayAsk(m)}<span class="gated" role="img" aria-label="Può chiedere conferma" title="Alcuni verbi possono chiedere conferma">⚠</span>{/if}
 							{#if (box.mcp?.[id]?.resources ?? []).length > 0}
 								<span class="muted">· {(box.mcp?.[id]?.resources ?? []).length} risorse</span>
@@ -328,6 +332,15 @@
 							{/if}
 						</summary>
 						<div class="mcp-body">
+							{#if isCapabilityOnly(m)}
+								<!-- Email (clodia-platform#697): the room's consent to mail, not a tool. -->
+								<p class="muted wrap">
+									Autorizza il corriere a consegnare in questo canale la posta delle caselle collegate
+									e dei mittenti in ascolto. Gli agenti non ricevono verbi email: rispondono con
+									<code>channel.deliver</code> verso i Destinatari. Revocando, la posta delle caselle
+									collegate non arriva più qui; quella scritta all'inbox del canale sì.
+								</p>
+							{/if}
 							{#each actionsFor ? actionsFor(id) : [] as a (a.chiave)}
 								<div class="link-row">
 									{#if statiCanale[a.chiave]?.connected}
@@ -364,6 +377,7 @@
 									{/each}
 								</div>
 							{/if}
+							{#if !isCapabilityOnly(m)}
 							<details class="advanced">
 								<summary>Regole avanzate{(box.mcp?.[id]?.resources ?? []).length ? ` (${(box.mcp?.[id]?.resources ?? []).length})` : ''}</summary>
 								<McpResources mcp={m} rows={box.mcp?.[id]?.resources ?? []}
@@ -380,6 +394,7 @@
 									{/each}
 								</ul>
 							</details>
+							{/if}
 						</div>
 					</details>
 				</li>

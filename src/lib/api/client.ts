@@ -2713,6 +2713,20 @@ export interface McpInfo {
 	/** False when the backend names its own verbs and the gateway cannot list
 	 *  them from here. */
 	enumerable: boolean;
+	/** False for a room capability that gives agents no verb (Email,
+	 *  clodia-platform#697): authorising it only lets the courier deliver the
+	 *  linked mailboxes' mail into the room. Absent on a gateway < 2.185.0. */
+	agent_verbs?: boolean;
+}
+
+/** A room capability with no agent verb (clodia-platform#697): no verbs, no
+ *  resource rows, nothing compiled into the toolbox. */
+export const isCapabilityOnly = (m: McpInfo) => m.agent_verbs === false;
+
+/** What an MCP gives the agents, in a few words, for the panel and pickers. */
+export function mcpVerbsLabel(m: McpInfo): string {
+	if (isCapabilityOnly(m)) return 'nessun verbo agli agenti';
+	return m.enumerable ? `${m.verbs.length} verbi` : 'verbi del backend';
 }
 
 export type McpEffect = 'allow' | 'ask' | 'deny';
