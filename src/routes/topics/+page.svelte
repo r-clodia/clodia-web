@@ -393,7 +393,7 @@
 				const ta = ts(a);
 				const tb = ts(b);
 				if (ta !== tb) return tb - ta;
-				return (a.title || a.name).toLowerCase().localeCompare((b.title || b.name).toLowerCase());
+				return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
 			});
 	}
 
@@ -687,9 +687,10 @@
 					     lista lunga si legge come disordine. -->
 					<span class="title-line">
 						<TopicMark tier={t.tier} name={t.name} logo={t.logo} title={t.title} size={20} />
-						<span class="topic-title">{t.title || t.name}</span>
+						<!-- The code-name is the title; the long title only on hover (#709). -->
+						<span class="topic-title" title={t.title || t.name}
+							aria-label={t.title ? `${t.name} — ${t.title}` : t.name}>{t.name}</span>
 					</span>
-					<code class="topic-name">{t.name}</code>
 				</button>
 
 				<!-- Corpo espanso: TLDR, top action point, contact agent -->
@@ -1198,17 +1199,6 @@
 		margin-top: 4px;
 		padding-top: 8px;
 		border-top: 1px solid var(--border);
-	}
-	.topic-name {
-		font-family: var(--mono);
-		font-size: 10.5px;
-		color: var(--fg-muted);
-		background: transparent;
-		padding: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		min-width: 0;
 	}
 	.member-row {
 		display: flex;
