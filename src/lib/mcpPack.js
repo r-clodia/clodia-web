@@ -79,3 +79,64 @@ export function packPerServer(packs, nomi) {
 export function corpoRegistrazione(config, pack) {
 	return pack ? { config, pack } : { config };
 }
+
+/** Labels that say «this is an API host», not whose it is (as the gateway). */
+const ETICHETTE_GENERICHE = new Set(['mcp', 'api', 'www', 'app', 'server', 'remote', 'sse']);
+
+/**
+ * The pasted input is a bare URL (clodia-platform#632)? The gateway registers
+ * it as an `http` backend; here it only changes what the dialog asks.
+ * @param {string} text
+ * @returns {boolean}
+ */
+export function eUrlMcp(text) {
+	return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test((text ?? '').trim());
+}
+
+/**
+ * The server name proposed for a URL, as the gateway derives it:
+ * `https://mcp.clickup.com/mcp` → `clickup`. `''` when it does not parse.
+ * @param {string} text
+ * @returns {string}
+ */
+export function nomeDaUrl(text) {
+	let host = '';
+	try {
+		host = new URL((text ?? '').trim()).hostname.toLowerCase();
+	} catch {
+		return '';
+	}
+	let labels = host.split('.').filter(Boolean);
+	if (labels.length > 1) labels = labels.slice(0, -1);
+	return labels.find((l) => !ETICHETTE_GENERICHE.has(l)) ?? labels[0] ?? '';
+}
+
+/**
+ * What the dialog sends for the pasted text, or an error to show.
+ * - a URL → `{config: <url>, name}`: no pack (a pack's servers come from its
+ *   own manifest);
+ * - an mcp.json → the parsed object, with the pack when one was chosen; an
+ *   `mcp-remote` wrapper inside it is translated by the gateway.
+ * @param {string} text
+ * @param {string} nome
+ * @param {string} pack
+ * @returns {{body?: {config: unknown, name?: string, pack?: string}, errore?: string}}
+ */
+export function corpoDaInput(text, nome, pack) {
+	const t = (text ?? '').trim();
+	if (eUrlMcp(t)) {
+		const n = (nome ?? '').trim() || nomeDaUrl(t);
+		if (!n) return { errore: 'URL non valido.' };
+		return { body: { config: t, name: n } };
+	}
+	let parsed;
+	try {
+		parsed = JSON.parse(t);
+	} catch {
+		return { errore: 'Serve un mcp.json o un URL https://.' };
+	}
+	if (!parsed || typeof parsed !== 'object' || !parsed.mcpServers) {
+		return { errore: 'Manca l’oggetto "mcpServers" nel config.' };
+	}
+	return { body: corpoRegistrazione(parsed, pack) };
+}

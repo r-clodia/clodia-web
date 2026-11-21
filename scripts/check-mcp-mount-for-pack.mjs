@@ -34,10 +34,11 @@ if ('pack' in corpoRegistrazione({}, '')) fail('`pack` must not be sent when not
 if (corpoRegistrazione({}, 'whatsapp-pack').pack !== 'whatsapp-pack') fail('`pack` is not sent when chosen');
 
 // ── 2. client ──────────────────────────────────────────────────────────────
-if (!/registerMcp\(\s*body: \{[^}]*pack\?: string \}/.test(client)) fail('registerMcp does not type `pack`');
+if (!/registerMcp\(\s*body: \{[^}]*pack\?: string[;\s}]/.test(client)) fail('registerMcp does not type `pack`');
 
 // ── 3. page ────────────────────────────────────────────────────────────────
-if (!/registerMcp\(corpoRegistrazione\(parsed, mcpPack\)\)/.test(page)) fail('submitMcp does not send the chosen pack');
+// Since #632 the body is built by `corpoDaInput`, which calls `corpoRegistrazione` for an mcp.json.
+if (!/corpoDaInput\(mcpJson, mcpNome, mcpPack\)/.test(page) || !/registerMcp\(body\)/.test(page)) fail('submitMcp does not send the chosen pack');
 if (!/listPacks\(\)/.test(page)) fail('the dialog does not load the installed packs');
 if (!/Appartiene al pack/.test(page) || !/<select bind:value=\{mcpPack\}/.test(page)) fail('no «Appartiene al pack» select');
 if (!/<option value="">— nessuno —<\/option>/.test(page)) fail('the pack must be optional');

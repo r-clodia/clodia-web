@@ -4,7 +4,7 @@
 	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, listPacks, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, setMcpToolEnabled, getConnectorPairing, startConnectorPairing, ApiError, type McpTestVerb, type ConnectorPairing } from '$lib/api/client';
 	import McpVerbsDialog from '$lib/components/McpVerbsDialog.svelte';
 	import type { ConnectorIssue, MailboxStatus, ConnectorRegistry } from '$lib/api/client';
-	import { nomiServerMcp, packPerServer, corpoRegistrazione } from '$lib/mcpPack';
+	import { nomiServerMcp, packPerServer, corpoDaInput, eUrlMcp, nomeDaUrl } from '$lib/mcpPack';
 	import type { Pack } from '$lib/api/types';
 	import { cardsDiTools, serviziDiPack, pairingFinito, etichettaPairing, pairingDaErrore, messaggioErrorePairing } from '$lib/connettori';
 	import { isAdmin } from '$lib/stores/capabilities';
@@ -598,6 +598,10 @@
 	// ─── Add MCP server ───
 	let mcpOpen = false;
 	let mcpJson = '';
+	// The name of a server pasted as a URL (#632): proposed from the host.
+	let mcpNome = '';
+	$: mcpUrl = eUrlMcp(mcpJson);
+	$: mcpNomeProposto = mcpUrl ? nomeDaUrl(mcpJson) : '';
 	let mcpBusy = false;
 	let mcpError = '';
 	// clodia-platform#641: the pack these servers belong to ('' = none). A
@@ -625,6 +629,7 @@
 
 	function openMcp() {
 		mcpJson = '';
+		mcpNome = '';
 		mcpError = '';
 		mcpPack = '';
 		mcpPackTouched = false;
@@ -637,22 +642,21 @@
 	}
 
 	async function submitMcp() {
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(mcpJson);
-		} catch {
-			mcpError = 'JSON non valido.';
-			return;
-		}
-		if (!parsed || typeof parsed !== 'object' || !(parsed as Record<string, unknown>).mcpServers) {
-			mcpError = 'Manca l’oggetto "mcpServers" nel config.';
+		// A URL or an mcp.json (clodia-platform#632): the gateway turns a URL,
+		// and an mcp-remote wrapper inside an mcp.json, into an http backend.
+		const { body, errore } = corpoDaInput(mcpJson, mcpNome, mcpPack);
+		if (!body) {
+			mcpError = errore ?? 'Input non valido.';
 			return;
 		}
 		mcpBusy = true;
 		mcpError = '';
 		try {
-			const res = await registerMcp(corpoRegistrazione(parsed, mcpPack));
-			toastSuccess('MCP server registrato', (res.registered || []).join(', '));
+			const res = await registerMcp(body);
+			const dettaglio = [(res.registered || []).join(', '), ...(res.notes || [])]
+				.filter(Boolean)
+				.join(' — ');
+			toastSuccess('MCP server registrato', dettaglio);
 			if (res.oauth_detected?.length) {
 				// Il server ha risposto 401 annunciando OAuth (#533): montato con
 				// consenso OAuth, la card offre «Connetti».
@@ -1374,7 +1378,13 @@
 				<button class="x" type="button" on:click={closeMcp} aria-label="Chiudi">×</button>
 			</div>
 			<p class="note">
-				Incolla il <code>mcp.json</code> del server (formato <code>{`{"mcpServers": {…}}`}</code>),
+				Per un server remoto basta il suo <strong>URL</strong> (es.
+				<code>https://mcp.clickup.com/mcp</code>): è la forma preferita. La forma
+				<code>npx -y mcp-remote &lt;url&gt;</code> delle guide di installazione viene tradotta
+				nello stesso backend http, senza avviare <code>mcp-remote</code>.
+			</p>
+			<p class="note">
+				Altrimenti incolla il <code>mcp.json</code> del server (formato <code>{`{"mcpServers": {…}}`}</code>),
 				stdio (<code>command/args/env</code>) o http (<code>url/headers</code>). Per i segreti usa
 				un placeholder <code>{'${NAME}'}</code> nel config: qui non si chiede niente — dopo la
 				registrazione premi <strong>Connetti</strong> sulla card, inserisci il valore, e il gateway
@@ -1386,11 +1396,16 @@
 				registra, poi premi <strong>Connetti</strong> sulla sua card.
 			</p>
 			<label class="field">
-				<span>mcp.json</span>
+				<span>URL o mcp.json</span>
 				<textarea bind:value={mcpJson} rows="9" spellcheck="false" class="mono"
 					placeholder={'{\n  "mcpServers": {\n    "github": {\n      "command": "npx",\n      "args": ["-y","@modelcontextprotocol/server-github"],\n      "env": { "GITHUB_TOKEN": "${GH_TOKEN}" }\n    }\n  }\n}'}></textarea>
 			</label>
-			{#if mcpScelta.opzioni.length}
+			{#if mcpUrl}
+				<label class="field">
+					<span>Nome del server</span>
+					<input type="text" bind:value={mcpNome} placeholder={mcpNomeProposto} disabled={mcpBusy} />
+				</label>
+			{:else if mcpScelta.opzioni.length}
 				<!-- clodia-platform#641: mount for an installed pack that declares
 				     these servers; the gateway checks the manifest. -->
 				<label class="field">
