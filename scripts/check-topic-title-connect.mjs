@@ -17,7 +17,18 @@ if (list.includes('<code class="topic-name">'))
 	fail('/topics: the second line with the code-name came back');
 if (!/class="connect-btn"[\s\S]{0,200}🔌/.test(page) || !page.includes("apriComando('connect')"))
 	fail('topic page: the 🔌 Connetti button is missing');
-const pop = page.slice(page.indexOf("comandoAperto === 'connect'"));
-if (!pop.includes('{@render corpo_tools(false)}') || !pop.includes('{@render corpo_data()}'))
-	fail('the Connetti popup must render both the tools and the data panels');
+// The popup is ONE new component merging the two pickers' elements (owner,
+// 21 Nov 2026): not the two sidebar panels, which bring room lists, the index
+// switch and the resources along.
+const start = page.indexOf("comandoAperto === 'connect'");
+const pop = page.slice(start, page.indexOf('{:else', start + 10));
+if (!pop.includes('<ConnectPopup')) fail('the Connetti popup must be ConnectPopup');
+if (/corpo_tools|corpo_data|TopicToolsPanel|TopicDataPanel/.test(pop))
+	fail('the Connetti popup must not embed the sidebar panels');
+const comp = readFileSync('src/lib/components/ConnectPopup.svelte', 'utf8');
+for (const s of ["'MCP'", "'Dati (RAG e database)'", 'setChannelMcp', 'importTopicData',
+	'removeTopicData', 'importableEntries', 'type="search"'])
+	if (!comp.includes(s)) fail(`ConnectPopup: missing ${s}`);
+if (/RoomList|McpResources|setTopicIndex|TopicToolsPanel|TopicDataPanel/.test(comp))
+	fail('ConnectPopup must hold only MCPs and data: no room lists, resources or index switch');
 console.log('check-topic-title-connect: ok');

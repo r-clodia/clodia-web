@@ -12,6 +12,7 @@
 	import TopicTriggersPanel from '$lib/components/TopicTriggersPanel.svelte';
 	import TopicDataPanel from '$lib/components/TopicDataPanel.svelte';
 	import TopicToolsPanel from '$lib/components/TopicToolsPanel.svelte';
+	import ConnectPopup from '$lib/components/ConnectPopup.svelte';
 	import RulesPanel from '$lib/components/RulesPanel.svelte';
 	import ListenPanel from '$lib/components/ListenPanel.svelte';
 	import TrifectaBadge from '$lib/components/TrifectaBadge.svelte';
@@ -3461,14 +3462,11 @@
 		{:else if comandoAperto === 'unlisten'}{@render corpo_listen(false, 'remove')}
 		{:else if comandoAperto === 'tools'}{@render corpo_tools(false)}
 		{:else if comandoAperto === 'connect'}
-			<section class="connect-sec" aria-label="MCP autorizzati">
-				<h3>MCP</h3>
-				{@render corpo_tools(false)}
-			</section>
-			<section class="connect-sec" aria-label="Importa dati nel topic">
-				<h3>Dati: RAG e database</h3>
-				{@render corpo_data()}
-			</section>
+			{#key `${tier}/${name}`}
+				<ConnectPopup {tier} {name} imports={info?.meta?.data ?? []}
+					indexCollection={info?.meta?.index?.collection ?? ''}
+					canEdit={isOwner || $isAdmin} on:changed={refreshInfo} />
+			{/key}
 		{:else if comandoAperto === 'file'}{@render corpo_file()}
 		{/if}
 	</div>
@@ -3484,8 +3482,6 @@
 	.connect-btn { background: transparent; border: 1px solid var(--border); border-radius: 7px;
 		padding: 2px 7px; font-size: 13px; cursor: pointer; line-height: 1.3; }
 	.connect-btn:hover { border-color: var(--accent); background: rgba(255,107,61,.08); }
-	.connect-sec { margin-bottom: 14px; }
-	.connect-sec h3 { font-size: 13px; margin: 0 0 6px; color: var(--fg-muted); }
 	.reset-context { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--fg-muted); border-radius: 7px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; }
 	.reset-context:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(255,107,61,.08); }
 	.reset-context:disabled { opacity: .5; cursor: default; }

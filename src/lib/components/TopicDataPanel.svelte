@@ -25,6 +25,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import DataPicker from '$lib/components/DataPicker.svelte';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
+	import { importableEntries } from '$lib/topicData';
 
 	export let tier: string;
 	export let name: string;
@@ -113,11 +114,6 @@
 	const isOwnIndex = (imp: TopicDataImport) =>
 		imp.kind === 'rag' && !!indexCollection && imp.name === indexCollection;
 
-	/** SEAL rank; legacy P0..P3 map to SEAL-0..3. Unknown → -1. */
-	function rank(t: string | undefined): number {
-		const m = /^(?:SEAL-|P)(\d)$/.exec(t ?? '');
-		return m ? Number(m[1]) : -1;
-	}
 
 	const key = (kind: string, n: string) => `${kind}:${n}`;
 
@@ -132,12 +128,7 @@
 	// Data never moves down a level: only resources at or below the topic tier.
 	// Not offered: what is already imported, this topic's own index, and the
 	// index of an archived topic (owner, 26 Oct 2026).
-	$: importable = (catalog ?? []).filter(
-		(e) => !importedKeys.has(key(e.kind, e.name))
-			&& !(e.kind === 'rag' && !!indexCollection && e.name === indexCollection)
-			&& e.topic_status !== 'archived'
-			&& rank(e.tier) >= 0 && rank(e.tier) <= rank(tier)
-	);
+	$: importable = importableEntries(catalog ?? [], imports, indexCollection, tier);
 
 	async function loadCatalog() {
 		catalogErr = '';
