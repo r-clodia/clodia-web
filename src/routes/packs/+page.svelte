@@ -365,10 +365,12 @@
 		return `${p.name} ${p.description} ${children.join(' ')} ${mcp.join(' ')}`.toLowerCase();
 	}
 
+	const pluginNames = (p: Pack): string[] => p.plugins.map((c) => c.name);
+
 	function packText(p: Pack, ds_: DatastoreStructure[] | null): string {
 		const agents = p.agents.map((a) => `${a.name} ${a.description}`);
 		const plugins = p.plugins.map((c) => (isPluginResolved(c) ? pluginText(c) : c.name));
-		const ds = structuresOfPack(ds_, p.name).flatMap((s) => [s.name, s.purpose ?? '', ...s.instances.map((i) => i.name)]);
+		const ds = structuresOfPack(ds_, p.name, pluginNames(p)).flatMap((s) => [s.name, s.purpose ?? '', ...s.instances.map((i) => i.name)]);
 		return `${p.name} ${p.description} ${agents.join(' ')} ${plugins.join(' ')} ${ds.join(' ')}`.toLowerCase();
 	}
 
@@ -392,7 +394,7 @@
 		const parts: string[] = [];
 		if (p.counts.agents) parts.push(`${p.counts.agents} agent`);
 		if (p.counts.plugins) parts.push(`${p.counts.plugins} plugin`);
-		const ds = structuresOfPack(ds_, p.name).length;
+		const ds = structuresOfPack(ds_, p.name, pluginNames(p)).length;
 		if (ds) parts.push(`${ds} ${ds === 1 ? 'struttura dati' : 'strutture dati'}`);
 		return parts.join(' · ') || 'vuoto';
 	}
@@ -826,11 +828,11 @@
 									{/each}
 								</div>
 							{/if}
-							<PackDatastores structures={structuresOfPack(structures, p.name)} admin={canCreateDb}
+							<PackDatastores structures={structuresOfPack(structures, p.name, pluginNames(p))} admin={canCreateDb}
 								highlight={justCreated} migrating={migratingInstance}
 								on:create={(e) => openCreateInstance(e.detail)}
 								on:migrate={(e) => retryMigration(e.detail)} />
-							{#if !p.agents.length && !p.plugins.length && !structuresOfPack(structures, p.name).length}
+							{#if !p.agents.length && !p.plugins.length && !structuresOfPack(structures, p.name, pluginNames(p)).length}
 								<div class="child empty-child">pack vuoto</div>
 							{/if}
 						</div>

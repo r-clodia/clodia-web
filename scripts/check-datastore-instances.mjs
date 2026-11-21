@@ -78,6 +78,9 @@ if (mod) {
 		['instance href', mod.datastoreHref('assetti-contabili/contabilita:tomato'),
 			'/databases/datastore/assetti-contabili/contabilita%3Atomato'],
 		['structures of a pack', mod.structuresOfPack([{ pack: 'a', id: 'a/x' }, { pack: 'b', id: 'b/y' }], 'a').length, 1],
+		// #716: the gateway names a structure after its PLUGIN folder.
+		['structures of a pack via its plugin', mod.structuresOfPack([{ pack: 'assetti-contabili', id: 'assetti-contabili/contabilita' }, { pack: 'tomato', id: 'tomato/leads' }], 'studio-commercialista', ['assetti-contabili', 'normattiva']).map((s) => s.id).join(','), 'assetti-contabili/contabilita'],
+		['structures of a pack: no plugins given', mod.structuresOfPack([{ pack: 'assetti-contabili', id: 'assetti-contabili/contabilita' }], 'studio-commercialista').length, 0],
 		// imported_by_scopes: a list, a bare COUNT (older backend), or nothing —
 		// "nessuno" only when known (empty list or 0), never from a number.
 		['imports: list rendered', JSON.stringify(mod.importsOf({ imported_by_scopes: ['SEAL-2/tomato', 'job:7'] }).scopes), '["SEAL-2/tomato","job:7"]'],
@@ -118,6 +121,8 @@ if (packs !== null) {
 	if (!/myClearance = r \? r\.caller_clearance/.test(src)) failures.push(`${PACKS}: clearance not read from the structures response`);
 	if (/getAgents\(/.test(src)) failures.push(`${PACKS}: clearance must come from the structures response, not /api/agents`);
 	if (!/<CreateInstanceDialog\b/.test(src)) failures.push(`${PACKS}: no CreateInstanceDialog`);
+	// #716: every call groups by the pack AND its plugins' names.
+	if (/structuresOfPack\([^)]*p\.name\)/.test(src)) failures.push(`${PACKS}: structuresOfPack called without the pack's plugin names (#716)`);
 	if (!/getDatastoreStructures\(/.test(src)) failures.push(`${PACKS}: structures not loaded`);
 	if (!/clearance/.test(src)) failures.push(`${PACKS}: the person's clearance is not passed to the dialog`);
 }

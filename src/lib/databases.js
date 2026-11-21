@@ -278,11 +278,19 @@ export function structuresOf(entries) {
 }
 
 /** Structures declared by one pack (from `GET /clodia/databases/structures`).
+ *
+ * The gateway names a structure after the folder of the PLUGIN that declares
+ * it (`assetti-contabili/contabilita`), which is the pack's own name only when
+ * pack and plugin share it (base-pack, tomato). So a pack owns the structures
+ * whose `pack` is its name or the name of one of its plugins
+ * (clodia-platform#716: studio-commercialista showed no «Crea db»).
  * @template {{pack: string}} S
  * @param {S[] | null | undefined} structures @param {string} pack
+ * @param {string[]} [plugins] names of the pack's plugins
  * @returns {S[]} */
-export function structuresOfPack(structures, pack) {
-	return (structures || []).filter((s) => s.pack === pack);
+export function structuresOfPack(structures, pack, plugins = []) {
+	const owners = new Set([pack, ...plugins]);
+	return (structures || []).filter((s) => owners.has(s.pack));
 }
 
 /**
