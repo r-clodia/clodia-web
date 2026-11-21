@@ -1517,6 +1517,9 @@
 	$: goalStato = statoObiettivo(goal);
 	$: goalAttendeOwner = attendeOwner(goal);
 	let goalBusy = false;
+	/** The goal's full text in a popup (clodia-platform#476): the caption is
+	 *  one truncated line, and its `title` never opens on touch. */
+	let goalAperto = false;
 
 	async function fissaObiettivo(m: { id?: string; text?: string }) {
 		if (!puoDiventareObiettivo(m, { isOwner }) || goalBusy) return;
@@ -2851,6 +2854,16 @@
 					<span class="goal-cap-icon" aria-hidden="true">🎯</span>
 					<span class="goal-cap-text" title={goal.text}>{goal.text}</span>
 					<span class="goal-cap-stato" title={goalStato.nota}>{goalStato.testo}</span>
+					<!-- #476: for every participant, not only the owner: reading the
+					     goal is everyone's, approving it is the owner's. -->
+					<button type="button" class="goal-act" title="Mostra il testo completo"
+						aria-label="Mostra il testo completo dell'obiettivo"
+						on:click={() => (goalAperto = true)}>↗</button>
+					{#if goal.state === 'strategy-review' && goal.strategy_path}
+						<!-- #476: approve knowing where the strategy is. -->
+						<a class="goal-act goal-cap-path" href="#download" title={goal.strategy_path}
+							on:click|preventDefault={() => goal?.strategy_path && openSignedFile(tier, name, goal.strategy_path)}>📄 Strategia</a>
+					{/if}
 					{#if isOwner}
 						<!-- L'approvazione della strategia è il punto in cui il lavoro parte
 						     davvero: finché manca, l'orchestratore ha l'ordine di NON eseguire.
@@ -3078,6 +3091,33 @@
      Uno solo: i campi li dichiara l'azione, i valori di un campo con un
      insieme li risolve il gateway. Prima ce n'erano tre — Drive, Telegram,
      Mailbox — e il quarto connettore voleva il quarto dialog. -->
+<!-- clodia-platform#476: everything the one-line caption cannot hold. -->
+<Modal open={goalAperto && !!goal} maxWidth={640} on:close={() => (goalAperto = false)}>
+	<h2 slot="title">🎯 Obiettivo del canale</h2>
+	{#if goal}
+		<p class="goal-full">{goal.text}</p>
+		{#if goal.text.endsWith('…') && goal.message_id}
+			<!-- The gateway keeps at most 4000 characters (`_norm_goal`): the
+			     original is the message the goal was pinned from. -->
+			<p class="meta-note">Il testo è troncato:
+				<a href={`#m-${goal.message_id}`} on:click={() => (goalAperto = false)}>vai al messaggio originale</a>.</p>
+		{/if}
+		{#if goalStato}
+			<p class="meta-note"><b>{goalStato.testo}</b>{#if goalStato.nota} — {goalStato.nota}{/if}</p>
+		{/if}
+		{#if goal.strategy_path}
+			<p class="meta-note">Strategia:
+				<a href="#download" on:click|preventDefault={() => goal?.strategy_path && openSignedFile(tier, name, goal.strategy_path)}>{goal.strategy_path}</a></p>
+		{/if}
+		{#if goal.pinned_by || goal.pinned_at}
+			<p class="meta-note">Fissato{#if goal.pinned_by} da {goal.pinned_by}{/if}{#if goal.pinned_at} il {new Date(goal.pinned_at).toLocaleString('it-IT')}{/if}</p>
+		{/if}
+	{/if}
+	<div slot="actions">
+		<button type="button" class="btn" on:click={() => (goalAperto = false)}>Chiudi</button>
+	</div>
+</Modal>
+
 <Modal open={azioneAperta !== null} dismissable={!azioneBusy} maxWidth={420}
 	on:close={chiudiAzione}>
 	<h2 slot="title">{azioneStato?.label ?? azioneAperta?.nome ?? ''}</h2>
@@ -3718,6 +3758,8 @@
 	.goal-act:hover { border-color: var(--accent); color: var(--accent); }
 	.goal-act.primary { border-color: color-mix(in srgb, #22c55e 60%, var(--border)); color: #22c55e; }
 	.goal-act:disabled { opacity: .5; cursor: default; }
+	.goal-cap-path { text-decoration: none; }
+	.goal-full { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; margin: 0 0 10px; max-height: 55vh; overflow-y: auto; }
 
 	/* "sta scrivendo…" */
 	.typing { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 12px; color: var(--fg-muted); font-style: italic; }
