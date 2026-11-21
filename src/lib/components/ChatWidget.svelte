@@ -33,6 +33,7 @@
 	import { toastSuccess } from '$lib/stores/toasts';
 	import { pageRef, mergeRef, withPageContext } from '$lib/pageContext';
 	import { leggiChoices } from '$lib/pillPersistenti';
+	import { sinceLastReset } from '$lib/contextReset';
 	import { etichettaTool, type PassoTool } from '$lib/toolLabel';
 	import {
 		decideBatch, gateBatch, gateCardState, gateCardVisibile, parseGateMarker, recordDecision
@@ -162,7 +163,9 @@
 		})();
 	});
 
-	/** New session with sysadmin: the history stays, the next turn starts clean. */
+	/** New conversation with sysadmin: the context is reset and the widget
+	 *  shows only what comes after it. The DM keeps every message (its own
+	 *  page, the audit): nothing is deleted. */
 	async function resetCtx() {
 		if (resetting || !dm) return;
 		resetting = true;
@@ -170,7 +173,10 @@
 			await resetChannelContext(dm.tier, dm.name);
 			live = {};
 			typing = [];
-			toastSuccess('Assistenza', 'Contesto azzerato: la prossima risposta riparte da zero');
+			// Empty at once; the marker read back by `refresh` keeps it so.
+			messages = [...messages, { id: `reset-${Date.now()}`, kind: 'system',
+				text: '__CLODIA_CONTEXT_RESET__' } as ChannelMessage];
+			toastSuccess('Assistenza', 'Nuova conversazione: la chat del widget riparte da zero');
 			await refresh();
 		} catch (e) {
 			err = errText(e);
@@ -207,7 +213,10 @@
 		if (streamEl) streamEl.scrollTop = streamEl.scrollHeight;
 	}
 
-	$: shown = messages.slice(-MAX_SHOWN);
+	// Only the conversation after the last context reset (derived from the
+	// messages, so it holds after a reload); the DM page shows everything.
+	$: current = sinceLastReset(messages);
+	$: shown = current.messages.slice(-MAX_SHOWN);
 	$: lastId = shown.length ? shown[shown.length - 1].id : null;
 	$: lastChoices = (() => {
 		const last = shown[shown.length - 1];
@@ -389,8 +398,8 @@
 				<button type="button" class="cw-icon" on:click={openFull} disabled={!dm}
 					title="Apri la conversazione a tutta pagina" aria-label="Apri la conversazione">↗</button>
 				<button type="button" class="cw-icon" on:click={resetCtx} disabled={resetting || !dm}
-					title="Azzera il contesto: la cronologia resta, la prossima risposta riparte da zero"
-					aria-label="Azzera contesto">{resetting ? '…' : '⟳'}</button>
+					title="Nuova conversazione: azzera il contesto e svuota la chat del widget (i messaggi restano nella DM)"
+					aria-label="Nuova conversazione">{resetting ? '…' : '⟳'}</button>
 				<button type="button" class="cw-icon cw-x" on:click={() => setOpen(false)}
 					title="Chiudi" aria-label="Chiudi l'assistenza">×</button>
 			</header>
@@ -430,7 +439,7 @@
 						{/if}
 					</div>
 				{:else}
-					{#if !err}<p class="cw-empty">{dm ? `Scrivi a ${agent}: ti risponde qui, senza lasciare la pagina.` : 'Apro la conversazione…'}</p>{/if}
+					{#if !err}<p class="cw-empty">{!dm ? 'Apro la conversazione…' : current.reset ? `Nuova conversazione. Scrivi a ${agent}: ti risponde qui.` : `Scrivi a ${agent}: ti risponde qui, senza lasciare la pagina.`}</p>{/if}
 				{/each}
 				{#each Object.entries(live) as [who, l] (who)}
 					<AgentLiveBox agent={who} think={l.think} tools={l.tools} stoppable={false} />
