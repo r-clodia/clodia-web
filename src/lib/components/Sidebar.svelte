@@ -82,6 +82,10 @@
 	}
 
 	let recentTopics: Topic[] = [];
+	/** How many recent topics the sidebar shows (clodia-platform#507). Beyond
+	 *  what fits, `.recent-list` scrolls inside its own section, so the nav
+	 *  stays in view; their signals still go in ONE `/api/topics/signals`. */
+	const RECENT_TOPICS_LIMIT = 10;
 
 	function topicHref(t: Topic): string {
 		return `/topics/${encodeURIComponent(t.tier)}/${encodeURIComponent(t.name)}`;
@@ -102,7 +106,7 @@
 			recentTopics = (await getTopics())
 				.filter((t) => t.kind !== 'dm')
 				.toSorted((a, b) => topicTime(b) - topicTime(a))
-				.slice(0, 5);
+				.slice(0, RECENT_TOPICS_LIMIT);
 			// Segnali per-principal (badge azionabile / pallino) dei topic mostrati:
 			// rivalutati dal server a ogni giro — nessun verdetto cachato (I3).
 			void refreshSignals(recentTopics.map((t) => `${t.tier}/${t.name}`));
