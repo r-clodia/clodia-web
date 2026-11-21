@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { sinceLastReset } from '$lib/contextReset';
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { activeTopic, markSeen, ackMentions, topicKey } from '$lib/stores/unread';
 	import { page } from '$app/stores';
@@ -583,11 +584,7 @@
 	$: liveReplies = liveEntries.filter(([, l]) => l.reply);
 	$: hasLive = liveEntries.length > 0;
 	function visibleMessages(items: ChannelMessage[]): ChannelMessage[] {
-		const resetIdx = items.findLastIndex((m) => m.kind === 'system' && m.text === '__CLODIA_CONTEXT_RESET__');
-		const current = resetIdx >= 0 ? items.slice(resetIdx + 1) : items;
-		return current.filter(
-			(m) => !(m.kind === 'system' && m.text === '__CLODIA_CONTEXT_RESET__')
-		);
+		return sinceLastReset(items).messages;
 	}
 	$: shownMessages = visibleMessages(messages);
 	/** Dove saldare le bolle: da `CLODIA_BUBBLE_PER_BLOCK` (clodia-platform#243)
