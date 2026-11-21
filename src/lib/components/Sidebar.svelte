@@ -229,10 +229,16 @@
 			<div class="recent-title">{term($instanceProfile, 'topic', '', { plural: true, upper: true }) ? `${term($instanceProfile, 'topic', '', { plural: true, upper: true })} RECENTI` : 'RECENT TOPICS'}</div>
 			<div class="recent-list">
 				{#each recentTopics as t (`${t.tier}/${t.name}`)}
+					<!-- clodia-platform#509: a recent topic opens in a new tab (the
+					     session is in localStorage, so the tab comes up logged in;
+					     the event stream is shared across tabs, events-stream.ts).
+					     The topic already open stays a same-tab link. -->
 					<a
 						class="recent-topic"
 						class:active={isActive(topicHref(t), $page.url.pathname)}
 						href={topicHref(t)}
+						target={isActive(topicHref(t), $page.url.pathname) ? undefined : '_blank'}
+						rel={isActive(topicHref(t), $page.url.pathname) ? undefined : 'noopener'}
 						title={t.title || t.name}
 					>
 						<span class="recent-name">{t.title || t.name}</span>

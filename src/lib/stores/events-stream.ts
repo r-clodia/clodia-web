@@ -24,6 +24,15 @@
  * Reconnect: the stream is a `fetch` reader (#511), which does not retry by
  * itself: on `onerror` (failure or end of stream) we tear down and reopen
  * with a simple 1s/2s/5s backoff.
+ *
+ * ONE stream per browser, not per tab (clodia-platform#509). A plain-http
+ * origin (terra: `http://127.0.0.1:7842`) is HTTP/1.1, where the browser
+ * keeps at most 6 connections per host: with one stream per tab, the 7th
+ * topic tab would leave every API call of every tab queued. So the tabs
+ * elect a leader with a Web Lock: only the tab holding it opens the stream,
+ * and it re-broadcasts each event on a `BroadcastChannel` the other tabs
+ * listen to. When the leader closes, the lock passes to a waiting tab, which
+ * opens the stream. Without those APIs each tab keeps its own stream.
  */
 
 import { writable, type Readable } from 'svelte/store';
@@ -98,11 +107,93 @@ function fanOut(raw: SSEEvent) {
 	}
 }
 
+// ── Cross-tab sharing (#509) ─────────────────────────────────────────────
+const LOCK_NAME = 'clodia-events-stream';
+const CHANNEL_NAME = 'clodia-events';
+
+let _channel: BroadcastChannel | null = null;
+/** A connection is wanted by this tab: as leader (holding the lock) or as a
+ *  follower (waiting for it, fed by the channel). */
+let _wanted = false;
+let _isLeader = false;
+let _lockAbort: AbortController | null = null;
+let _releaseLock: (() => void) | null = null;
+
+function crossTab(): boolean {
+	return (
+		typeof BroadcastChannel !== 'undefined' &&
+		typeof navigator !== 'undefined' &&
+		!!(navigator as Navigator & { locks?: LockManager }).locks
+	);
+}
+
+function channel(): BroadcastChannel {
+	if (!_channel) {
+		_channel = new BroadcastChannel(CHANNEL_NAME);
+		_channel.onmessage = (m: MessageEvent) => {
+			// The leader's own posts never come back to it; a follower fans
+			// out what the leader read.
+			const raw = (m.data && m.data.kind === 'event' ? m.data.raw : null) as SSEEvent | null;
+			if (raw && !_isLeader) fanOut(raw);
+		};
+	}
+	return _channel;
+}
+
+function onLeaderEvent(raw: SSEEvent) {
+	fanOut(raw);
+	try {
+		_channel?.postMessage({ kind: 'event', raw });
+	} catch {
+		/* an event that cannot be cloned stays in this tab */
+	}
+}
+
 function openConnection() {
+	if (!crossTab()) {
+		openDirect(fanOut);
+		return;
+	}
+	if (_wanted) return;
+	_wanted = true;
+	channel();
+	_lockAbort = new AbortController();
+	navigator.locks
+		.request(LOCK_NAME, { signal: _lockAbort.signal }, async () => {
+			if (!_wanted) return;
+			_isLeader = true;
+			openDirect(onLeaderEvent);
+			// Held until this tab no longer wants the stream (or closes).
+			await new Promise<void>((resolve) => (_releaseLock = resolve));
+			_isLeader = false;
+			closeDirect();
+		})
+		.catch(() => {
+			/* aborted while waiting: this tab no longer wants it */
+		});
+}
+
+function closeConnection() {
+	if (!crossTab()) {
+		closeDirect();
+		return;
+	}
+	_wanted = false;
+	_lockAbort?.abort();
+	_lockAbort = null;
+	if (_releaseLock) {
+		_releaseLock();
+		_releaseLock = null;
+	}
+	closeDirect();
+}
+
+function openDirect(onEvent: (raw: SSEEvent) => void) {
 	if (_cleanup) return;
+	_directHandler = onEvent;
 	_cleanup = apiSSE(
 		STREAM_PATH,
-		(raw) => fanOut(raw),
+		(raw) => onEvent(raw),
 		(err) => {
 			// Refused (expired or missing session): retrying every 5 s cannot
 			// help. The next subscriber (a navigation, a new login) reopens.
@@ -119,7 +210,9 @@ function openConnection() {
 	);
 }
 
-function closeConnection() {
+let _directHandler: (raw: SSEEvent) => void = fanOut;
+
+function closeDirect() {
 	if (_cleanup) {
 		try {
 			_cleanup();
@@ -142,9 +235,10 @@ function scheduleRetry() {
 	_retryTimer = setTimeout(() => {
 		_retryTimer = null;
 		// Re-open. The new connection will reset the retry attempt counter
-		// as soon as it receives its first event.
-		closeConnection();
-		if (_refCount > 0) openConnection();
+		// as soon as it receives its first event. Only the direct stream:
+		// a leader keeps its lock while it reconnects.
+		closeDirect();
+		if (_refCount > 0) openDirect(_directHandler);
 	}, delay);
 }
 
@@ -159,7 +253,7 @@ export function startEventStream(): () => void {
 	_refCount += 1;
 	// Also when others hold a lease: after a 401/403 the stream stays closed
 	// until someone subscribes again (a navigation, a new login).
-	if (!_cleanup && !_retryTimer) openConnection();
+	if (!_cleanup && !_retryTimer && !_wanted) openConnection();
 	let released = false;
 	return () => {
 		if (released) return;
