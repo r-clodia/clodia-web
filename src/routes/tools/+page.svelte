@@ -15,6 +15,7 @@
 	import RulesPanel from '$lib/components/RulesPanel.svelte';
 	import ViewToggle from '$lib/components/ViewToggle.svelte';
 	import { readView } from '$lib/viewPref.js';
+	import { rememberPending, safeReturnPath } from '$lib/mcpOAuthReturn.js';
 
 	// Cards or table, read synchronously from the cookie while the component
 	// initialises (not in onMount): the first paint is already the stored
@@ -49,6 +50,8 @@
 		transport?: string;
 		auth?: string; // 'oauth' per i backend MCP che vogliono un consenso (#532)
 		authorized?: boolean;
+		/** Il server ha annunciato OAuth nel suo 401 (#533). */
+		oauthDetected?: boolean;
 		/** I metodi del «Connetti» di un backend MCP (#565) e quello attivo. */
 		authMethods?: { type: string; scope?: string; fields?: { name: string; label: string; secret: boolean }[] }[];
 		authActive?: string | null;
@@ -87,7 +90,7 @@
 		return c.operational === false && (c.connected || Boolean(c.issues?.length));
 	}
 	function statusLabel(c: CardModel): string {
-		return c.builtin ? 'Built-in' : c.mcp && c.authMethods?.length && !c.connected ? (c.authMethods.length === 1 && c.auth === 'oauth' ? 'Da autorizzare' : 'Da connettere') : c.mcp && c.authMethods?.length ? 'Connesso' : c.mcp ? 'MCP montato' : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto';
+		return c.builtin ? 'Built-in' : c.mcp && c.authMethods?.length && !c.connected ? (c.authMethods.length === 1 && c.auth === 'oauth' ? 'Da autorizzare' : 'Da connettere') : c.mcp && c.authMethods?.length ? 'Connesso' : c.mcp ? (c.operational === false && c.issues?.length ? 'Non operativa' : 'MCP montato') : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto';
 	}
 	function providerLabel(c: CardModel): string {
 		return c.mcp ? (c.transport ?? 'mcp') : (c.provider ?? 'google');
@@ -169,6 +172,12 @@
 			if (r.ok === true) toastSuccess(`${id}: ${r.detail}`);
 			else if (r.ok === false) toastError(`${id}: ${r.detail}`);
 			else toastInfo(`${id}: ${r.detail}`);
+			if (r.auth_set === 'oauth') {
+				// Il server ha annunciato OAuth nel suo 401 e il gateway ha
+				// configurato il backend così (#533): ora la card ha «Connetti».
+				toastInfo(`${id}: il server richiede OAuth`, 'Premi «Connetti» sulla card per autorizzarlo.');
+			}
+			if (r.ok === false) await load();
 		} catch (e) {
 			toastError(e instanceof ApiError ? e.message : String(e));
 		} finally {
@@ -644,6 +653,11 @@
 		try {
 			const res = await registerMcp(corpoRegistrazione(parsed, mcpPack));
 			toastSuccess('MCP server registrato', (res.registered || []).join(', '));
+			if (res.oauth_detected?.length) {
+				// Il server ha risposto 401 annunciando OAuth (#533): montato con
+				// consenso OAuth, la card offre «Connetti».
+				toastInfo('Il server richiede OAuth', `${res.oauth_detected.join(', ')}: premi «Connetti» sulla card.`);
+			}
 			closeMcp();
 			await load();
 		} catch (err) {
@@ -657,10 +671,14 @@
 		}
 	}
 
-	// ─── Consenso OAuth di un server MCP montato (clodia-platform#532) ───
-	// Il gateway non ha una URL pubblica su cui ricevere il redirect: la
-	// persona autorizza, atterra sul loopback e incolla indietro la URL. È la
-	// stessa strada del connettore Google, per la stessa ragione.
+	// ─── Consenso OAuth di un server MCP montato (clodia-platform#532, #534) ───
+	// Il consenso torna a questa webui: la pagina manda al gateway la propria
+	// origin, il gateway la accetta solo se è dell'istanza e registra
+	// `<origin>/tools/oauth/callback` come redirect URI. Prima di lasciare la
+	// pagina lo `state` si lega a questa scheda (`rememberPending`): la pagina
+	// di ritorno inoltra `code` e `state` solo per un consenso partito da qui.
+	// Resta il ritorno da incollare, per gli authorization server che
+	// rifiutano una redirect http non-loopback.
 	let oauthOpen = false;
 	let oauthServer = '';
 	let oauthUrl = '';
@@ -669,19 +687,46 @@
 	let oauthCode = '';
 	let oauthBusy = false;
 	let oauthError = '';
+	let oauthLeaving = false;
 
-	async function openMcpOAuth(name: string) {
+	async function openMcpOAuth(name: string, incolla = false) {
 		oauthServer = name;
 		oauthUrl = '';
 		oauthCode = '';
 		oauthError = '';
+		oauthLeaving = false;
 		oauthOpen = true;
 		oauthBusy = true;
 		try {
-			const res = await startMcpOAuth(name);
+			const returnTo = safeReturnPath(window.location.pathname + window.location.search);
+			const res = await startMcpOAuth(
+				name,
+				incolla ? {} : { origin: window.location.origin, return_to: returnTo }
+			);
 			oauthUrl = res.auth_url;
 			oauthState = res.state;
 			oauthRedirect = res.redirect_uri;
+			if (res.mode === 'callback') {
+				let ok = false;
+				try {
+					ok = rememberPending(window.sessionStorage, {
+						state: res.state,
+						server: name,
+						returnTo: res.return_to ?? returnTo
+					});
+				} catch {
+					ok = false;
+				}
+				if (ok) {
+					oauthLeaving = true;
+					window.location.assign(res.auth_url);
+					return;
+				}
+				// Senza sessionStorage la pagina di ritorno non potrebbe
+				// riconoscere il consenso: si ripiega sull'incolla.
+				oauthError = 'Questa scheda non può ricordare il consenso: uso il ritorno da incollare.';
+				return openMcpOAuth(name, true);
+			}
 		} catch (err) {
 			oauthError = err instanceof ApiError ? err.message : String(err);
 		} finally {
@@ -1275,13 +1320,19 @@
 				<strong>Autorizza «{oauthServer}»</strong>
 				<button class="x" type="button" on:click={closeMcpOAuth} aria-label="Chiudi">×</button>
 			</div>
-			<p class="note">
-				Apri la URL di autorizzazione, accetta il consenso e <strong>incolla qui la URL</strong>
-				su cui il browser è atterrato (<code>{oauthRedirect || '…'}</code>): è una pagina che
-				non esiste, conta solo l’indirizzo. Il token finisce nel <strong>vault</strong> del
-				gateway — mai nel config, mai in questa pagina.
-			</p>
-			{#if oauthUrl}
+			{#if oauthLeaving}
+				<p class="note">
+					Ti porto alla pagina di consenso del provider. Dopo l’autorizzazione torni qui da
+					solo e la card diventa verde: il token finisce nel <strong>vault</strong> del gateway,
+					mai in questa pagina.
+				</p>
+			{:else if oauthUrl}
+				<p class="note">
+					Apri la URL di autorizzazione, accetta il consenso e <strong>incolla qui la URL</strong>
+					su cui il browser è atterrato (<code>{oauthRedirect || '…'}</code>): è una pagina che
+					non esiste, conta solo l’indirizzo. Il token finisce nel <strong>vault</strong> del
+					gateway — mai nel config, mai in questa pagina.
+				</p>
 				<label class="field">
 					<span>1 · URL di autorizzazione</span>
 					<input type="text" readonly value={oauthUrl} class="mono" />
@@ -1296,6 +1347,12 @@
 				</label>
 			{:else if oauthBusy}
 				<p class="note">Chiedo l’autorizzazione al server MCP…</p>
+			{/if}
+			{#if oauthError && !oauthUrl && !oauthBusy}
+				<p class="note">
+					Il provider rifiuta il ritorno a questa pagina?
+					<button type="button" class="btn ghost sm" on:click={() => openMcpOAuth(oauthServer, true)}>Usa il ritorno da incollare</button>
+				</p>
 			{/if}
 			{#if oauthError}<div class="modal-err">{oauthError}</div>{/if}
 			<div class="modal-foot">

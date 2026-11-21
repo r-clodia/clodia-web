@@ -88,6 +88,23 @@ const stdio = mcp({ id: 'locale', label: 'Locale', provider: 'mcp', transport: '
 if (!stdio?.connected) {
 	guasti.push(`${MODULO}: un backend MCP senza OAuth non è più «montato»`);
 }
+// clodia-platform#533: a backend with no auth method that answered 401/403
+// arrives with `connected: false`, and must stay that way. «Mounted» printed
+// as «connected» is exactly how leads-mcp looked fine while every call failed.
+const rifiutato = mcp({
+	id: 'leads', label: 'leads', provider: 'mcp', transport: 'http', connected: false,
+	operational: false, issues: [{ error: '401 Unauthorized' }]
+});
+if (rifiutato?.connected) {
+	guasti.push(`${MODULO}: un backend MCP che ha risposto 401 risulta connesso (#533)`);
+}
+const annunciato = mcp({
+	id: 'leads', label: 'leads', provider: 'mcp', transport: 'http', connected: false,
+	oauth_detected: true, auth: 'oauth', authorized: false, auth_methods: [{ type: 'oauth' }]
+});
+if (annunciato?.connected || annunciato?.authMethods?.[0]?.type !== 'oauth') {
+	guasti.push(`${MODULO}: un server che annuncia OAuth nel 401 non offre «Connetti» (#533)`);
+}
 if (!leggiSorgente(MODULO, guasti, 'il modulo che costruisce le card')) {
 	// `leggiSorgente` ha già registrato il guasto: senza il modulo i tre
 	// controlli qui sopra non avrebbero potuto girare.
