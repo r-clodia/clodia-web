@@ -97,6 +97,7 @@
 	import type { ConnectorActionState, TopicConnectors } from '$lib/api/client';
 	import { azioniDiTopic, esempiPerDirezione, tipoDiCampo, AVVISO_GRUPPO } from '$lib/connettori';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
+	import { righePerNome, badgeDi, ordinaPerRuolo } from '$lib/ruoliMostrati';
 
 	$: params = $page.params as Record<string, string>;
 	$: tier = params.tier ?? '';
@@ -1582,9 +1583,14 @@
 	// nessuno ha ancora toccato conserva la lista: si converte alla prima
 	// modifica, quindi la UI deve saper leggere entrambe le forme.
 	$: participantsRaw = info?.meta?.participants ?? [];
-	$: participants = Array.isArray(participantsRaw)
-		? participantsRaw
-		: Object.keys(participantsRaw ?? {});
+	// Who is who (clodia-platform#497): the rows come from the server, which
+	// also decides the order (owner, manager, staff, contributors). Sorting
+	// keeps every participant — it is not a filter (#190).
+	$: ruoli = righePerNome(info?.display_roles);
+	$: participants = ordinaPerRuolo(
+		Array.isArray(participantsRaw) ? participantsRaw : Object.keys(participantsRaw ?? {}),
+		ruoli
+	);
 
 	// ── Who orchestrates the room (clodia-platform#667, #695) ───────────────
 	// One per room, Segretario by default; the owner moves it to ANY AI agent
@@ -2709,7 +2715,7 @@
 									<div class="invite-agents">
 										{#each inv as a}
 											{#if participants.includes(a)}
-												<span class="invite-chip in">✓ {a}</span>
+												<span class="invite-chip in">✓ {a}{#each badgeDi(ruoli.get(a)) as b} <span class="role-badge role-{b.tipo}" title={b.titolo}>{b.testo}</span>{/each}</span>
 											{:else}
 												<button type="button" class="invite-chip" class:off={inviteSkip.has(a)}
 													title={inviteSkip.has(a) ? 'escluso — clic per includere' : 'incluso — clic per escludere'}
@@ -3338,6 +3344,7 @@
 					<ul class="parts">
 					{#each participants as p}
 						{@const c = eligibility[p]?.context}
+						{@const badges = badgeDi(ruoli.get(p))}
 						<li>
 							<span class="part-id">
 								<AgentAvatar name={p} size={22} />
@@ -3382,10 +3389,17 @@
 									{/each}
 								</ul>
 							{/if}
+							{#if badges.length}
+								<!-- Display role (#497): from the server rows, never from a
+								     list of names in this page. Contributors get none. -->
+								<span class="role-badges">{#each badges as b}<span class="role-badge role-{b.tipo}" title={b.titolo}>{b.testo}</span>{/each}</span>
+							{/if}
 							{#if p === info?.meta?.owner}
 								<span class="role-fixed" title="La proprietà dello scope, non un grado di accesso">owner</span>
 							{:else}
-								<!-- Nessuna etichetta di ruolo (owner, 12 Nov 2026): ogni
+								<!-- Display roles (#497) are the badges above; `contributor`
+								     stays unlabelled, as decided on 12 Nov 2026.
+								     Nessuna etichetta di ruolo (owner, 12 Nov 2026): ogni
 								     partecipante è uguale agli altri, l'unica distinzione è
 								     l'owner. Prima c'era `contributor` accanto a tutti, che
 								     non distingueva niente; la select che lo cambiava era già
@@ -3400,7 +3414,9 @@
 												disabled={orchBusy} on:change={() => scegliOrchestratore(p)} />
 											orchestratore
 										</label>
-									{:else if p === orchestratore}
+									{:else if p === orchestratore && !ruoli.has(p)}
+										<!-- Older backend without `display_roles`: the manager badge
+										     above is missing, so the orchestrator is still named. -->
 										<span class="orch-check on" title="Orchestra questa stanza">orchestratore</span>
 									{/if}
 								{/if}
@@ -4228,6 +4244,12 @@
 
 	/* Ruolo nello scope: si legge e basta, per tutti (#292). */
 	.role-fixed { font-size: .7rem; opacity: .55; padding: 0 .3rem; }
+	/* Display roles (#497): manager, staff, deputy, acting manager. */
+	.role-badges { display: inline-flex; flex-wrap: wrap; gap: 3px; margin-left: auto; }
+	.role-badge { font-size: 10px; line-height: 1.5; padding: 0 6px; border-radius: 999px; white-space: nowrap;
+		border: 1px solid var(--border); color: var(--fg-muted); }
+	.role-badge.role-manager, .role-badge.role-acting-manager { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+	.role-badge.role-sola-lettura { border-style: dashed; }
 	.think-steps {
 		list-style: none;
 		margin: 0 0 0.4rem;

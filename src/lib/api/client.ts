@@ -710,6 +710,18 @@ export interface ChannelInfo {
 	/** Who leads the room now (clodia-platform#667): the room's choice
 	 *  (`meta.orchestrator`) or, when it cannot serve, the fallback. */
 	orchestrator?: string | null;
+	/** Who is who in the room (clodia-platform#497): owner, manager, staff,
+	 *  contributor, derived server-side in one place and already sorted.
+	 *  Display only — `role` (technical) and the access rules are unchanged.
+	 *  Absent on a backend older than agent-server 6.284.0. */
+	display_roles?: {
+		name: string;
+		display_role: string;
+		marks?: string[];
+		role?: string;
+		readonly?: boolean;
+		sort?: number;
+	}[];
 	/** Chi ha azzerato il trifecta di questo canale, e quando (agents-notebook:
 	 *  richiesta dell'owner del 17 ago 2026). Viaggia DENTRO `trifecta`, ma è
 	 *  ridichiarato qui perché il tipo del profilo vive in `types.ts` e questo
