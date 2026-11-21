@@ -90,13 +90,19 @@
 		search: [catalogLabel(e), e.name, e.tier, e.topic ?? ''].join(' ').toLowerCase()
 	}));
 
+	const kindLabel = (r: Row) => (r.kind === 'mcp' ? 'MCP' : r.kind === 'rag' ? 'RAG' : 'DB');
+
+	// ONE list (owner, 21 Nov 2026): the type badge tells MCP, RAG and DB
+	// apart. Connected first, then by name, the type as tie-break. The search
+	// matches the type label too, so «rag» lists the RAG items.
 	$: q = query.trim().toLowerCase();
 	const order = (a: Row, b: Row) =>
-		Number(b.connected) - Number(a.connected) || a.label.localeCompare(b.label);
-	$: mcpList = mcpRows.filter((r) => !q || r.search.includes(q)).sort(order);
-	$: dataList = dataRows.filter((r) => !q || r.search.includes(q)).sort(order);
-
-	const kindLabel = (r: Row) => (r.kind === 'mcp' ? 'MCP' : r.kind === 'rag' ? 'RAG' : 'DB');
+		Number(b.connected) - Number(a.connected)
+		|| a.label.localeCompare(b.label)
+		|| kindLabel(a).localeCompare(kindLabel(b));
+	$: list = [...mcpRows, ...dataRows]
+		.filter((r) => !q || r.search.includes(q) || kindLabel(r).toLowerCase().includes(q))
+		.sort(order);
 
 	async function toggle(r: Row) {
 		if (!canEdit || busy) return;
@@ -135,43 +141,35 @@
 	{#if !canEdit}
 		<p class="muted wrap">Solo l'owner del canale o un admin può collegare e scollegare.</p>
 	{/if}
-	{#each [{ title: 'MCP', rows: mcpList, empty: 'Nessun MCP corrisponde.' },
-		{ title: 'Dati (RAG e database)', rows: dataList, empty: 'Nessuna raccolta o database corrisponde.' }] as sec (sec.title)}
-		<section class="sec" aria-label={sec.title}>
-			<h3>{sec.title}</h3>
-			{#if sec.rows.length === 0}
-				<p class="muted">{sec.empty}</p>
-			{:else}
-				<ul class="rows">
-					{#each sec.rows as r (`${r.kind}:${r.id}`)}
-						<li class="row" class:on={r.connected}>
-							<span class="kind kind-{r.kind}">{kindLabel(r)}</span>
-							<span class="label" title={r.id}>{r.label}</span>
-							<span class="muted">{r.detail}</span>
-							{#if canEdit}
-								<button type="button" class="tog" class:on={r.connected}
-									disabled={!!busy} on:click={() => void toggle(r)}
-									aria-label={`${r.connected ? 'Scollega' : 'Collega'} ${r.label}`}>
-									{busy === `${r.kind}:${r.id}` ? '…' : r.connected ? 'Scollega' : 'Collega'}
-								</button>
-							{:else}
-								<span class="state" class:on={r.connected}>{r.connected ? 'collegato' : '—'}</span>
-							{/if}
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
-	{/each}
+	{#if list.length === 0}
+		<p class="muted">Nessun MCP, raccolta RAG o database corrisponde.</p>
+	{:else}
+		<ul class="rows" aria-label="MCP, raccolte RAG e database">
+			{#each list as r (`${r.kind}:${r.id}`)}
+				<li class="row" class:on={r.connected}>
+					<span class="kind kind-{r.kind}">{kindLabel(r)}</span>
+					<span class="label" title={r.id}>{r.label}</span>
+					<span class="muted">{r.detail}</span>
+					{#if canEdit}
+						<button type="button" class="tog" class:on={r.connected}
+							disabled={!!busy} on:click={() => void toggle(r)}
+							aria-label={`${r.connected ? 'Scollega' : 'Collega'} ${r.label}`}>
+							{busy === `${r.kind}:${r.id}` ? '…' : r.connected ? 'Scollega' : 'Collega'}
+						</button>
+					{:else}
+						<span class="state" class:on={r.connected}>{r.connected ? 'collegato' : '—'}</span>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	{/if}
 {/if}
 
 <style>
 	.search { width: 100%; box-sizing: border-box; font-size: 13px; padding: 6px 8px; border-radius: 6px;
 		border: 1px solid var(--border); background: var(--bg); color: var(--fg); margin-bottom: 8px; }
-	.sec { margin-bottom: 12px; }
-	.sec h3 { font-size: 13px; margin: 0 0 6px; color: var(--fg-muted); }
 	.rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px;
-		max-height: 32vh; overflow-y: auto; }
+		max-height: 60vh; overflow-y: auto; }
 	.row { flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px;
 		padding: 4px 2px; border-bottom: 1px solid var(--border); }
 	.row.on .label { font-weight: 600; }
