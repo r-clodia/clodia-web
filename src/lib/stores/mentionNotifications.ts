@@ -3,6 +3,8 @@ import { browser } from '$app/environment';
 import { session } from '$lib/auth/session';
 import { toastInfo } from '$lib/stores/toasts';
 import { activeTopic, topicKey } from '$lib/stores/unread';
+import { brand, setTitleOverride } from '$lib/stores/pageTitle';
+import { blinkTitle } from '$lib/pageTitle';
 
 export interface ChannelMessagePayload {
 	tier?: unknown;
@@ -17,7 +19,6 @@ export interface ChannelMessagePayload {
 
 const BLINK_MS = 1000;
 let blinkTimer: ReturnType<typeof setInterval> | null = null;
-let blinkBaseTitle = '';
 let blinkOn = false;
 const seenToasts = new Set<string>();
 
@@ -26,15 +27,16 @@ function stopBlink() {
 	if (blinkTimer) clearInterval(blinkTimer);
 	blinkTimer = null;
 	blinkOn = false;
-	if (blinkBaseTitle) document.title = blinkBaseTitle;
+	// Back to whatever the page title is NOW, not a copy taken when the blink
+	// started: the tab may have moved to another topic (clodia-platform#510).
+	setTitleOverride(null);
 }
 
 function startBlink() {
 	if (!browser || blinkTimer || document.visibilityState === 'visible') return;
-	blinkBaseTitle = document.title || 'Clodia';
 	blinkTimer = setInterval(() => {
 		blinkOn = !blinkOn;
-		document.title = blinkOn ? '● Mention — Clodia' : blinkBaseTitle;
+		setTitleOverride(blinkOn ? blinkTitle(get(brand)) : null);
 	}, BLINK_MS);
 }
 

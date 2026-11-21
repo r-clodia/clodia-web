@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageTitle from '$lib/components/PageTitle.svelte';
 	import { CSP, HEAD_INJECT } from '$lib/artifact-frame';
 	// Anteprima LIVE di un artefatto HTML del topic, in una finestra "chromeless"
 	// (aperta via window.open popup). L'artefatto gira in un iframe `sandbox` SENZA
@@ -198,7 +199,7 @@ ${MARKDOWN_HEAD_INJECT}
 	});
 </script>
 
-<svelte:head><title>{path || 'anteprima'} · anteprima live</title></svelte:head>
+<PageTitle part={`${path || 'anteprima'} · anteprima live`} />
 
 <div class="preview-root">
 	{#if err}<div class="preview-err">Anteprima non disponibile: {err}</div>{/if}

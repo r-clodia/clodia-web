@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageTitle from '$lib/components/PageTitle.svelte';
 	/**
 	 * Destinazioni e fonti censite — pagina a sé, e navigabile.
 	 *
@@ -172,7 +173,7 @@
 	});
 </script>
 
-<svelte:head><title>Destinazioni e fonti · Clodia</title></svelte:head>
+<PageTitle part="Destinazioni e fonti" />
 
 <div class="wrap">
 	<nav class="back"><a href="/settings">← Impostazioni</a></nav>

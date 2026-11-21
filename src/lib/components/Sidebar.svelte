@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { setBrand } from '$lib/stores/pageTitle';
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
@@ -64,9 +65,9 @@
 	// c'è branding, non cambia una virgola.
 	$: brandName = prof.branding.name || 'Clodia';
 	$: brandLogo = prof.branding.logo ? `${API_BASE_URL}/profile/logo` : '';
-	$: if (typeof document !== 'undefined' && prof.branding.name) {
-		document.title = prof.branding.name;
-	}
+	// The brand part of the document title only: the page sets its own, and
+	// `$lib/stores/pageTitle` owns `document.title` (clodia-platform#510).
+	$: setBrand(prof.branding.name);
 	$: if (typeof document !== 'undefined') {
 		if (prof.branding.accent) {
 			document.documentElement.style.setProperty('--accent', prof.branding.accent);
