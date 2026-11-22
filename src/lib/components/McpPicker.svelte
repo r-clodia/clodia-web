@@ -7,7 +7,7 @@
 	 * authorised shows checked and cannot be picked again.
 	 */
 	import { createEventDispatcher } from 'svelte';
-	import { toolMayAsk, type McpInfo } from '$lib/api/client';
+	import { isCapabilityOnly, mcpVerbsLabel, toolMayAsk, type McpInfo } from '$lib/api/client';
 	import Modal from '$lib/components/Modal.svelte';
 
 	export let catalogue: Record<string, McpInfo> = {};
@@ -73,13 +73,15 @@
 						<input type="checkbox" checked={have.has(m.id) || picked.has(m.id)}
 							disabled={have.has(m.id)} on:change={() => toggle(m.id)} />
 						<span class="ns" title={m.namespaces.join(', ')}>{m.label}</span>
-						{#if m.enumerable}
-							<span class="muted">· {m.verbs.length} verbi</span>
+						{#if isCapabilityOnly(m)}
+							<span class="muted" title="Consente al corriere di consegnare qui la posta delle caselle collegate">· {mcpVerbsLabel(m)}</span>
+						{:else if m.enumerable}
+							<span class="muted">· {mcpVerbsLabel(m)}</span>
 						{:else}
-							<span class="muted" title="Il backend nomina i propri verbi">· verbi del backend</span>
+							<span class="muted" title="Il backend nomina i propri verbi">· {mcpVerbsLabel(m)}</span>
 						{/if}
 						{#if m.write.length > 0}<span class="badge w">scrive</span>{/if}
-						{#if m.verbs.length > m.write.length || !m.enumerable}<span class="badge r">legge</span>{/if}
+						{#if !isCapabilityOnly(m) && (m.verbs.length > m.write.length || !m.enumerable)}<span class="badge r">legge</span>{/if}
 						{#if mayAsk(m)}<span class="gated" role="img" aria-label="Può chiedere conferma" title="Alcuni verbi possono chiedere conferma">⚠</span>{/if}
 						{#if have.has(m.id)}<span class="muted">· già autorizzato</span>{/if}
 					</label>
