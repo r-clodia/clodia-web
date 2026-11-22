@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageTitle from '$lib/components/PageTitle.svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import '../../../db.css';
@@ -300,9 +301,7 @@
 	}
 </script>
 
-<svelte:head>
-	<title>{instanceLabel({ kind: 'datastore', name: key })} · Databases</title>
-</svelte:head>
+<PageTitle part={`${instanceLabel({ kind: 'datastore', name: key })} · Databases`} />
 
 <div class="db-page">
 	<div class="db-crumbs"><a href="/databases">Databases</a> › {inst ? 'istanza' : 'datastore'}</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageTitle from '$lib/components/PageTitle.svelte';
 	import { onMount } from 'svelte';
 	import './db.css';
 	import {
@@ -188,9 +189,7 @@
 	onMount(load);
 </script>
 
-<svelte:head>
-	<title>Databases</title>
-</svelte:head>
+<PageTitle part="Databases" />
 
 <!-- Same actions in both views: one snippet, two renderers. -->
 {#snippet actions(e: DbCatalogueEntry)}

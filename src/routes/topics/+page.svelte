@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageTitle from '$lib/components/PageTitle.svelte';
 	/**
 	 * TOPICS — vista a card di sola lettura dei topic di Clodia.
 	 *
@@ -425,9 +426,7 @@
 	}
 </script>
 
-<svelte:head>
-	<title>Topics — Clodia</title>
-</svelte:head>
+<PageTitle part="Topics" />
 
 <header class="head">
 	<div>

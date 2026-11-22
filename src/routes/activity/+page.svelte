@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageTitle from '$lib/components/PageTitle.svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import {
 		ApiError,
@@ -102,7 +103,7 @@
 	$: totalProviderOut = providers.reduce((sum, p) => sum + (p.tokens_out || 0), 0);
 </script>
 
-<svelte:head><title>Agents Activity — Clodia</title></svelte:head>
+<PageTitle part="Agents Activity" />
 
 <header class="head">
 	<div>

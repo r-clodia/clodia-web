@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageTitle from '$lib/components/PageTitle.svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import '../../db.css';
@@ -266,9 +267,7 @@
 	}
 </script>
 
-<svelte:head>
-	<title>{name} · Databases</title>
-</svelte:head>
+<PageTitle part={`${name} · Databases`} />
 
 <div class="db-page">
 	<div class="db-crumbs"><a href="/databases">Databases</a> › collection</div>

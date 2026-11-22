@@ -1,4 +1,5 @@
 <script lang="ts">
+	import PageTitle from '$lib/components/PageTitle.svelte';
 	import { sinceLastReset } from '$lib/contextReset';
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { activeTopic, markSeen, ackMentions, topicKey } from '$lib/stores/unread';
@@ -2378,6 +2379,9 @@
 		}
 	}
 </script>
+
+<!-- The tab's title is this topic's (clodia-platform#510). -->
+<PageTitle part={info?.meta?.title || name} />
 
 <svelte:window on:pointermove={onSideResizeMove} on:pointerup={onSideResizeEnd} />
 
