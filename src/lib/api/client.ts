@@ -3374,15 +3374,17 @@ export async function testConnector(
 	return apiPost(`/tools/${encodeURIComponent(id)}/test`, {}, opts);
 }
 
-/** POST `/tools/mcp` — registra uno o più MCP server da mcp.json. I valori in
+/** POST `/tools/mcp` — registra uno o più MCP server da mcp.json, or from a bare
+ *  URL with `name` (clodia-platform#632, gateway ≥ 2.189.0; `notes` says what
+ *  was translated, e.g. an mcp-remote wrapper). I valori in
  *  `secrets` (per i placeholder ${NAME}) sono depositati nel vault, non nel config.
  *  `pack` (clodia-platform#641, gateway ≥ 2.153.0) mounts the servers FOR an
  *  installed pack whose manifest names them, so its `pending` servers and its
  *  connector can use them. Human admin only; omitted when not chosen. */
 export async function registerMcp(
-	body: { config: unknown; secrets?: Record<string, string>; pack?: string },
+	body: { config: unknown; secrets?: Record<string, string>; pack?: string; name?: string },
 	opts: RequestOptions = {}
-): Promise<{ registered: string[]; oauth_detected?: string[] }> {
+): Promise<{ registered: string[]; oauth_detected?: string[]; notes?: string[] }> {
 	return apiPost('/tools/mcp', body, opts);
 }
 

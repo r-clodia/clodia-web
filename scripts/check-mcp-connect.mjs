@@ -33,10 +33,13 @@ if (pagina !== null) {
 	}
 	// «Add MCP» non chiede segreti al mount: la chiamata manda solo il config
 	// (and, since clodia-platform#641, optionally the pack, through
-	// `corpoRegistrazione`, which check-mcp-mount-for-pack.mjs executes).
+	// `corpoRegistrazione`, which check-mcp-mount-for-pack.mjs executes; since
+	// #632 the body comes from `corpoDaInput`, which check-mcp-from-url.mjs
+	// executes and which never carries secrets).
 	const reg = codice.match(/registerMcp\(([^)]*)\)/);
 	const arg = reg ? reg[1].replace(/\s/g, '') : '';
-	if (!reg || (arg !== '{config:parsed}' && arg !== 'corpoRegistrazione(parsed,mcpPack')) {
+	const daInput = arg === 'body' && /corpoDaInput\(/.test(codice);
+	if (!reg || (arg !== '{config:parsed}' && arg !== 'corpoRegistrazione(parsed,mcpPack' && !daInput)) {
 		guasti.push(`${PAGINA}: «Add MCP» deve mandare solo { config: parsed } — i segreti vanno chiesti al «Connetti»`);
 	}
 }
