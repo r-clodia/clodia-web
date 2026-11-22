@@ -251,8 +251,9 @@
 	let filesError = '';
 	async function loadFiles(silent = false) {
 		if (!silent) filesLoading = true;
+		const requestedPath = filePath;
 		try {
-			const next = await getChannelFiles(tier, name, filePath);
+			const next = await getChannelFiles(tier, name, requestedPath);
 			if (!sameFiles(next, files)) files = next;
 			filesError = '';
 		} catch (e) {
@@ -262,6 +263,20 @@
 			const msg = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 			filesError = msg;
 			if (e instanceof ApiError && e.status === 424) files = [];
+			// Una cartella può essere stata rimossa mentre è aperta. #598 rende
+			// questo errore distinto da una cartella vuota: torna alla radice, ma
+			// solo se nel frattempo l'utente non ha già navigato altrove.
+			if (requestedPath && filePath === requestedPath &&
+				!(e instanceof ApiError && e.status === 424)) {
+				filePath = '';
+				try {
+					const root = await getChannelFiles(tier, name);
+					if (!sameFiles(root, files)) files = root;
+					filesError = '';
+				} catch {
+					/* il refresh periodico riproverà */
+				}
+			}
 		} finally {
 			if (!silent) filesLoading = false;
 		}
