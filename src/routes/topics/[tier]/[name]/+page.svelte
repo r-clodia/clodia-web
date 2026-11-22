@@ -2911,15 +2911,24 @@
 					</ul>
 				{/if}
 				<input type="file" multiple bind:this={fileInput} on:change={onUpload} hidden />
-				<button type="button" class="clip" title="Allega file" on:click={() => fileInput?.click()}>📎</button>
-				<button type="button" class="expand-input" title="Apri editor ampio" aria-label="Apri editor ampio"
-					on:click={openExpandedComposer}>↗</button>
-				<textarea bind:this={composer} bind:value={draft} rows="2"
-					placeholder="Scrivi nel canale… (@nome per rivolgerti a un partecipante; ⌘/Ctrl+V per incollare immagini)"
-					on:input={() => { updateMention(); updateCommand(); }}
-					on:click={() => { updateMention(); updateCommand(); }}
-					on:paste={onPasteFiles}
-					on:keydown={onCompactComposerKeydown}></textarea>
+				<!-- clodia-platform#714: attach and expand sit INSIDE the field, small,
+				     bottom left. The field is this box (border and background), the
+				     textarea and the buttons' row are stacked in it: the typed text
+				     never runs under the buttons, at any height or width. -->
+				<div class="input-box">
+					<textarea bind:this={composer} bind:value={draft} rows="2"
+						placeholder="Scrivi nel canale… (@nome per rivolgerti a un partecipante; ⌘/Ctrl+V per incollare immagini)"
+						on:input={() => { updateMention(); updateCommand(); }}
+						on:click={() => { updateMention(); updateCommand(); }}
+						on:paste={onPasteFiles}
+						on:keydown={onCompactComposerKeydown}></textarea>
+					<div class="input-tools">
+						<button type="button" class="clip" title="Allega file" aria-label="Allega file"
+							on:click={() => fileInput?.click()}>📎</button>
+						<button type="button" class="expand-input" title="Apri editor ampio" aria-label="Apri editor ampio"
+							on:click={openExpandedComposer}>↗</button>
+					</div>
+				</div>
 				<!-- Qui c'era il bottone «■ Stop» del canale. È andato nel box di
 				     ragionamento di ogni agente attivo (#403): fermare «le risposte
 				     in corso» non diceva quale turno morisse, e con più agenti al
@@ -3784,9 +3793,14 @@
 	.composer textarea { flex: 1 1 auto; min-width: 0; background: rgba(0,0,0,0.25); border: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 8px; resize: none; }
 	.composer button { background: var(--accent); border: 1px solid var(--accent); color: var(--accent-fg); font-weight: 700; padding: 0 16px; border-radius: 8px; cursor: pointer; }
 	.composer button:disabled { opacity: .5; cursor: not-allowed; }
-	.clip { background: transparent !important; border: 1px solid var(--border) !important; color: var(--fg) !important; font-size: 16px; padding: 0 12px !important; height: 38px; }
-	.expand-input { background: transparent !important; border: 1px solid var(--border) !important; color: var(--fg-muted) !important; font-size: 15px; padding: 0 11px !important; height: 38px; min-width: 38px; }
-	.expand-input:hover { border-color: var(--accent) !important; color: var(--accent) !important; background: rgba(255,107,61,.08) !important; }
+	/* #714: the field is `.input-box`; the textarea inside has no frame of its own. */
+	.input-box { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: rgba(0,0,0,0.25); border: 1px solid var(--border); border-radius: 8px; }
+	.input-box:focus-within { border-color: var(--accent); }
+	.composer .input-box textarea { background: transparent; border: none; border-radius: 8px 8px 0 0; padding: 8px 10px 2px; outline: none; }
+	.input-tools { display: flex; align-items: center; gap: 2px; padding: 0 6px 4px; }
+	.input-tools .clip, .input-tools .expand-input { background: transparent !important; border: 1px solid transparent !important; color: var(--fg-muted) !important; font-weight: 400; font-size: 12px; line-height: 1; height: 22px; min-width: 22px; padding: 0 4px !important; border-radius: 5px; }
+	.input-tools .clip:hover, .input-tools .expand-input:hover { border-color: var(--accent) !important; color: var(--accent) !important; background: rgba(255,107,61,.08) !important; }
+	.input-tools .clip:focus-visible, .input-tools .expand-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 	.composer-modal-backdrop { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.55); }
 	.composer-modal { width: min(760px, 100%); max-height: min(720px, calc(100vh - 40px)); display: flex; flex-direction: column; gap: 12px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: 0 18px 55px rgba(0,0,0,.45); }
 	.composer-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
