@@ -25,7 +25,7 @@
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
 	import AgentLiveBox from '$lib/components/AgentLiveBox.svelte';
 	import GateCard from '$lib/components/GateCard.svelte';
-	import GateBatchBar from '$lib/components/GateBatchBar.svelte';
+	import GateGroupCard from '$lib/components/GateGroupCard.svelte';
 	import { session } from '$lib/auth/session';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { onEventStream } from '$lib/stores/events-stream';
@@ -36,7 +36,8 @@
 	import { sinceLastReset } from '$lib/contextReset';
 	import { etichettaTool, type PassoTool } from '$lib/toolLabel';
 	import {
-		decideBatch, gateBatch, gateCardState, gateCardVisibile, parseGateMarker, recordDecision
+		decideBatch, gateBatch, gateBatchScelte, gateCardState, gateCardVisibile, gateGroups, parseGateMarker,
+		recordDecision
 	} from '$lib/gateCard';
 	import {
 		apiGet, apiPost, createOrOpenDm, getChannel, getChannelMessages, postChannelMessage,
@@ -323,20 +324,38 @@
 			gateDeciding = false;
 		}
 	}
-	$: gateVoci = shown.map((m) => ({ msg: m, gate: parseGateMarker(m.text) }))
-		.filter((x) => x.gate !== null) as Array<{ msg: ChannelMessage; gate: Gate }>;
-	$: gateBatchVoci = gateBatch({ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs },
-		gateVoci, (g) => canDecideGate(g.id));
-	async function decideGateBatch(e: CustomEvent<{ approve: boolean; voci: Array<Gate> }>) {
+	// Per shown message: marker, state, own visibility, and the grouping of
+	// consecutive gate cards into one (clodia-platform#489) — the same rules as
+	// the topic page. No batch bar above the composer any more.
+	type GateRiga = { gate: Gate | null; stato: 'decisa' | 'chiusa' | 'da-decidere'; card: boolean };
+	$: gateRighe = shown.map((m, i): GateRiga => {
+		const gate = parseGateMarker(m.text);
+		const stato = gate
+			? gateCardState({ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs }, m, gate)
+			: 'chiusa';
+		return { gate, stato, card: gate !== null && gateCardVisibile(stato, i === shown.length - 1) };
+	});
+	$: gateGruppi = gateGroups(gateRighe.map((r) => ({ gate: r.gate !== null, card: r.card })));
+	function righeGruppo(idx: number[]) {
+		return idx.map((k) => {
+			const g = gateRighe[k].gate!;
+			const id = shown[k].id;
+			return { key: id, g, stato: gateRighe[k].stato, decided: gateDecided[id],
+			         canDecide: canDecideGate(g.id), info: gateInfo[g.id] };
+		});
+	}
+	async function decideGateGroup(idx: number[], e: CustomEvent<{ approve: boolean; keys: string[] }>) {
 		if (gateDeciding) return;
 		gateDeciding = true;
-		const { approve, voci } = e.detail;
-		const perId = new Map(gateBatchVoci.map((v) => [v.id, v]));
+		const { approve, keys } = e.detail;
+		const blocco = gateBatch({ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs },
+			idx.map((k) => ({ msg: shown[k], gate: gateRighe[k].gate! })), (g) => canDecideGate(g.id));
+		const voci = gateBatchScelte(blocco, keys);
 		try {
 			const esito = await decideBatch(voci, new Set(voci.map((v) => v.id)), async (v) => {
 				await apiPost(approve ? '/api/gate/approve' : '/api/gate/deny',
 					{ agent: v.agent, instance: v.instance, verb: v.verb, remember: 'once' });
-				for (const id of perId.get(v.id)?.msgIds ?? []) {
+				for (const id of v.msgIds) {
 					gateDecided = recordDecision(gateDecided, { id }, approve ? 'approvato (in blocco)' : 'negato (in blocco)');
 				}
 			});
@@ -406,16 +425,26 @@
 			<div class="cw-stream" bind:this={streamEl}>
 				{#if err}<div class="cw-err" role="alert">{err}</div>{/if}
 				{#each shown as m, i (m.id)}
-					{@const gate = parseGateMarker(m.text)}
-					{@const gStato = gate
-						? gateCardState({ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs }, m, gate)
-						: null}
-					{@const gateVisibile = gate !== null && gStato !== null && gateCardVisibile(gStato, i === shown.length - 1)}
+					{@const gate = gateRighe[i]?.gate ?? null}
+					{@const gStato = gate ? gateRighe[i].stato : null}
+					{@const gateVisibile = gateRighe[i]?.card ?? false}
+					{@const gGruppo = gateGruppi[i] ?? { ruolo: null, righe: [] }}
 					{@const body = visibleText(m.text)}
 					<div class="cw-msg" class:mine={m.author === me} class:sys={m.kind === 'system'}>
 						<div class="cw-author">{m.author}</div>
 						{#if body}<div class="cw-body">{@html renderMarkdown(body)}</div>{/if}
-						{#if gateVisibile && gate && gStato}
+						{#if gGruppo.ruolo === 'gruppo'}
+							<GateGroupCard righe={righeGruppo(gGruppo.righe)} busy={gateDeciding}
+								on:decide={(e) => decideGateGroup(gGruppo.righe, e)}>
+								<svelte:fragment slot="detail" let:riga>
+									<GateCard g={riga.g} stato={riga.stato} decided={riga.decided} info={gateInfo[riga.g.id]}
+										canDecide={riga.canDecide} busy={gateDeciding} isAdmin={$isAdmin}
+										on:decide={(e) => e.detail.approve
+											? decideGate(riga.key, riga.g, true, e.detail.cell, e.detail.corrections)
+											: decideGate(riga.key, riga.g, false)} />
+								</svelte:fragment>
+							</GateGroupCard>
+						{:else if gateVisibile && gate && gStato && gGruppo.ruolo !== 'membro'}
 							{@const g = gate}
 							<GateCard {g} stato={gStato} decided={gateDecided[m.id]} info={gateInfo[g.id]}
 								canDecide={canDecideGate(g.id)} busy={gateDeciding} isAdmin={$isAdmin}
@@ -451,9 +480,6 @@
 					</div>
 				{/if}
 			</div>
-			{#if gateBatchVoci.length >= 2}
-				<GateBatchBar voci={gateBatchVoci} busy={gateDeciding} on:decide={decideGateBatch} />
-			{/if}
 			<div class="cw-composer">
 				<textarea bind:this={input} bind:value={draft} rows="2" placeholder="Scrivi a {agent}…"
 					aria-label="Messaggio per {agent}"

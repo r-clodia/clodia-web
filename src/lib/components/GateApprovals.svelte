@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { gateLabel } from '$lib/gateLabel';
 	import { decideBatch } from '$lib/gateCard';
-	import GateBatchBar from './GateBatchBar.svelte';
+	import GateGroupCard from './GateGroupCard.svelte';
 	import GateMatrix from './GateMatrix.svelte';
 	import { isAdmin } from '$lib/stores/capabilities';
 	// Popup di approvazione GATE (M-gate): mostra all'utente loggato AUTORIZZATO
@@ -87,13 +87,16 @@
 		}
 	}
 
-	/** Gate combinato (clodia-platform#396): stesso endpoint della card singola,
-	 *  voce per voce; un rifiuto non ferma le altre e si dice quale. */
+	/** Gate combinato (clodia-platform#396, one card since #489): stesso
+	 *  endpoint della card singola, voce per voce; un rifiuto non ferma le altre
+	 *  e si dice quale. */
 	let batchBusy = false;
-	async function decideAll(e: CustomEvent<{ approve: boolean; voci: Array<{ id: string; agent: string; instance: string; verb: string }> }>) {
+	async function decideAll(e: CustomEvent<{ approve: boolean; keys: string[] }>) {
 		batchBusy = true;
-		const { approve, voci } = e.detail;
+		const { approve, keys } = e.detail;
 		const perId = new Map(requests.map((q) => [q.id, q]));
+		// Snapshot of the rows ticked on screen; a request gone meanwhile is skipped.
+		const voci = keys.map((k) => perId.get(k)).filter((q): q is Req => !!q);
 		try {
 			const esito = await decideBatch(voci, new Set(voci.map((v) => v.id)), (v) =>
 				apiPost(approve ? '/api/gate/approve' : '/api/gate/deny', {
@@ -118,52 +121,67 @@
 {#if requests.length}
 	<div class="gate-wrap" role="alertdialog" aria-label="Richieste gate">
 		{#if requests.length >= 2}
-			<div class="gate-card">
-				<GateBatchBar voci={requests} busy={batchBusy} on:decide={decideAll} />
+			<!-- N open requests are ONE card (clodia-platform#489), not a batch bar
+			     on top of N cards; «Dettagli» opens the single request's own
+			     block, with the matrix and «Nega». -->
+			<div class="gate-card gate-scroll">
+				<GateGroupCard righe={requests.map((q) => ({ key: q.id, g: q, stato: 'da-decidere', canDecide: true, info: q }))}
+					busy={batchBusy || busy !== ''} on:decide={decideAll}>
+					<svelte:fragment slot="detail" let:riga>
+						{@const q = requests.find((x) => x.id === riga.key)}
+						{#if q}{@render dettaglio(q)}{/if}
+					</svelte:fragment>
+				</GateGroupCard>
 			</div>
+		{:else}
+			{#each requests as q (q.id)}
+				<div class="gate-card">
+					<div class="gate-head">🛡️ <b>{q.agent}</b> {gateLabel(q.verb).azione} <code>{gateLabel(q.verb).oggetto}</code>{#if q.verb.startsWith('topic-access:')} (non è partecipante){/if}</div>
+					{@render dettaglio(q)}
+				</div>
+			{/each}
 		{/if}
-		{#each requests as q (q.id)}
-			<div class="gate-card">
-				<div class="gate-head">🛡️ <b>{q.agent}</b> {gateLabel(q.verb).azione} <code>{gateLabel(q.verb).oggetto}</code>{#if q.verb.startsWith('topic-access:')} (non è partecipante){/if}</div>
-				{#if q.asker_note}
-					<div class="gate-asker">🔎 {q.asker_note}</div>
-				{/if}
-				{#if q.reason}<div class="gate-reason">{q.reason}</div>{/if}
-				{#if q.crosses}
-					<!-- Cosa si sta per attraversare. Un gate non è una proprietà del
-					     verbo: è ciò che accade quando un'azione supera un confine, e
-					     senza dire QUALE la richiesta è solo un nome di funzione. -->
-					<div class="gate-crosses">
-						↦ attraversa {q.crosses}{#if q.scope} · <code>{q.scope}</code>{/if}
-					</div>
-				{/if}
-				{#if q.decided_by}
-					<div class="gate-who">
-						{#if q.decided_by.startsWith('owner:')}
-							decide l'<b>owner</b>{#if q.decider_name}: <b>{q.decider_name}</b>{/if}
-						{:else}
-							decide un <b>admin</b>
-						{/if}
-					</div>
-				{/if}
-				<div class="gate-meta">
-					verbo sotto supervisione umana{#if q.human} · nel contesto di <b>{q.human}</b>{/if}
-				</div>
-				<div class="gate-actions">
-					<button class="btn deny" on:click={() => deny(q)} disabled={busy === q.id}>Nega</button>
-					<GateMatrix agent={q.agent} instance={q.instance} verb={q.verb}
-						cells={q.remember} hasRoom={!!q.scope} isAdmin={$isAdmin}
-						busy={busy === q.id} on:decide={(e) => approve(q, e.detail)} />
-				</div>
-			</div>
-		{/each}
 	</div>
 {/if}
+
+{#snippet dettaglio(q: Req)}
+	{#if q.asker_note}
+		<div class="gate-asker">🔎 {q.asker_note}</div>
+	{/if}
+	{#if q.reason}<div class="gate-reason">{q.reason}</div>{/if}
+	{#if q.crosses}
+		<!-- Cosa si sta per attraversare. Un gate non è una proprietà del
+		     verbo: è ciò che accade quando un'azione supera un confine, e
+		     senza dire QUALE la richiesta è solo un nome di funzione. -->
+		<div class="gate-crosses">
+			↦ attraversa {q.crosses}{#if q.scope} · <code>{q.scope}</code>{/if}
+		</div>
+	{/if}
+	{#if q.decided_by}
+		<div class="gate-who">
+			{#if q.decided_by.startsWith('owner:')}
+				decide l'<b>owner</b>{#if q.decider_name}: <b>{q.decider_name}</b>{/if}
+			{:else}
+				decide un <b>admin</b>
+			{/if}
+		</div>
+	{/if}
+	<div class="gate-meta">
+		verbo sotto supervisione umana{#if q.human} · nel contesto di <b>{q.human}</b>{/if}
+	</div>
+	<div class="gate-actions">
+		<button class="btn deny" on:click={() => deny(q)} disabled={busy === q.id}>Nega</button>
+		<GateMatrix agent={q.agent} instance={q.instance} verb={q.verb}
+			cells={q.remember} hasRoom={!!q.scope} isAdmin={$isAdmin}
+			busy={busy === q.id} on:decide={(e) => approve(q, e.detail)} />
+	</div>
+{/snippet}
 
 <style>
 	.gate-wrap { position: fixed; right: 20px; top: 20px; z-index: 80; display: flex; flex-direction: column; gap: 10px; max-width: 340px; }
 	.gate-card { background: var(--card-bg); border: 1px solid var(--border); border-left: 4px solid #2563eb; border-radius: 12px; padding: 12px 14px; box-shadow: 0 12px 40px rgba(0,0,0,.4); }
 	.gate-head { font-size: 14px; margin-bottom: 4px; }
+	.gate-scroll { max-height: 70vh; overflow-y: auto; }
 	.gate-head code { font-family: var(--mono); font-size: 12px; }
 	.gate-reason { font-size: 13px; color: var(--fg); margin: 4px 0 6px; }
 	.gate-asker { font-size: 12px; margin: 2px 0 4px; opacity: .85; }

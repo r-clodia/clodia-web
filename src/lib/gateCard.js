@@ -215,3 +215,70 @@ export function parseGateMarker(text) {
 	if (parts.length < 3) return null;
 	return { id, agent: parts[0], instance: parts[1], verb: parts.slice(2).join('|') };
 }
+
+/**
+ * Consecutive gate cards become ONE card (clodia-platform#489).
+ *
+ * An agent turn that hits N gates in a row posted N messages, and the stream
+ * showed N cards; the `GateBatchBar` above the composer came on top of them,
+ * so the owner saw the same requests twice. Now a run of consecutive gate
+ * messages — no other message between them — renders a single grouped card,
+ * on the LAST message of the run (the one nearest to where the owner is
+ * reading), with one row per request.
+ *
+ * The rule works on what the host already computed per message:
+ *  - `gate`: the message carries a gate marker;
+ *  - `card`: its card would be shown on its own (`gateCardVisibile`).
+ * A message with a marker whose card is hidden (decided elsewhere, not the
+ * last) does not become a row, and does not split the run either: it is still
+ * a gate message, not «another message between them». A message without a
+ * marker splits. A run with one visible card keeps the ordinary single card.
+ *
+ * @param {Array<{ gate: boolean, card: boolean } | null | undefined>} items  one per shown message, in stream order
+ * @returns {Array<{ ruolo: 'singola'|'gruppo'|'membro'|null, righe: number[] }>}
+ *   per message: `singola` = render the normal card; `gruppo` = render the
+ *   grouped card with the rows `righe` (indices into `items`); `membro` = a row
+ *   of a group rendered elsewhere, no card here; `null` = no card.
+ */
+export function gateGroups(items) {
+	/** @type {Array<{ ruolo: 'singola'|'gruppo'|'membro'|null, righe: number[] }>} */
+	const out = items.map(() => ({ ruolo: null, righe: [] }));
+	let i = 0;
+	while (i < items.length) {
+		if (!items[i]?.gate) { i++; continue; }
+		const righe = [];
+		let j = i;
+		while (j < items.length && items[j]?.gate) {
+			if (items[j]?.card) righe.push(j);
+			j++;
+		}
+		if (righe.length === 1) {
+			out[righe[0]] = { ruolo: 'singola', righe };
+		} else if (righe.length >= 2) {
+			const capo = righe[righe.length - 1];
+			for (const k of righe) out[k] = { ruolo: k === capo ? 'gruppo' : 'membro', righe };
+		}
+		i = j;
+	}
+	return out;
+}
+
+/**
+ * The batch entries a decision taken on a grouped card touches (#489).
+ *
+ * The group's rows are MESSAGES; the endpoint decides a triple. `blocco` is
+ * `gateBatch` over the rows of the group — one entry per triple, remembering
+ * every message id it covers — and the owner ticked some message ids. An entry
+ * is decided if at least one of its messages was ticked, and its outcome is
+ * then written on all of them: approving the triple unblocks the verb for each,
+ * the same rule as the single card (#232).
+ *
+ * @template {{ msgIds: string[] }} V
+ * @param {V[]} blocco
+ * @param {Iterable<string>} msgIds
+ * @returns {V[]}
+ */
+export function gateBatchScelte(blocco, msgIds) {
+	const scelti = new Set(msgIds);
+	return blocco.filter((v) => v.msgIds.some((id) => scelti.has(id)));
+}

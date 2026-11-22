@@ -83,9 +83,9 @@
 	import { turnContinuity, liveContinuesLast } from '$lib/turnGrouping';
 	import { pollDelay, POLL_ATTIVO_MS } from '$lib/polling';
 	import { fondiConEcho } from '$lib/echoLocale';
-	import { decideBatch, gateBatch, gateCardState, gateCardVisibile, recordDecision } from '$lib/gateCard';
+	import { decideBatch, gateBatch, gateBatchScelte, gateCardState, gateCardVisibile, gateGroups, recordDecision } from '$lib/gateCard';
 	import { CHOICES_RE, leggiChoices, pillsAttive } from '$lib/pillPersistenti';
-	import GateBatchBar from '$lib/components/GateBatchBar.svelte';
+	import GateGroupCard from '$lib/components/GateGroupCard.svelte';
 	import GateCard from '$lib/components/GateCard.svelte';
 	import { PAGE_CONTEXT_RE } from '$lib/pageContext';
 	import { currentRoom } from '$lib/stores/helpdesk';
@@ -933,26 +933,50 @@
 			gateDeciding = false;
 		}
 	}
-	/** Gate combinato (clodia-platform#396): le richieste della stanza ancora da
-	 *  decidere e che chi guarda ha titolo a decidere, una voce per richiesta.
-	 *  Compare da due in su — con una sola, la card basta. */
-	$: gateBatchVoci = gateBatch(
-		{ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs },
-		messages.map((m) => ({ msg: m, gate: msgGate(m.text) })).filter((x) => x.gate !== null) as
-			Array<{ msg: { id: string; ts?: string }; gate: { id: string; agent: string; instance: string; verb: string } }>,
-		(g) => canDecideGate(g.id)
-	);
-	async function decideGateBatch(e: CustomEvent<{ approve: boolean; voci: Array<{ id: string; agent: string; instance: string; verb: string }> }>) {
+	/** Gate cards of the stream, computed ONCE per shown message: the marker,
+	 *  the state (`gateCardState`), whether the card would show on its own
+	 *  (`gateCardVisibile`) and — clodia-platform#489 — whether it is grouped
+	 *  with its consecutive gate neighbours into one card (`gateGroups`). The
+	 *  `GateBatchBar` above the composer is gone: it duplicated the cards. */
+	type GateRiga = { gate: { id: string; agent: string; instance: string; verb: string } | null;
+	                 stato: 'decisa' | 'chiusa' | 'da-decidere'; card: boolean };
+	$: gateRighe = shownMessages.map((m, i): GateRiga => {
+		const gate = msgGate(m.text);
+		const stato = gate
+			? gateCardState({ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs }, m, gate)
+			: 'chiusa';
+		return { gate, stato, card: gate !== null && gateCardVisibile(stato, i === shownMessages.length - 1) };
+	});
+	$: gateGruppi = gateGroups(gateRighe.map((r) => ({ gate: r.gate !== null, card: r.card })));
+	/** The rows of a grouped card: one per MESSAGE, with its own state. */
+	function righeGruppo(idx: number[]) {
+		return idx.map((k) => {
+			const g = gateRighe[k].gate!;
+			const id = shownMessages[k].id;
+			return { key: id, g, stato: gateRighe[k].stato, decided: gateDecided[id],
+			         canDecide: canDecideGate(g.id), info: gateInfo[g.id] };
+		});
+	}
+	/** A decision on a grouped card (#489, ex #396): each request on the usual
+	 *  endpoint, one after the other (`decideBatch`); «approve all» is one-time.
+	 *  `gateBatch` over the group's rows dedups the triples and remembers every
+	 *  message id each covers, so the outcome is written on all of them. */
+	async function decideGateGroup(idx: number[], e: CustomEvent<{ approve: boolean; keys: string[] }>) {
 		if (gateDeciding) return;
 		gateDeciding = true;
-		const { approve, voci } = e.detail;
-		const perId = new Map(gateBatchVoci.map((v) => [v.id, v]));
+		const { approve, keys } = e.detail;
+		const blocco = gateBatch(
+			{ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs },
+			idx.map((k) => ({ msg: shownMessages[k], gate: gateRighe[k].gate! })),
+			(g) => canDecideGate(g.id)
+		);
+		const voci = gateBatchScelte(blocco, keys);
 		try {
 			const esito = await decideBatch(voci, new Set(voci.map((v) => v.id)), async (v) => {
 				await apiPost(approve ? '/api/gate/approve' : '/api/gate/deny',
 					{ agent: v.agent, instance: v.instance, verb: v.verb, remember: 'once' });
 				// L'esito si scrive su OGNI card della richiesta: la tripla le copre tutte.
-				for (const id of perId.get(v.id)?.msgIds ?? []) {
+				for (const id of v.msgIds) {
 					gateDecided = recordDecision(gateDecided, { id }, approve ? 'approvato (in blocco)' : 'negato (in blocco)');
 				}
 			});
@@ -2519,11 +2543,10 @@
 					<!-- Gate: stato e visibilità si calcolano qui, una volta per messaggio,
 					     perché `{@const}` vuole un blocco per padre e la card vive in fondo
 					     alla bolla. La regola sta in $lib/gateCard, non qui. -->
-					{@const gate = msgGate(m.text)}
-					{@const gStato = gate
-						? gateCardState({ decisi: gateDecided, aperti: gateAperti, listaTs: gateInfoTs }, m, gate)
-						: 'chiusa'}
-					{@const gateVisibile = gate !== null && gateCardVisibile(gStato, i === shownMessages.length - 1)}
+					{@const gate = gateRighe[i]?.gate ?? null}
+					{@const gStato = gateRighe[i]?.stato ?? 'chiusa'}
+					{@const gateVisibile = gateRighe[i]?.card ?? false}
+					{@const gGruppo = gateGruppi[i] ?? { ruolo: null, righe: [] }}
 					<!-- `cont-prev`/`cont-next`: le saldature che rimettono in UNA bolla i
 					     blocchi di uno stesso turno, che il backend pubblica come messaggi
 					     distinti da clodia-platform#243. Ogni blocco tiene le sue
@@ -2720,7 +2743,21 @@
 						     in attesa deve restare decidibile mentre la conversazione va avanti,
 						     o resta sospesa finché scade — il caso reale della issue#408.
 						     Quando sparire lo dice `gateCardVisibile`, non la posizione. -->
-						{#if gateVisibile && gate}
+						<!-- Consecutive gate cards are ONE card (clodia-platform#489), on the
+						     last message of the run; the other messages of the run keep their
+						     text and lose only the card. -->
+						{#if gGruppo.ruolo === 'gruppo'}
+							<GateGroupCard righe={righeGruppo(gGruppo.righe)} busy={gateDeciding}
+								on:decide={(e) => decideGateGroup(gGruppo.righe, e)}>
+								<svelte:fragment slot="detail" let:riga>
+									<GateCard g={riga.g} stato={riga.stato} decided={riga.decided} info={gateInfo[riga.g.id]}
+										canDecide={riga.canDecide} busy={gateDeciding} isAdmin={$isAdmin}
+										on:decide={(e) => e.detail.approve
+											? decideGate(riga.key, riga.g, true, e.detail.cell, e.detail.corrections)
+											: decideGate(riga.key, riga.g, false)} />
+								</svelte:fragment>
+							</GateGroupCard>
+						{:else if gateVisibile && gate && gGruppo.ruolo !== 'membro'}
 							{@const g = gate}
 							<!-- The card itself lives in GateCard (shared with the helpdesk
 							     widget, clodia-platform#702); the state, who may decide and the
@@ -2831,9 +2868,6 @@
 							on:click={togliObiettivo}>Togli</button>
 					{/if}
 				</div>
-			{/if}
-			{#if gateBatchVoci.length >= 2}
-				<GateBatchBar voci={gateBatchVoci} busy={gateDeciding} on:decide={decideGateBatch} />
 			{/if}
 			<div class="composer" class:drag={dragOver}
 				role="group"
