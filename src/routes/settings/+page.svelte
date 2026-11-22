@@ -10,6 +10,7 @@
 		getChannelAliases, putChannelAliases, ApiError, type BackupStatus
 	} from '$lib/api/client';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
+	import { setChannelAliases } from '$lib/stores/channelAliases';
 
 	let status: BackupStatus | null = null;
 	let loading = true;
@@ -40,6 +41,7 @@
 		try {
 			const aliases = await getChannelAliases();
 			aliasRows = Object.entries(aliases).map(([key, value]) => ({ key, value }));
+			setChannelAliases(aliases);
 			aliasesLoadedFrom = JSON.stringify(aliases);
 			status = await getBackupStatus();
 			if (status.schedule) schedule = status.schedule;
@@ -112,6 +114,8 @@
 		try {
 			const aliases = await putChannelAliases(aliasPayload());
 			aliasesLoadedFrom = JSON.stringify(aliases);
+			// #723: the alias pills in every chat input read this store.
+			setChannelAliases(aliases);
 			toastSuccess('Alias aggiornati', 'le macro dei canali sono attive');
 		} catch (e) {
 			toastError('Salvataggio alias fallito', e instanceof Error ? e.message : String(e));
