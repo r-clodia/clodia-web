@@ -3015,6 +3015,9 @@ export interface ToolConnector {
 	auth?: string;
 	/** solo per `auth === 'oauth'`: il consenso c'è ed è ancora spendibile. */
 	authorized?: boolean;
+	/** il server ha risposto 401 annunciando OAuth (clodia-platform#533):
+	 *  «Connetti» porta al consenso. */
+	oauth_detected?: boolean;
 	/** metodi del «Connetti» (clodia-platform#565): tipi, scope, campi — mai valori. */
 	auth_methods?: { type: string; scope?: string; fields?: { name: string; label: string; secret: boolean }[] }[];
 	/** il metodo con cui il backend è connesso, o null. */
@@ -3347,7 +3350,15 @@ export async function setMcpToolEnabled(
 export async function testConnector(
 	id: string,
 	opts: RequestOptions = {}
-): Promise<{ ok: boolean | null; detail: string; verbs?: McpTestVerb[] }> {
+): Promise<{
+	ok: boolean | null;
+	detail: string;
+	verbs?: McpTestVerb[];
+	/** il server ha annunciato OAuth nel suo 401 (clodia-platform#533). */
+	oauth_detected?: boolean;
+	/** il gateway ha dato al backend `auth: oauth` dopo quel 401. */
+	auth_set?: string;
+}> {
 	return apiPost(`/tools/${encodeURIComponent(id)}/test`, {}, opts);
 }
 
@@ -3359,7 +3370,7 @@ export async function testConnector(
 export async function registerMcp(
 	body: { config: unknown; secrets?: Record<string, string>; pack?: string },
 	opts: RequestOptions = {}
-): Promise<{ registered: string[] }> {
+): Promise<{ registered: string[]; oauth_detected?: string[] }> {
 	return apiPost('/tools/mcp', body, opts);
 }
 
@@ -3371,21 +3382,36 @@ export async function unregisterMcp(name: string, opts: RequestOptions = {}): Pr
 /** POST `/tools/mcp/{name}/oauth/start` — avvia il consenso OAuth di un server
  *  MCP montato (clodia-platform#532) e ritorna la URL di autorizzazione da
  *  aprire. Nessun segreto nella risposta: lo `state` è il filo del consenso,
- *  il token resta nel vault del gateway. */
+ *  il token resta nel vault del gateway.
+ *
+ *  `origin` (clodia-platform#534, gateway ≥ 2.189.0): l'origin di questa
+ *  pagina; il consenso torna a `<origin>/tools/oauth/callback`
+ *  (`mode: 'callback'`). Il gateway la accetta solo se è dell'istanza. Senza,
+ *  il ritorno da incollare di prima (`mode: 'paste'`). `return_to`: la pagina
+ *  a cui tornare, un path di questa webui. */
 export async function startMcpOAuth(
 	name: string,
+	body: { origin?: string; return_to?: string } = {},
 	opts: RequestOptions = {}
-): Promise<{ state: string; auth_url: string; redirect_uri: string }> {
-	return apiPost(`/tools/mcp/${encodeURIComponent(name)}/oauth/start`, {}, opts);
+): Promise<{
+	state: string;
+	auth_url: string;
+	redirect_uri: string;
+	mode?: 'callback' | 'paste';
+	return_to?: string;
+}> {
+	return apiPost(`/tools/mcp/${encodeURIComponent(name)}/oauth/start`, body, opts);
 }
 
 /** POST `/tools/mcp/{name}/oauth/complete` — chiude il consenso. `code` accetta
- *  il parametro nudo o la URL intera su cui il browser è atterrato. */
+ *  il parametro nudo o la URL intera su cui il browser è atterrato. Il gateway
+ *  rifiuta uno `state` sconosciuto, scaduto, già usato, di un altro server o di
+ *  un'altra sessione (#534); `return_to` è la pagina da cui il consenso è partito. */
 export async function completeMcpOAuth(
 	name: string,
 	body: { state: string; code: string },
 	opts: RequestOptions = {}
-): Promise<{ connected: boolean; server: string; detail?: string }> {
+): Promise<{ connected: boolean; server: string; detail?: string; return_to?: string }> {
 	return apiPost(`/tools/mcp/${encodeURIComponent(name)}/oauth/complete`, body, opts);
 }
 

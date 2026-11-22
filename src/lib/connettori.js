@@ -278,7 +278,10 @@ function cardSenzaManifest(r) {
 			: backend,
 		icon: mcp ? 'mcp' : 'storage',
 		wired: true,
-		connected: mcp && authMethods.length === 0 ? true : Boolean(r.connected),
+		// «Montato» non è «connesso»: un backend senza metodi che ha risposto
+		// 401/403 arriva dal gateway con `connected: false` (clodia-platform#533)
+		// e resta tale. Un gateway più vecchio non lo manda: montato = connesso.
+		connected: mcp && authMethods.length === 0 ? r.connected !== false : Boolean(r.connected),
 		operational: r.operational,
 		accounts: [],
 		issues: r.issues ?? [],
@@ -293,6 +296,7 @@ function cardSenzaManifest(r) {
 		transport,
 		auth: r.auth,
 		authorized: r.authorized,
+		oauthDetected: r.oauth_detected === true,
 		authMethods,
 		// Un gateway senza `auth_methods` (< 2.112.0) non dice il metodo attivo
 		// né ha la rotta `disconnect`: per un OAuth di #532 autorizzato l'attivo
