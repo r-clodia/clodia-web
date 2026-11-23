@@ -870,6 +870,9 @@ export interface Topic {
 	readonly participants?: ReadonlyArray<string>;
 	/** Tipo di canale: "dm" = messaggio diretto a 2; assente/altro = canale/topic. */
 	readonly kind?: string;
+	/** The room's inbox (message box) address, for the 📧 of the card
+	 *  (clodia-platform#726; agent-server ≥ 6.378.0). Absent/null = no inbox. */
+	readonly inbox?: string | null;
 	/** Stato del topic (selezione unica): active | on-hold | done | archived
 	 *  (default active). La vista Topics nasconde di default gli `archived`. */
 	readonly status?: string;

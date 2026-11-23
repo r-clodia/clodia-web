@@ -39,6 +39,17 @@
 	import TopicMetaDialog from '$lib/components/TopicMetaDialog.svelte';
 	import { toastError, toastSuccess } from '$lib/stores/toasts';
 
+	/** #726: the inbox address to the clipboard, with a short confirmation. */
+	async function copyInbox(addr: string) {
+		if (!addr) return;
+		try {
+			await navigator.clipboard.writeText(addr);
+			toastSuccess('Copiato', addr);
+		} catch {
+			toastError('Copia non riuscita', addr);
+		}
+	}
+
 	// Modalità topics:single (Modular Distro F2): la lista non esiste, si va
 	// dritti al topic-workspace unico dell'edizione.
 	$: if ($instanceProfile.features.topics === 'single') {
@@ -627,6 +638,16 @@
 						aria-label={`Meta di ${t.title || t.name}`}
 						on:click|stopPropagation={() => (metaTarget = t)}
 					>ⓘ</button>
+					{#if t.inbox}
+						<!-- #726: copy the room's inbox address; hover shows it. -->
+						<button
+							type="button"
+							class="topic-action inbox-btn"
+							title={t.inbox}
+							aria-label={`Copia l'indirizzo di inbox di ${t.title || t.name}: ${t.inbox}`}
+							on:click|stopPropagation={() => copyInbox(t.inbox ?? '')}
+						>📧</button>
+					{/if}
 					{#if !isArchived(t) && canManage(t.owner)}
 						<button
 							type="button"
