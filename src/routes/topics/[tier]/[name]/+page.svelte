@@ -1,6 +1,7 @@
 <script lang="ts">
 	import PageTitle from '$lib/components/PageTitle.svelte';
 	import { sinceLastReset } from '$lib/contextReset';
+	import { FILE_ROOTS, citedDirs, linkifyFileRefs, parentDir } from '$lib/fileLinks';
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { activeTopic, markSeen, ackMentions, topicKey } from '$lib/stores/unread';
 	import { page } from '$app/stores';
@@ -1055,37 +1056,47 @@
 		e.preventDefault();
 		void openSignedFile(tier, name, decodeURIComponent(m[1]));
 	}
-	// Le radici che un path può avere in questo scope. `local` c'è sempre;
-	// `files` e `dump` restano perché compaiono nei messaggi già inviati: un
-	// link che smette di funzionare per un cambio di schema è una regressione
-	// per chi rilegge una conversazione di ieri.
-	const fileRoots = ['local', 'files', 'dump'];
-	// I formati che la finestra di anteprima sa rendere. Gli altri restano
-	// scaricabili: offrire una lente che apre una pagina illeggibile è peggio
-	// che non offrirla.
-	const PREVIEWABLE = /\.(md|markdown|mdown|mkd|html?|png|jpe?g)$/i;
-	function linkifyFiles(text: string): string {
-		const radici = fileRoots.join('|');
-		const PATH = new RegExp(
-			`(?<!\\]\\()(?<!\\[)(?<![\\w/])((?:${radici})\\/[\\w.\\-/]+\\.[A-Za-z0-9]{1,8})`, 'g');
-		// Il link al file, più la lente quando c'è qualcosa da guardare. La lente è
-		// un secondo link: `handleStreamClick` lo riconosce dal path `/preview/` e
-		// apre la finestra invece di navigarci dentro.
-		const repl = (_m: string, p: string) => {
-			const dl = `[${p}](${channelFileUrl(tier, name, p)})`;
-			if (!PREVIEWABLE.test(p)) return dl;
-			const pv = `/preview/${encodeURIComponent(tier)}/${encodeURIComponent(name)}?path=${encodeURIComponent(p)}`;
-			return `${dl} [🔎](${pv})`;
-		};
-		// 1) code span che contengono SOLO un path → diventano link (tolgo i backtick:
-		//    gli LLM citano i path tra `…`, ma l'utente vuole il link cliccabile).
-		let s = (text || '').replace(
-			new RegExp(`\`((?:${radici})\\/[\\w.\\-/]+\\.[A-Za-z0-9]{1,8})\``, 'g'), repl);
-		// 2) path nudi, saltando i code span RIMASTI (codice vero, non solo-path).
-		return s
-			.split(/(```[\s\S]*?```|`[^`]*`)/g)
-			.map((seg, i) => (i % 2 === 0 ? seg.replace(PATH, repl) : seg))
-			.join('');
+	// File references in agents' messages become links (clodia-platform#725),
+	// only for files that EXIST for this reader: the listing of each cited
+	// folder comes from the gateway, which applies participation and
+	// clearance. A cited folder is re-read when new messages arrive, so a file
+	// written and then mentioned by the same turn is found.
+	let fileIndex: Map<string, Set<string>> = new Map();
+	const dirsInFlight = new Set<string>();
+	async function indexDirs(texts: string[], force: boolean) {
+		const dirs = new Set<string>();
+		for (const t of texts) for (const d of citedDirs(t || '', FILE_ROOTS)) dirs.add(d);
+		const todo = [...dirs].filter((d) => !dirsInFlight.has(d) && (force || !fileIndex.has(d)));
+		if (!todo.length) return;
+		todo.forEach((d) => dirsInFlight.add(d));
+		const found = await Promise.all(todo.map(async (d) => {
+			try {
+				const list = await getChannelFiles(tier, name, d);
+				return [d, new Set(list.filter((f) => f.kind !== 'dir').map((f) => f.path))] as const;
+			} catch {
+				return [d, new Set<string>()] as const;   // missing or not readable: no link
+			} finally {
+				dirsInFlight.delete(d);
+			}
+		}));
+		const next = new Map(fileIndex);
+		for (const [d, set] of found) next.set(d, set);
+		fileIndex = next;
+	}
+	let indexedMessages = -1;
+	$: if (messages.length !== indexedMessages) {
+		const force = indexedMessages >= 0;
+		indexedMessages = messages.length;
+		void indexDirs(messages.map((m) => m.text || ''), force);
+	}
+	function linkifyFiles(text: string, idx: Map<string, Set<string>> = fileIndex): string {
+		const known = [...idx.values()].flatMap((set) => [...set]);
+		return linkifyFileRefs(
+			text,
+			(p) => !!idx.get(parentDir(p))?.has(p),
+			(p) => channelFileUrl(tier, name, p),
+			(p) => `/preview/${encodeURIComponent(tier)}/${encodeURIComponent(name)}?path=${encodeURIComponent(p)}`,
+			FILE_ROOTS, known);
 	}
 	// Click su una pill → la scelta viene inviata come REPLY al messaggio che ha
 	// proposto le pill (quote in corsivo) e taggando il suo autore, così in una
@@ -2625,7 +2636,7 @@
 						{#if splitQuote(m.text).quote}
 							<blockquote class="quote">{splitQuote(m.text).quote}</blockquote>
 						{/if}
-						<div class="text md">{@html renderMarkdown(linkifyFiles(stripChoices(splitQuote(m.text).body)))}</div>
+						<div class="text md">{@html renderMarkdown(linkifyFiles(stripChoices(splitQuote(m.text).body), fileIndex))}</div>
 						{#if puoAggiungereFonti && m.author === me && m.kind !== 'ai' && m.kind !== 'system'}
 							{#each fontiDaProporre(m.text, fontiStanza ?? [], ownHost) as f (f.sito)}
 								<button type="button" class="fonte-btn" disabled={fonteBusy !== ''}
@@ -2813,7 +2824,7 @@
 								</span>
 							</div>
 							<div class="text md" aria-live="polite" aria-atomic="false">
-								{@html renderMarkdown(linkifyFiles(stripChoices(live.reply)))}
+								{@html renderMarkdown(linkifyFiles(stripChoices(live.reply), fileIndex))}
 							</div>
 						</div>
 					{/each}
