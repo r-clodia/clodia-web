@@ -71,7 +71,10 @@ if (src !== null) {
 				`(trovato: ${ognuno.length ? ognuno.join(', ') : 'nessun #each'})`
 		);
 	}
-	if (!/section-count">\{participants\.length\}/.test(codice)) {
+	// Since #724 the counter is on the right-edge tab (`count=`), no longer
+	// in a sidebar section: the rule is the same, the place changed.
+	if (!/section-count">\{participants\.length\}/.test(codice) &&
+		!/<EdgeTabPanel label="Partecipanti"[^>]*count=\{participants\.length\}/.test(codice)) {
 		guasti.push(
 			`${PAGINA}: il contatore della sezione non conta \`participants.length\` — ` +
 				`un numero che non corrisponde alla lista è la stessa bugia, più piccola`
