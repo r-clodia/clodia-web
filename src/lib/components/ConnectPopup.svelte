@@ -41,7 +41,7 @@
 	const dispatch = createEventDispatcher<{ changed: void }>();
 
 	type Row = {
-		kind: 'mcp' | 'rag' | 'datastore';
+		kind: 'mcp' | 'mail' | 'rag' | 'datastore';
 		id: string;
 		label: string;
 		detail: string;
@@ -72,14 +72,28 @@
 
 	$: mcpCatalogue = (box?.mcp_catalogue ?? {}) as Record<string, McpInfo>;
 	$: authorised = new Set(Object.keys(box?.mcp ?? {}));
-	$: mcpRows = Object.values(mcpCatalogue).map((m): Row => ({
-		kind: 'mcp',
-		id: m.id,
-		label: m.label,
-		detail: mcpVerbsLabel(m),
-		connected: authorised.has(m.id),
-		search: [m.label, m.id, ...m.namespaces].join(' ').toLowerCase()
-	}));
+	// Mailboxes (#734) are connected here like MCPs, one by one. Where the
+	// instance offers them, the old room-wide «Email» capability is not listed.
+	$: hasMailboxes = Object.values(mcpCatalogue).some((m) => m.kind === 'mailbox');
+	$: mcpRows = Object.values(mcpCatalogue)
+		.filter((m) => !(hasMailboxes && m.id === 'email' && !authorised.has('email')))
+		.map((m): Row => m.kind === 'mailbox'
+			? {
+					kind: 'mail',
+					id: m.id,
+					label: m.label,
+					detail: m.send_only ? 'solo invio' : 'il corriere la legge · si spedisce da qui',
+					connected: authorised.has(m.id),
+					search: [m.label, m.id, 'casella email mail'].join(' ').toLowerCase()
+				}
+			: {
+					kind: 'mcp',
+					id: m.id,
+					label: m.label,
+					detail: mcpVerbsLabel(m),
+					connected: authorised.has(m.id),
+					search: [m.label, m.id, ...m.namespaces].join(' ').toLowerCase()
+				});
 
 	$: importedKeys = new Set(current.map((i) => dataKey(i.kind, i.name)));
 	$: dataRows = importableEntries(catalog, current, indexCollection, tier, true).map((e): Row => ({
@@ -91,7 +105,7 @@
 		search: [catalogLabel(e), e.name, e.tier, e.topic ?? ''].join(' ').toLowerCase()
 	}));
 
-	const kindLabel = (r: Row) => (r.kind === 'mcp' ? 'MCP' : r.kind === 'rag' ? 'RAG' : 'DB');
+	const kindLabel = (r: Row) => (r.kind === 'mcp' ? 'MCP' : r.kind === 'mail' ? 'MAIL' : r.kind === 'rag' ? 'RAG' : 'DB');
 
 	// ONE list (owner, 21 Nov 2026): the type badge tells MCP, RAG and DB
 	// apart. Connected first, then by name, the type as tie-break. The search
@@ -108,10 +122,11 @@
 	async function toggle(r: Row) {
 		if (!canEdit || busy) return;
 		if (r.connected && !confirm(`Scollegare ${r.label}?`
-			+ (r.kind === 'mcp' ? ' Le sue risorse nella stanza vengono rimosse.' : ''))) return;
+			+ (r.kind === 'mcp' ? ' Le sue risorse nella stanza vengono rimosse.'
+				: r.kind === 'mail' ? ' Il corriere smette di leggerla per questo canale e non si spedisce più da qui.' : ''))) return;
 		busy = `${r.kind}:${r.id}`;
 		try {
-			if (r.kind === 'mcp') {
+			if (r.kind === 'mcp' || r.kind === 'mail') {
 				await setChannelMcp(tier, name,
 					{ action: r.connected ? 'disable_mcp' : 'enable_mcp', mcp: r.id });
 				box = await getChannelTools(tier, name);
@@ -183,6 +198,7 @@
 	.kind-mcp { color: #16a34a; border-color: rgba(22, 163, 74, 0.5); }
 	.kind-rag { color: #a855f7; border-color: rgba(168, 85, 247, 0.5); }
 	.kind-datastore { color: #0ea5e9; border-color: rgba(14, 165, 233, 0.5); }
+	.kind-mail { color: #f59e0b; border-color: rgba(245, 158, 11, 0.5); }
 	.tog { font: inherit; font-size: 11px; padding: 2px 10px; border-radius: 6px; cursor: pointer;
 		border: 1px solid var(--success, #16a34a); background: var(--success, #16a34a); color: #fff;
 		white-space: nowrap; flex-shrink: 0; min-width: 72px; }

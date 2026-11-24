@@ -2778,6 +2778,9 @@ export interface McpInfo {
 	 *  clodia-platform#697): authorising it only lets the courier deliver the
 	 *  linked mailboxes' mail into the room. Absent on a gateway < 2.185.0. */
 	agent_verbs?: boolean;
+	/** A mailbox of the instance (`kind: 'mailbox'`, clodia-platform#734). */
+	account?: string;
+	send_only?: boolean;
 }
 
 /** A room capability with no agent verb (clodia-platform#697): no verbs, no
