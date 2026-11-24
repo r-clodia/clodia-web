@@ -22,4 +22,12 @@ if (Math.abs(Number(pos[1]) - Number(helpTop[1])) < 20) fail('the Partecipanti t
 if (!/position: fixed; right: 0;/.test(tab) || !/\.etp-panel \{[\s\S]*position: fixed; right: 12px;/.test(tab)) fail('the tab must have the same shape as «Aiuto»');
 if (!/on:click=\{\(\) => \(open = false\)\}/.test(tab) || !/e\.key === 'Escape'/.test(tab)) fail('the panel must close (× and Escape)');
 
-console.log('participants: right-edge tab like «Aiuto», same content, no overlap, closable ✓');
+// #729: the files the same way, and the three tabs apart from each other.
+if (/<summary>\s*<span>File<\/span>/.test(page)) fail('the sidebar still has a «File» section');
+const files = page.match(/<EdgeTabPanel label="File"[^>]*top="(\d+)%"[^>]*>([\s\S]*?)<\/EdgeTabPanel>/);
+if (!files) fail('no File tab');
+if (!/\{@render corpo_file\(\)\}/.test(files[2]) || !/downloadZip/.test(files[2])) fail('the File tab must hold the file browser and the zip export');
+const tops = [Number(pos[1]), Number(helpTop[1]), Number(files[1])].sort((a, b) => a - b);
+if (tops[1] - tops[0] < 20 || tops[2] - tops[1] < 20) fail(`the edge tabs overlap (${tops.join('%, ')}%)`);
+
+console.log('edge tabs: Partecipanti and File like «Aiuto», same content, no overlap, closable ✓');
