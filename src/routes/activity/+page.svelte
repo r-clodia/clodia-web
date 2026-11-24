@@ -5,11 +5,14 @@
 		ApiError,
 		getActivitySummary,
 		getRuntimeSessions,
+		getTopicUsage,
+		type TopicUsage,
 		type AgentActivitySummaryRow,
 		type ProviderActivitySummaryRow,
 		type RuntimeSession
 	} from '$lib/api/client';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
+	import { usageRows, fmtDuration } from '$lib/topicUsage.js';
 
 	let sessions: RuntimeSession[] = [];
 	let leaderboard: AgentActivitySummaryRow[] = [];
@@ -18,7 +21,27 @@
 	let loading = true;
 	let poll: ReturnType<typeof setInterval> | null = null;
 
+	// «Consumo per topic» (clodia-platform#732): the server caches its scan for
+	// 60 s, so the 4 s poll costs nothing; a failure leaves the rest of the page.
+	let topicUsage: TopicUsage[] = [];
+	let usageErr = '';
+	let usageWin = '24h';
+	let usageMeasure: 'tempo' | 'token' = 'tempo';
+	const USAGE_WINDOWS = ['24h', '7d', '4w'];
+	$: usage = usageRows(topicUsage, usageWin, usageMeasure);
+	$: usageMax = usage.length ? usage[0].value : 0;
+
+	async function loadUsage() {
+		try {
+			topicUsage = (await getTopicUsage()).topics;
+			usageErr = '';
+		} catch (e) {
+			usageErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
+		}
+	}
+
 	async function load() {
+		void loadUsage();
 		try {
 			const [sess, summary] = await Promise.all([
 				getRuntimeSessions(),
@@ -169,6 +192,60 @@
 		{/if}
 	</section>
 
+	<!-- clodia-platform#732: time or tokens spent per topic, between Spawn live and
+	     the agent seed leaderboard (owner, 24 Nov 2026). -->
+	<section class="panel usage-panel">
+		<div class="panel-head">
+			<h2>Consumo per topic</h2>
+			<div class="usage-ctrl">
+				<div class="seg" role="group" aria-label="Periodo">
+					{#each USAGE_WINDOWS as w}
+						<button type="button" class:on={usageWin === w} aria-pressed={usageWin === w}
+							on:click={() => (usageWin = w)}>{w}</button>
+					{/each}
+				</div>
+				<div class="seg" role="group" aria-label="Misura">
+					<button type="button" class:on={usageMeasure === 'tempo'} aria-pressed={usageMeasure === 'tempo'}
+						on:click={() => (usageMeasure = 'tempo')}>Tempo</button>
+					<button type="button" class:on={usageMeasure === 'token'} aria-pressed={usageMeasure === 'token'}
+						on:click={() => (usageMeasure = 'token')}>Token</button>
+				</div>
+			</div>
+		</div>
+		{#if usageErr}
+			<p class="muted">Consumo per topic non disponibile: {usageErr}</p>
+		{:else if loading}
+			<p class="muted">Caricamento…</p>
+		{:else if usage.length === 0}
+			<p class="muted">Nessun turno nei topic in questo periodo.</p>
+		{:else}
+			<div class="table-wrap">
+				<table class="tbl">
+					<thead>
+						<tr>
+							<th>#</th><th>Topic</th><th class="bar-col">{usageMeasure === 'tempo' ? 'Tempo' : 'Token'}</th>
+							<th class="num">Tempo</th><th class="num">Token in</th><th class="num">Token out</th><th class="num">Turni</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each usage as u, i (u.tier + '/' + u.name)}
+							<tr>
+								<td class="rank">{i + 1}</td>
+								<td><a class="ctx ctx-link" href={`/topics/${u.tier}/${u.name}`} title={u.title || u.name}># {u.name}</a>
+									<span class="rt">{u.tier}</span></td>
+								<td class="bar-col"><span class="bar" style="width: {usageMax ? Math.max(2, (u.value / usageMax) * 100) : 0}%"></span></td>
+								<td class="num">{fmtDuration(u.b.seconds)}</td>
+								<td class="num">{fmtTok(u.b.tokens_in)}</td>
+								<td class="num">{fmtTok(u.b.tokens_out)}</td>
+								<td class="num">{u.b.runs}</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		{/if}
+	</section>
+
 	<section class="panel leaderboard-panel">
 		<div class="panel-head">
 			<h2>Agent seed leaderboard</h2>
@@ -256,6 +333,13 @@
 	.muted { color: var(--fg-muted); font-size: 13px; }
 	/* Rows size to their content: an empty «Spawn live» must not take a third of the viewport (clodia-platform#656). */
 	.activity-grid { display: grid; grid-template-rows: auto; gap: 18px; }
+	.usage-ctrl { display: flex; gap: 8px; flex-wrap: wrap; }
+	.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+	.seg button { background: transparent; border: none; color: var(--fg-muted); font: inherit; font-size: 12px; padding: 3px 10px; cursor: pointer; }
+	.seg button + button { border-left: 1px solid var(--border); }
+	.seg button.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-weight: 700; }
+	.bar-col { width: 30%; min-width: 80px; }
+	.bar { display: block; height: 8px; border-radius: 4px; background: var(--accent); opacity: .75; }
 	.prov-dot { width: 10px; height: 10px; border-radius: 3px; background: var(--fg-muted); display: inline-block; flex: none; }
 	.prov-dot[data-prov="anthropic-api"], .prov-dot[data-prov="claude-pro-max"] { background: #d97757; }
 	.prov-dot[data-prov="aws-region-eu"] { background: #ff9900; }

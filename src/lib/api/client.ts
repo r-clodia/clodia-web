@@ -1739,6 +1739,22 @@ export async function getActivitySummary(opts: RequestOptions = {}): Promise<Act
 	return { agents: d.agents ?? [], providers: d.providers ?? [] };
 }
 
+/** Time and tokens spent per topic over 24h, 7d and 4w (clodia-platform#732;
+ *  agent-server ≥ 6.379.0). An admin gets every topic, anyone else their rooms. */
+export interface TopicUsageBucket { runs: number; seconds: number; tokens_in: number; tokens_out: number }
+export interface TopicUsage {
+	tier: string;
+	name: string;
+	title?: string;
+	kind?: string;
+	status?: string;
+	windows: Record<string, TopicUsageBucket>;
+}
+export async function getTopicUsage(opts: RequestOptions = {}): Promise<{ windows: string[]; topics: TopicUsage[] }> {
+	const d = await apiGet<{ windows?: string[]; topics?: TopicUsage[] }>('/api/agents/activity/topics', opts);
+	return { windows: d.windows ?? ['24h', '7d', '4w'], topics: d.topics ?? [] };
+}
+
 /** Snapshot import/export dei topic (solo admin). */
 export interface TopicsImportResult {
 	imported: string[];
