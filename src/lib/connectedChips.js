@@ -4,10 +4,14 @@
  * (owner, 24 Nov 2026). Pure, in `.js` so the guard script can execute it.
  */
 
-/** @typedef {{ kind: 'mcp' | 'rag' | 'datastore', id: string, label: string, title: string, icon: string }} Chip */
+/** @typedef {{ kind: 'mcp' | 'mail' | 'rag' | 'datastore', id: string, label: string, title: string, icon: string }} Chip */
 
-const ICON = { mcp: '🧩', rag: '📚', datastore: '🗄' };
-const KIND = { mcp: 'MCP', rag: 'RAG', datastore: 'DB' };
+const ICON = { mcp: '🧩', mail: '✉️', rag: '📚', datastore: '🗄' };
+const KIND = { mcp: 'MCP', mail: 'Casella', rag: 'RAG', datastore: 'DB' };
+
+/** A mailbox the room connects (clodia-platform#734): `mailbox:<account>`.
+ * @param {string} id */
+export const isMailboxKey = (id) => String(id).startsWith('mailbox:');
 
 /** `assetti-contabili/contabilita:studio-davidecarboni` → `studio-davidecarboni`;
  *  `tomato-pack/clienti` → `clienti`: the part a person recognises.
@@ -57,9 +61,15 @@ export function connectedChips(box, imports, catalog, ownIndex = '', ownName = '
 	/** @type {Chip[]} */
 	const out = [];
 	const cat = (box && box.mcp_catalogue) || {};
-	for (const id of Object.keys((box && box.mcp) || {}).sort()) {
-		const label = (cat[id] && cat[id].label) || id;
-		out.push({ kind: 'mcp', id, label, title: `${KIND.mcp} · ${label}`, icon: ICON.mcp });
+	const ids = Object.keys((box && box.mcp) || {}).sort();
+	// With mailboxes connected (#734) the old room-wide Email capability says
+	// nothing more: its chip would read as a second, vaguer mailbox.
+	const withMailboxes = ids.some(isMailboxKey);
+	for (const id of ids) {
+		if (withMailboxes && id === 'email') continue;
+		const label = (cat[id] && cat[id].label) || (isMailboxKey(id) ? id.slice('mailbox:'.length) : id);
+		const kind = isMailboxKey(id) ? 'mail' : 'mcp';
+		out.push({ kind, id, label, title: `${KIND[kind]} · ${label}`, icon: ICON[kind] });
 	}
 	/** @type {Chip[]} */
 	const data = [];
