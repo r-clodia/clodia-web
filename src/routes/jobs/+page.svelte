@@ -27,6 +27,7 @@
 	import StatusDot from '$lib/components/StatusDot.svelte';
 	import StaleBadge from '$lib/components/StaleBadge.svelte';
 	import Skeleton from '$lib/components/Skeleton.svelte';
+	import ProcessesPanel from '$lib/components/ProcessesPanel.svelte';
 	import JobFormDialog from '$lib/components/JobFormDialog.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import {
@@ -232,6 +233,11 @@
 		</button>
 	</div>
 </header>
+
+<!-- clodia-platform#738: the courier and the indexer are processes, not jobs,
+     but this is where the owner looks for what runs on a clock. -->
+<ProcessesPanel variant="jobs" />
+
 
 {#if loading}
 	<div class="table-wrap" aria-busy="true">
