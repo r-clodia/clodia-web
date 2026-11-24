@@ -80,6 +80,8 @@
 		enabled?: boolean;
 		colony?: boolean;
 		sendOnly?: boolean;
+		/** The «Email» card turned into «Nuova casella email» (#733). */
+		addOnly?: boolean;
 	}
 
 	let cards: CardModel[] = [];
@@ -97,10 +99,12 @@
 	}
 	function statusLabel(c: CardModel): string {
 		if (c.mailbox && c.enabled === false) return 'Spenta';
+		if (c.addOnly) return 'Aggiungi';
 		return c.builtin ? 'Built-in' : c.mcp && c.authMethods?.length && !c.connected ? (c.authMethods.length === 1 && c.auth === 'oauth' ? 'Da autorizzare' : 'Da connettere') : c.mcp && c.authMethods?.length ? 'Connesso' : c.mcp ? (c.operational === false && c.issues?.length ? 'Non operativa' : 'MCP montato') : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto';
 	}
 	function providerLabel(c: CardModel): string {
 		if (c.mailbox) return c.colony ? 'casella della colonia' : c.sendOnly ? 'casella · solo invio' : 'casella';
+		if (c.addOnly) return 'email';
 		return c.mcp ? (c.transport ?? 'mcp') : (c.provider ?? 'google');
 	}
 	function accountLabel(c: CardModel): string {
@@ -564,6 +568,12 @@
 		}
 	}
 
+	async function removeMailboxCard(c: CardModel) {
+		if (!c.account) return;
+		if (!confirm(`Rimuovere la casella ${c.name}? La credenziale viene cancellata e la casella viene scollegata da tutti i canali.`)) return;
+		await deleteMailbox(c.account);
+	}
+
 	function openMailboxes() {
 		mbForm = { account: '', email: '', password: '', imap_server: '', imap_port: 993, smtp_server: '', smtp_port: 587, smtp_user: '', display_name: '' };
 		mbError = '';
@@ -926,6 +936,8 @@
 				title={c.enabled === false ? 'Riaccende la casella: il corriere torna a leggerla e si può spedire' : 'Spegne la casella: non si legge e non si spedisce, la credenziale resta'}>
 				{switching[c.id] ? '…' : c.enabled === false ? 'Accendi' : 'Spegni'}
 			</button>
+			<button type="button" class="btn ghost" on:click={() => removeMailboxCard(c)}
+				title="Rimuove la casella e la scollega da tutti i canali">Rimuovi</button>
 		{/if}
 	{:else if c.mcp}
 		{#if testResult[c.id]}
@@ -1308,10 +1320,13 @@
 	<div class="overlay" on:click|self={closeMailboxes} role="presentation">
 		<div class="modal" role="dialog" aria-modal="true" aria-label="Caselle email">
 			<div class="modal-head">
-				<strong>Caselle email (IMAP/SMTP)</strong>
+				<strong>{cards.some((c) => c.mailbox) ? 'Nuova casella email' : 'Caselle email (IMAP/SMTP)'}</strong>
 				<button class="x" type="button" on:click={closeMailboxes} aria-label="Chiudi">×</button>
 			</div>
-			{#if mailboxStatuses.length}
+			{#if cards.some((c) => c.mailbox)}
+				<!-- #733: each mailbox has its own card (Test, Spegni, Rimuovi);
+				     this dialog only adds a new one. -->
+			{:else if mailboxStatuses.length}
 				<ul class="mb-list">
 					{#each mailboxStatuses as mailbox (mailbox.account)}
 						<li class="mb-row">
@@ -1327,7 +1342,7 @@
 			{:else}
 				<p class="note">Nessuna casella ancora. Aggiungine una qui sotto.</p>
 			{/if}
-			<p class="note">Aggiungi una casella IMAP/SMTP. Le credenziali vanno nel <strong>vault</strong> (mai esposte agli agent). Aggiungerla non basta: finché non la <strong>autorizzi su un canale</strong> — connettore <strong>Mailbox</strong> nella pagina dello scope — nessun agente di quel canale la vede in elenco.</p>
+			<p class="note">Aggiungi una casella IMAP/SMTP: comparirà come card a sé. Le credenziali vanno nel <strong>vault</strong> (mai esposte agli agent). Aggiungerla non basta: il corriere la legge, e da lì si spedisce, solo per i <strong>canali che la collegano</strong>.</p>
 			<div class="mb-grid">
 				<label class="field"><span>Account (id)</span><input type="text" bind:value={mbForm.account} placeholder="studio" autocomplete="off" /></label>
 				<label class="field"><span>Email</span><input type="text" bind:value={mbForm.email} placeholder="user@domain.com" autocomplete="off" /></label>
