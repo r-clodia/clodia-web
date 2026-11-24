@@ -2,6 +2,7 @@
 	import PageTitle from '$lib/components/PageTitle.svelte';
 	import { sinceLastReset } from '$lib/contextReset';
 	import { FILE_ROOTS, citedDirs, linkifyFileRefs, parentDir } from '$lib/fileLinks';
+	import { connectedChips } from '$lib/connectedChips';
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { activeTopic, markSeen, ackMentions, topicKey } from '$lib/stores/unread';
 	import { page } from '$app/stores';
@@ -63,6 +64,7 @@
 		addLocalFolder,
 		removeLocalFolder,
 		getTopicConnectors,
+		getChannelTools,
 		getConnectorAction,
 		applyConnectorAction,
 		TOPIC_STATUSES,
@@ -97,7 +99,7 @@
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import { puoDiventareObiettivo, eObiettivoFissato, statoObiettivo, attendeOwner } from '$lib/goal';
 	import type { TierWarning } from '$lib/api/types';
-	import type { ConnectorActionState, TopicConnectors } from '$lib/api/client';
+	import type { ConnectorActionState, TopicConnectors, Toolbox } from '$lib/api/client';
 	import { azioniDiTopic, esempiPerDirezione, tipoDiCampo, AVVISO_GRUPPO } from '$lib/connettori';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
 	import { righePerNome, badgeDi, ordinaPerRuolo } from '$lib/ruoliMostrati';
@@ -1711,7 +1713,28 @@
 		comandoAperto = null;
 		if (era === 'connect' || era === 'tools') void toolsPanel?.reload();
 		if (era === 'connect' || era === 'data') void refreshInfo();
+		if (era === 'connect' || era === 'tools') void loadConnectedMcp();
 	}
+
+	// What 🔌 connected, as chips in the input's button row (owner, 24 Nov
+	// 2026): the room's authorised MCPs (its toolbox) and the topic's imports.
+	let roomBox: Toolbox | null = null;
+	async function loadConnectedMcp() {
+		const t = tier, n = name;
+		try {
+			const b = await getChannelTools(t, n);
+			if (t === tier && n === name) roomBox = b;
+		} catch {
+			/* no chips for MCPs: the button still opens the popup */
+		}
+	}
+	let chipsKey = '';
+	$: if (tier && name && `${tier}/${name}` !== chipsKey) {
+		chipsKey = `${tier}/${name}`;
+		roomBox = null;
+		void loadConnectedMcp();
+	}
+	$: chips = connectedChips(roomBox, info?.meta?.data ?? []);
 
 	// --- @mention autocomplete -----------------------------------------------
 	// Estraggo il token @parziale in coda al testo (fino al cursore) e propongo
@@ -2461,8 +2484,6 @@
 			<TrifectaBadge profile={info?.trifecta} taint={info?.taint}
 				canReset={isOwner}
 				onReset={doResetTrifecta} />
-			<button type="button" class="connect-btn" on:click={() => apriComando('connect')}
-				title="Connetti: MCP autorizzati e dati importati" aria-label="Connetti MCP e dati">🔌</button>
 			<button type="button" class="reset-context" on:click={resetContext} disabled={resetting || sending}>
 				{resetting ? 'Reset…' : 'Reset contesto'}
 			</button>
@@ -2982,6 +3003,16 @@
 							on:click={() => fileInput?.click()}>📎</button>
 						<button type="button" class="expand-input" title="Apri editor ampio" aria-label="Apri editor ampio"
 							on:click={openExpandedComposer}>↗</button>
+						<!-- 🔌 and what it connected, in the field's own button row (owner,
+						     24 Nov 2026): the authorised MCPs and the imported data of the
+						     room. A chip opens the same popup. -->
+						<button type="button" class="connect-input" title="Connetti: MCP autorizzati e dati importati"
+							aria-label="Connetti MCP e dati" on:click={() => apriComando('connect')}>🔌</button>
+						{#each chips as c (c.kind + ':' + c.id)}
+							<button type="button" class="conn-chip conn-{c.kind}" title={c.title}
+								aria-label={`Collegato: ${c.title}`} on:click={() => apriComando('connect')}>
+								<span aria-hidden="true">{c.icon}</span>{c.label}</button>
+						{/each}
 					</div>
 				</div>
 				<!-- Qui c'era il bottone «■ Stop» del canale. È andato nel box di
@@ -3601,7 +3632,7 @@
 			{#key `${tier}/${name}`}
 				<ConnectPopup {tier} {name} imports={info?.meta?.data ?? []}
 					indexCollection={info?.meta?.index?.collection ?? ''}
-					canEdit={isOwner || $isAdmin} on:changed={refreshInfo} />
+					canEdit={isOwner || $isAdmin} on:changed={() => { void refreshInfo(); void loadConnectedMcp(); }} />
 			{/key}
 		{:else if comandoAperto === 'file'}{@render corpo_file()}
 		{/if}
@@ -3615,9 +3646,6 @@
 	.title-row { display: flex; align-items: baseline; gap: 10px; }
 	h1 { margin: 4px 0 0; font-size: 22px; }
 	.tier { font-size: 11px; color: var(--fg-muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
-	.connect-btn { background: transparent; border: 1px solid var(--border); border-radius: 7px;
-		padding: 2px 7px; font-size: 13px; cursor: pointer; line-height: 1.3; }
-	.connect-btn:hover { border-color: var(--accent); background: rgba(255,107,61,.08); }
 	.reset-context { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--fg-muted); border-radius: 7px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer; }
 	.reset-context:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: rgba(255,107,61,.08); }
 	.reset-context:disabled { opacity: .5; cursor: default; }
@@ -3880,6 +3908,12 @@
 	.input-tools .clip, .input-tools .expand-input { background: transparent !important; border: 1px solid transparent !important; color: var(--fg-muted) !important; font-weight: 400; font-size: 12px; line-height: 1; height: 22px; min-width: 22px; padding: 0 4px !important; border-radius: 5px; }
 	.input-tools .clip:hover, .input-tools .expand-input:hover { border-color: var(--accent) !important; color: var(--accent) !important; background: rgba(255,107,61,.08) !important; }
 	.input-tools .clip:focus-visible, .input-tools .expand-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+	/* 🔌 and its chips sit in the same row (owner, 24 Nov 2026); the row wraps. */
+	.input-tools { flex-wrap: wrap; }
+	.input-tools .connect-input { background: transparent !important; border: 1px solid transparent !important; color: var(--fg-muted) !important; font-weight: 400; font-size: 12px; line-height: 1; height: 22px; min-width: 22px; padding: 0 4px !important; border-radius: 5px; }
+	.input-tools .connect-input:hover { border-color: var(--accent) !important; background: rgba(255,107,61,.08) !important; }
+	.input-tools .conn-chip { display: inline-flex; align-items: center; gap: 3px; max-width: 160px; height: 20px; padding: 0 7px !important; font-size: 11px; font-weight: 500; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: 999px; background: rgba(127,127,127,.12) !important; border: 1px solid var(--border) !important; color: var(--fg) !important; }
+	.input-tools .conn-chip:hover { border-color: var(--accent) !important; color: var(--accent) !important; }
 	.composer-modal-backdrop { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(0,0,0,.55); }
 	.composer-modal { width: min(760px, 100%); max-height: min(720px, calc(100vh - 40px)); display: flex; flex-direction: column; gap: 12px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: 0 18px 55px rgba(0,0,0,.45); }
 	.composer-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

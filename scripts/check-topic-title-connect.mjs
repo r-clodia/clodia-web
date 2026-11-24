@@ -15,7 +15,9 @@ if (!/<span class="topic-title" title=\{t\.title \|\| t\.name\}[\s\S]*?>\{t\.nam
 	fail('/topics: the card title must be {t.name} with the long title in title=');
 if (list.includes('<code class="topic-name">'))
 	fail('/topics: the second line with the code-name came back');
-if (!/class="connect-btn"[\s\S]{0,200}🔌/.test(page) || !page.includes("apriComando('connect')"))
+// Since 24 Nov 2026 the 🔌 sits in the chat input's button row, next to ↗
+// (owner); it is checked in detail by check-connect-in-composer.mjs.
+if (!/class="connect-input"[\s\S]{0,200}🔌/.test(page) || !page.includes("apriComando('connect')"))
 	fail('topic page: the 🔌 Connetti button is missing');
 // The popup is ONE new component merging the two pickers' elements (owner,
 // 21 Nov 2026): not the two sidebar panels, which bring room lists, the index
