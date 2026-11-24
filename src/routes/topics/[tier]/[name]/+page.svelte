@@ -40,7 +40,6 @@
 		getChannelReasoning,
 		getChannelReasoningIndex,
 		type PresenceState,
-		getChannelAliases,
 		postChannelMessage,
 		resetChannelContext,
 		interruptChannel,
@@ -75,6 +74,8 @@
 	import { openSignedFile } from '$lib/download';
 	import { toastSuccess, toastError } from '$lib/stores/toasts';
 	import { expandChannelAliases } from '$lib/channelAliases';
+	import { channelAliases, loadChannelAliases } from '$lib/stores/channelAliases';
+	import AliasPills from '$lib/components/AliasPills.svelte';
 	import { consumePersistedAll, resolveLiveKey, idleLiveKeys } from '$lib/liveReply';
 	import { liveBoxEntries } from '$lib/liveBox';
 	import {
@@ -328,7 +329,6 @@
 	}
 	let tierWarning: TierWarning | null = null;
 	let draft = '';
-	let channelAliases: Record<string, string> = {};
 	let sending = false;
 	let stopping = false;
 	/** Etichette dei box il cui ⏹ è già stato premuto e non ha ancora risposto:
@@ -1993,7 +1993,7 @@
 	async function send() {
 		const cmd = comandoDi(draft);
 		if (cmd) { apriComando(cmd); return; }
-		const body = expandChannelAliases(draft, channelAliases).trim();
+		const body = expandChannelAliases(draft, $channelAliases).trim();
 		if (!body || sending) return;
 		sending = true;
 		stopping = false;
@@ -2278,7 +2278,8 @@
 	let stopStream: (() => void) | null = null;
 	let offEvt: (() => void) | null = null;
 	onMount(() => {
-		void getChannelAliases().then((aliases) => (channelAliases = aliases)).catch(() => {});
+		// `$name` expansion on send reads the shared store (#723).
+		void loadChannelAliases();
 		try {
 			const raw = localStorage.getItem(SIDE_WIDTH_KEY);
 			if (raw) sideWidth = clampSideWidth(Number(raw) || sideWidth);
@@ -2957,6 +2958,9 @@
 				     textarea and the buttons' row are stacked in it: the typed text
 				     never runs under the buttons, at any height or width. -->
 				<div class="input-box">
+					<!-- clodia-platform#723: the person's aliases as pills, above the text;
+					     a click inserts the alias text, never sends. -->
+					<AliasPills target={composer} />
 					<textarea bind:this={composer} bind:value={draft} rows="2"
 						placeholder="Scrivi nel canale… (@nome per rivolgerti a un partecipante; ⌘/Ctrl+V per incollare immagini)"
 						on:input={() => { updateMention(); updateCommand(); }}
@@ -3293,6 +3297,7 @@
 				<h2>Messaggio</h2>
 				<button type="button" class="modal-close" aria-label="Chiudi editor" on:click={closeExpandedComposer}>×</button>
 			</header>
+			<AliasPills target={expandedComposer} />
 			<textarea bind:this={expandedComposer} bind:value={draft}
 				placeholder="Scrivi un messaggio lungo…"
 				on:paste={onPasteFiles}

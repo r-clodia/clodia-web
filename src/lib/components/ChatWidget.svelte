@@ -26,6 +26,7 @@
 	import AgentLiveBox from '$lib/components/AgentLiveBox.svelte';
 	import GateCard from '$lib/components/GateCard.svelte';
 	import GateGroupCard from '$lib/components/GateGroupCard.svelte';
+	import AliasPills from '$lib/components/AliasPills.svelte';
 	import { session } from '$lib/auth/session';
 	import { isAdmin } from '$lib/stores/capabilities';
 	import { onEventStream } from '$lib/stores/events-stream';
@@ -481,9 +482,13 @@
 				{/if}
 			</div>
 			<div class="cw-composer">
-				<textarea bind:this={input} bind:value={draft} rows="2" placeholder="Scrivi a {agent}…"
-					aria-label="Messaggio per {agent}"
-					on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}></textarea>
+				<!-- clodia-platform#723: alias pills inside the field, above the text. -->
+				<div class="cw-field">
+					<AliasPills target={input} />
+					<textarea bind:this={input} bind:value={draft} rows="2" placeholder="Scrivi a {agent}…"
+						aria-label="Messaggio per {agent}"
+						on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}></textarea>
+				</div>
 				<button type="button" class="cw-send" on:click={() => send()} disabled={sending || !draft.trim()}
 					aria-label="Invia">➤</button>
 			</div>
@@ -558,7 +563,9 @@
 	.cw-pill { background: transparent; border: 1px solid color-mix(in srgb, var(--accent) 50%, var(--border)); color: var(--fg); font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 999px; cursor: pointer; }
 	.cw-goto { background: var(--accent); border: none; color: var(--accent-fg); font: inherit; font-weight: 700; font-size: 12px; padding: 5px 12px; border-radius: 8px; cursor: pointer; }
 	.cw-composer { flex: 0 0 auto; display: flex; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); }
-	.cw-composer textarea { flex: 1 1 auto; background: rgba(127,127,127,.08); border: 1px solid var(--border); color: var(--fg); border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 13px; resize: none; max-height: 120px; }
+	.cw-field { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: rgba(127,127,127,.08); border: 1px solid var(--border); border-radius: 10px; }
+	.cw-field:focus-within { border-color: var(--accent); }
+	.cw-composer textarea { flex: 1 1 auto; background: transparent; border: none; outline: none; color: var(--fg); border-radius: 10px; padding: 8px 10px; font: inherit; font-size: 13px; resize: none; max-height: 120px; }
 	.cw-send { background: var(--accent); border: none; color: var(--accent-fg); font-weight: 700; width: 40px; border-radius: 10px; cursor: pointer; }
 	.cw-send:disabled { opacity: .5; cursor: not-allowed; }
 	.cw-note { margin: 0; padding: 0 12px 8px; font-size: 10.5px; color: var(--fg-muted); }
