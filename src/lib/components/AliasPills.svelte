@@ -4,19 +4,25 @@
 	 *
 	 * One pill per alias of the signed-in person; a click inserts the alias
 	 * TEXT into `target` at the caret (or at the end when the input did not
-	 * have the focus), focuses it and leaves the caret after the text. It never
-	 * sends. The value is written on the element and an `input` event is
-	 * dispatched, so the parent's `bind:value` and its own `on:input` handlers
-	 * (mentions, commands, auto-grow) run exactly as if the person had typed.
+	 * have the focus) and then STARTS THE TURN through `onSend`, the input's
+	 * own send (owner, 24 Nov 2026: «deve anche avviare il turno e non solo
+	 * riempire l'input»). The component never calls an API itself: sending is
+	 * the input's, with its checks. The value is written on the element and an
+	 * `input` event is dispatched, so the parent's `bind:value` and its own
+	 * `on:input` handlers run exactly as if the person had typed; `onSend` runs
+	 * after a tick, once `bind:value` holds the text. Without `onSend` the pill
+	 * only inserts.
 	 *
 	 * No aliases → nothing is rendered.
 	 */
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { channelAliases, loadChannelAliases } from '$lib/stores/channelAliases';
 	import { aliasPillList, insertAliasText } from '$lib/aliasPills.js';
 
 	export let target: HTMLTextAreaElement | null | undefined = null;
 	export let disabled = false;
+	/** The input's own send: called after the text is in. */
+	export let onSend: (() => void | Promise<void>) | null = null;
 
 	let row: HTMLDivElement;
 	/** Keyboard path: focus came to the pills straight from the input, so the
@@ -35,7 +41,7 @@
 		else if (!(prev instanceof Node && row?.contains(prev))) fromInput = false;
 	}
 
-	function insert(text: string) {
+	async function insert(text: string) {
 		const el = target;
 		if (!el || disabled) return;
 		const atCursor = document.activeElement === el || fromInput;
@@ -46,15 +52,19 @@
 		el.setSelectionRange(next.caret, next.caret);
 		el.dispatchEvent(new Event('input', { bubbles: true }));
 		el.setSelectionRange(next.caret, next.caret);
+		if (onSend) {
+			await tick();
+			await onSend();
+		}
 	}
 </script>
 
 {#if pills.length}
-	<div class="alias-pills" bind:this={row} role="toolbar" aria-label="Alias: un clic inserisce il testo nel messaggio">
+	<div class="alias-pills" bind:this={row} role="toolbar" aria-label={onSend ? "Alias: un clic invia il testo" : "Alias: un clic inserisce il testo nel messaggio"}>
 		{#each pills as p (p.name)}
 			<!-- mousedown is cancelled so a click keeps the focus (and the caret) in the input -->
 			<button type="button" class="alias-pill" title={p.text}
-				aria-label="Inserisci l'alias {p.name}: {p.text}"
+				aria-label="{onSend ? 'Invia' : 'Inserisci'} l'alias {p.name}: {p.text}"
 				{disabled}
 				on:mousedown|preventDefault
 				on:focus={onPillFocus}
