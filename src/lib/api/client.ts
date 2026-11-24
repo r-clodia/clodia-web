@@ -3375,6 +3375,12 @@ export async function removeMailbox(account: string, opts: RequestOptions = {}):
 	await apiDelete(`/tools/email/mailboxes/${encodeURIComponent(account)}`, opts);
 }
 
+/** Switch one mailbox on or off, keeping its credential (clodia-platform#733).
+ *  Human admin only. */
+export async function setMailboxEnabled(account: string, enabled: boolean): Promise<void> {
+	await apiPost(`/tools/email/mailboxes/${encodeURIComponent(account)}/enabled`, { enabled });
+}
+
 
 /** A verb of a tested MCP backend (#575): its gateway name, the backend's
  *  description (untrusted text), and whether the gateway lets it through. */

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import QRCode from 'qrcode';
-	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, listPacks, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, testConnector, setMcpToolEnabled, getConnectorPairing, startConnectorPairing, ApiError, type McpTestVerb, type ConnectorPairing } from '$lib/api/client';
+	import { getTools, getConnectorRegistry, connectConnector, getGoogleAuth, googleConnect, registerMcp, unregisterMcp, listPacks, startMcpOAuth, completeMcpOAuth, connectMcp, disconnectMcp, getGoogleAppStatus, configureGoogleApp, getMailboxes, addMailbox, removeMailbox, setMailboxEnabled, testConnector, setMcpToolEnabled, getConnectorPairing, startConnectorPairing, ApiError, type McpTestVerb, type ConnectorPairing } from '$lib/api/client';
 	import McpVerbsDialog from '$lib/components/McpVerbsDialog.svelte';
 	import type { ConnectorIssue, MailboxStatus, ConnectorRegistry } from '$lib/api/client';
 	import { nomiServerMcp, packPerServer, corpoDaInput, eUrlMcp, nomeDaUrl } from '$lib/mcpPack';
@@ -74,6 +74,12 @@
 		pairing?: boolean;
 		/** Chat relay transport (clodia-platform#638): its channel name. */
 		relay?: { label: string; attachments: boolean; schemes: string[] } | null;
+		/** One mailbox as its own integration (clodia-platform#733). */
+		mailbox?: boolean;
+		account?: string;
+		enabled?: boolean;
+		colony?: boolean;
+		sendOnly?: boolean;
 	}
 
 	let cards: CardModel[] = [];
@@ -90,9 +96,11 @@
 		return c.operational === false && (c.connected || Boolean(c.issues?.length));
 	}
 	function statusLabel(c: CardModel): string {
+		if (c.mailbox && c.enabled === false) return 'Spenta';
 		return c.builtin ? 'Built-in' : c.mcp && c.authMethods?.length && !c.connected ? (c.authMethods.length === 1 && c.auth === 'oauth' ? 'Da autorizzare' : 'Da connettere') : c.mcp && c.authMethods?.length ? 'Connesso' : c.mcp ? (c.operational === false && c.issues?.length ? 'Non operativa' : 'MCP montato') : c.operational === false && (c.connected || c.issues?.length) ? 'Non operativa' : c.connected ? 'Connesso' : c.wired ? 'Da connettere' : 'Presto';
 	}
 	function providerLabel(c: CardModel): string {
+		if (c.mailbox) return c.colony ? 'casella della colonia' : c.sendOnly ? 'casella · solo invio' : 'casella';
 		return c.mcp ? (c.transport ?? 'mcp') : (c.provider ?? 'google');
 	}
 	function accountLabel(c: CardModel): string {
@@ -541,6 +549,21 @@
 	let mbError = '';
 	let mbForm = { account: '', email: '', password: '', imap_server: '', imap_port: 993, smtp_server: '', smtp_port: 587, smtp_user: '', display_name: '' };
 
+	// One mailbox switched on or off from its card (clodia-platform#733).
+	let switching: Record<string, boolean> = {};
+	async function toggleMailbox(c: CardModel) {
+		if (!c.account) return;
+		switching = { ...switching, [c.id]: true };
+		try {
+			await setMailboxEnabled(c.account, c.enabled === false);
+			await load();
+		} catch (e) {
+			loadError = e instanceof Error ? e.message : String(e);
+		} finally {
+			switching = { ...switching, [c.id]: false };
+		}
+	}
+
 	function openMailboxes() {
 		mbForm = { account: '', email: '', password: '', imap_server: '', imap_port: 993, smtp_server: '', smtp_port: 587, smtp_user: '', display_name: '' };
 		mbError = '';
@@ -891,6 +914,19 @@
 {#snippet actions(c: CardModel)}
 	{#if c.builtin}
 		<span class="builtin-note">interno · pluggable</span>
+	{:else if c.mailbox}
+		{#if testResult[c.id]}
+			<span class="test-badge" class:ok={testResult[c.id].ok === true} class:ko={testResult[c.id].ok === false} title={testResult[c.id].detail}>
+				{testResult[c.id].ok === true ? '✓' : testResult[c.id].ok === false ? '✕' : '—'}
+			</span>
+		{/if}
+		<button type="button" class="btn ghost" on:click={() => testConn(c.id)} disabled={testing[c.id] || c.enabled === false}>{testing[c.id] ? '…' : 'Test'}</button>
+		{#if $isAdmin}
+			<button type="button" class="btn ghost" on:click={() => toggleMailbox(c)} disabled={switching[c.id]}
+				title={c.enabled === false ? 'Riaccende la casella: il corriere torna a leggerla e si può spedire' : 'Spegne la casella: non si legge e non si spedisce, la credenziale resta'}>
+				{switching[c.id] ? '…' : c.enabled === false ? 'Accendi' : 'Spegni'}
+			</button>
+		{/if}
 	{:else if c.mcp}
 		{#if testResult[c.id]}
 			<span class="test-badge" class:ok={testResult[c.id].ok === true} class:ko={testResult[c.id].ok === false} title={testResult[c.id].detail}>

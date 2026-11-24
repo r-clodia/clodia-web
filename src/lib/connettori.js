@@ -248,8 +248,48 @@ export function etichettaPairing(state) {
 	return nomi[s] ?? (s || 'sconosciuto');
 }
 
+/**
+ * One mailbox, its own integration (clodia-platform#733): status, test and an
+ * on/off switch of its own. Added from the «Email» card, which stays.
+ * @param {Record<string, unknown>} r
+ */
+export function cardCasella(r) {
+	const enabled = r.enabled !== false;
+	const sendOnly = r.send_only === true;
+	return {
+		id: String(r.id),
+		name: String(r.label ?? r.account ?? r.id),
+		blurb: r.colony === true
+			? 'Casella della colonia: il corriere ne legge le caselle di canale (indirizzo+CODICE) per tutti i topic.'
+			: sendOnly
+				? 'Casella di solo invio: si usa per spedire dai canali che la collegano, non si legge.'
+				: 'Casella IMAP/SMTP: il corriere la legge per i canali che la collegano, e da lì si spedisce.',
+		scope: sendOnly ? 'SMTP' : 'IMAP/SMTP',
+		icon: 'email',
+		wired: true,
+		connected: Boolean(r.connected),
+		operational: r.operational,
+		accounts: [],
+		issues: r.issues ?? [],
+		provider: 'mailbox',
+		builtin: false,
+		setupLabel: '',
+		docsUrl: '',
+		docsHref: '',
+		credenziale: null,
+		gestisce: [],
+		mcp: false,
+		mailbox: true,
+		account: String(r.account ?? String(r.id).replace(/^mailbox:/, '')),
+		enabled,
+		colony: r.colony === true,
+		sendOnly
+	};
+}
+
 /** @param {Record<string, unknown>} r */
 function cardSenzaManifest(r) {
+	if (r.provider === 'mailbox') return cardCasella(r);
 	const mcp = r.provider === 'mcp';
 	const transport = typeof r.transport === 'string' ? r.transport : undefined;
 	const oauth = r.auth === 'oauth';
