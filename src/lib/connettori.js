@@ -125,7 +125,36 @@ export function cardsDiTools(registry, live) {
 		cards.push(cardSenzaManifest(r));
 	}
 
-	return cards;
+	return cardAggiungiCasella(cards);
+}
+
+/**
+ * When the gateway lists each mailbox as its own card (clodia-platform#733),
+ * the old «Email» card would repeat them as a list of accounts: it becomes
+ * the place where a NEW mailbox is added, and nothing else. A gateway that
+ * still sends no per-mailbox rows keeps the old card as it was.
+ * @template {{ mailbox?: boolean, gestisce?: string[] }} C
+ * @param {C[]} cards
+ * @returns {C[]}
+ */
+export function cardAggiungiCasella(cards) {
+	if (!cards.some((c) => c.mailbox)) return cards;
+	return cards.map((c) =>
+		(c.gestisce ?? []).includes('mailboxes')
+			? {
+					...c,
+					name: 'Nuova casella email',
+					blurb: 'Aggiunge una casella IMAP/SMTP. Ogni casella diventa una card a sé, con il suo Test, il suo interruttore e la sua rimozione.',
+					scope: 'IMAP/SMTP',
+					connected: false,
+					operational: undefined,
+					accounts: [],
+					issues: [],
+					setupLabel: '+ Aggiungi casella',
+					addOnly: true
+				}
+			: c
+	);
 }
 
 /**
