@@ -24,6 +24,7 @@
 	import TopicMetaDialog from '$lib/components/TopicMetaDialog.svelte';
 	import type { TopicTodo } from '$lib/api/types';
 	import Modal from '$lib/components/Modal.svelte';
+	import EdgeTabPanel from '$lib/components/EdgeTabPanel.svelte';
 	import { topicLogoUrl as logoObjectUrl, dimenticaLogo } from '$lib/topicLogo';
 	import SpawnTree from '$lib/components/SpawnTree.svelte';
 	import AgentLiveBox from '$lib/components/AgentLiveBox.svelte';
@@ -2405,6 +2406,16 @@
 
 <svelte:window on:pointermove={onSideResizeMove} on:pointerup={onSideResizeEnd} />
 
+<!-- clodia-platform#724: the participants in a right-edge tab, the same shape as
+     the «Aiuto» widget. Above it (28% against its 50%), so the two tabs never
+     overlap; outside the sidebar, so it is there with the sidebar collapsed.
+     Same content and actions as the former section (`corpo_participants`). -->
+{#if info}
+	<EdgeTabPanel label="Partecipanti" icon="👥" count={participants.length} top="28%">
+		{@render corpo_participants()}
+	</EdgeTabPanel>
+{/if}
+
 <div class="channel">
 	<header class="head">
 		<a class="back" href="/topics">← Topics</a>
@@ -3001,13 +3012,8 @@
 				<TopicMetaDialog {tier} {name} open={metaDialogOpen}
 					canEdit={isOwner || (!!me && participants.includes(me))}
 					on:close={() => (metaDialogOpen = false)} on:changed={onMetaChanged} />
-				<details class="side-section" open>
-					<summary>
-						<span>Partecipanti</span>
-						<span class="section-count">{participants.length}</span>
-					</summary>
-					{@render corpo_participants()}
-				</details>
+				<!-- Partecipanti: a tab on the right edge, like «Aiuto», not a
+				     sidebar section (clodia-platform#724). See EdgeTabPanel below. -->
 				<!-- Trigger (clodia-platform#646): one form — when (every N minutes |
 				     inbox), prompt, agent. The owner edits; participants see the inbox
 				     trigger (the cron read is owner-only). -->
