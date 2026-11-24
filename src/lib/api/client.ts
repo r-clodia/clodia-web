@@ -1755,6 +1755,39 @@ export async function getTopicUsage(opts: RequestOptions = {}): Promise<{ window
 	return { windows: d.windows ?? ['24h', '7d', '4w'], topics: d.topics ?? [] };
 }
 
+/** A deterministic process (clodia-platform#738): courier, topic indexer, logic jobs. */
+export interface ProcessRow {
+	kind: 'process';
+	source: 'loop' | 'job';
+	name: string;
+	label: string;
+	job_id?: number;
+	interval_s?: number;
+	cron?: string;
+	enabled: boolean;
+	status: 'running' | 'idle' | 'failed' | 'disabled';
+	last_started_at?: string | null;
+	last_finished_at?: string | null;
+	last_duration_s?: number | null;
+	last_ok?: boolean | null;
+	last_error?: string | null;
+	last_counters?: Record<string, number>;
+	next_run_at?: string | null;
+	can_run_now: boolean;
+	windows: Record<string, { runs: number; failures: number; seconds: number }>;
+}
+
+/** Processes, admin only: a 403 means "not for you", not a failure. */
+export async function getProcesses(opts: RequestOptions = {}): Promise<{ windows: string[]; processes: ProcessRow[] }> {
+	const d = await apiGet<{ windows?: string[]; processes?: ProcessRow[] }>('/api/processes', opts);
+	return { windows: d.windows ?? ['24h', '7d', '4w'], processes: d.processes ?? [] };
+}
+
+/** One pass now, on the process's own loop. */
+export async function runProcess(name: string): Promise<void> {
+	await apiPost(`/api/processes/${encodeURIComponent(name)}/run`, {});
+}
+
 /** Snapshot import/export dei topic (solo admin). */
 export interface TopicsImportResult {
 	imported: string[];

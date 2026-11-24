@@ -12,6 +12,7 @@
 		type RuntimeSession
 	} from '$lib/api/client';
 	import AgentAvatar from '$lib/components/AgentAvatar.svelte';
+	import ProcessesPanel from '$lib/components/ProcessesPanel.svelte';
 	import { usageRows, fmtDuration } from '$lib/topicUsage.js';
 
 	let sessions: RuntimeSession[] = [];
@@ -191,6 +192,10 @@
 			</div>
 		{/if}
 	</section>
+
+	<!-- clodia-platform#738: the deterministic processes (courier, indexer, backup)
+	     right after the spawns — the other kind of thing that runs. -->
+	<ProcessesPanel variant="activity" />
 
 	<!-- clodia-platform#732: time or tokens spent per topic, between Spawn live and
 	     the agent seed leaderboard (owner, 24 Nov 2026). -->
