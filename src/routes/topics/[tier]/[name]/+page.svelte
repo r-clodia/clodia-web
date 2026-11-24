@@ -65,6 +65,7 @@
 		removeLocalFolder,
 		getTopicConnectors,
 		getChannelTools,
+		getDataCatalog,
 		getConnectorAction,
 		applyConnectorAction,
 		TOPIC_STATUSES,
@@ -99,7 +100,7 @@
 	import { chipStanza, titoloChip } from '$lib/modelloInStanza';
 	import { puoDiventareObiettivo, eObiettivoFissato, statoObiettivo, attendeOwner } from '$lib/goal';
 	import type { TierWarning } from '$lib/api/types';
-	import type { ConnectorActionState, TopicConnectors, Toolbox } from '$lib/api/client';
+	import type { ConnectorActionState, TopicConnectors, Toolbox, DataCatalogEntry } from '$lib/api/client';
 	import { azioniDiTopic, esempiPerDirezione, tipoDiCampo, AVVISO_GRUPPO } from '$lib/connettori';
 	import ConnectorIcon from '$lib/components/ConnectorIcon.svelte';
 	import { righePerNome, badgeDi, ordinaPerRuolo } from '$lib/ruoliMostrati';
@@ -1719,6 +1720,9 @@
 	// What 🔌 connected, as chips in the input's button row (owner, 24 Nov
 	// 2026): the room's authorised MCPs (its toolbox) and the topic's imports.
 	let roomBox: Toolbox | null = null;
+	// The data catalog names a topic's RAG index after its topic: the chip
+	// shows that code name, not `topic-…`.
+	let dataCatalog: DataCatalogEntry[] = [];
 	async function loadConnectedMcp() {
 		const t = tier, n = name;
 		try {
@@ -1727,6 +1731,12 @@
 		} catch {
 			/* no chips for MCPs: the button still opens the popup */
 		}
+		try {
+			const c = await getDataCatalog();
+			if (t === tier && n === name) dataCatalog = c.entries;
+		} catch {
+			/* without the catalog the chips keep the short names */
+		}
 	}
 	let chipsKey = '';
 	$: if (tier && name && `${tier}/${name}` !== chipsKey) {
@@ -1734,7 +1744,8 @@
 		roomBox = null;
 		void loadConnectedMcp();
 	}
-	$: chips = connectedChips(roomBox, info?.meta?.data ?? []);
+	$: chips = connectedChips(roomBox, info?.meta?.data ?? [], dataCatalog,
+		info?.meta?.index?.collection ?? '', name);
 
 	// --- @mention autocomplete -----------------------------------------------
 	// Estraggo il token @parziale in coda al testo (fino al cursore) e propongo

@@ -11,10 +11,18 @@ const page = readFileSync('src/routes/topics/[tier]/[name]/+page.svelte', 'utf8'
 const chips = connectedChips(
 	{ mcp: { github: {}, buffer: {} }, mcp_catalogue: { github: { label: 'GitHub' }, buffer: { label: 'Buffer' } } },
 	[{ kind: 'datastore', name: 'assetti-contabili/contabilita:studio-davidecarboni' }, { kind: 'rag', name: 'eu-normativa' }]);
-if (chips.map((c) => `${c.kind}:${c.label}`).join(',') !== 'mcp:Buffer,mcp:GitHub,datastore:studio-davidecarboni,rag:eu-normativa')
-	fail('chips: MCPs by id with their label, then the imports with a short name: ' + JSON.stringify(chips));
-if (!chips[2].title.includes('assetti-contabili/contabilita:studio-davidecarboni')) fail('the full name stays in the tooltip');
+if (chips.map((c) => `${c.kind}:${c.label}`).join(',') !== 'mcp:Buffer,mcp:GitHub,rag:eu-normativa,datastore:studio-davidecarboni')
+	fail('chips: MCPs by id with their label, then the imports by readable name: ' + JSON.stringify(chips));
+if (!chips[3].title.includes('assetti-contabili/contabilita:studio-davidecarboni')) fail('the full name stays in the tooltip');
 if (connectedChips(null, null).length !== 0) fail('nothing connected → no chips');
+// A topic's RAG index reads as the topic's code name, never `topic-…`.
+const cat = [{ name: 'topic-fee7cb30', topic: 'SEAL-1/moneyviz-2026' }];
+const rag = connectedChips(null, [{ kind: 'rag', name: 'topic-fee7cb30' }, { kind: 'rag', name: 'topic-aaaa1111' }],
+	cat, 'topic-aaaa1111', 'questo-topic');
+if (rag.map((c) => c.label).join(',') !== 'moneyviz-2026,questo-topic')
+	fail('RAG index chips must show the topic code name: ' + rag.map((c) => c.label).join(','));
+if (!rag[0].title.includes('topic-fee7cb30')) fail('the technical id stays in the tooltip');
+if (!/connectedChips\(roomBox, info\?\.meta\?\.data \?\? \[\], dataCatalog,/.test(page)) fail('the page must pass the data catalog to the chips');
 if (shortDataName('tomato-pack/clienti') !== 'clienti') fail('short name of a datastore');
 
 const tools = page.match(/<div class="input-tools">([\s\S]*?)<\/div>/);
