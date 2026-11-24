@@ -484,7 +484,7 @@
 			<div class="cw-composer">
 				<!-- clodia-platform#723: alias pills inside the field, above the text. -->
 				<div class="cw-field">
-					<AliasPills target={input} />
+					<AliasPills target={input} disabled={sending} onSend={() => send()} />
 					<textarea bind:this={input} bind:value={draft} rows="2" placeholder="Scrivi a {agent}…"
 						aria-label="Messaggio per {agent}"
 						on:keydown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}></textarea>

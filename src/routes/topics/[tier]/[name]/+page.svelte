@@ -3002,7 +3002,7 @@
 				<div class="input-box">
 					<!-- clodia-platform#723: the person's aliases as pills, above the text;
 					     a click inserts the alias text, never sends. -->
-					<AliasPills target={composer} />
+					<AliasPills target={composer} disabled={sending} onSend={() => send()} />
 					<textarea bind:this={composer} bind:value={draft} rows="2"
 						placeholder="Scrivi nel canale… (@nome per rivolgerti a un partecipante; ⌘/Ctrl+V per incollare immagini)"
 						on:input={() => { updateMention(); updateCommand(); }}
@@ -3338,7 +3338,7 @@
 				<h2>Messaggio</h2>
 				<button type="button" class="modal-close" aria-label="Chiudi editor" on:click={closeExpandedComposer}>×</button>
 			</header>
-			<AliasPills target={expandedComposer} />
+			<AliasPills target={expandedComposer} disabled={sending} onSend={() => submitFromExpanded()} />
 			<textarea bind:this={expandedComposer} bind:value={draft}
 				placeholder="Scrivi un messaggio lungo…"
 				on:paste={onPasteFiles}

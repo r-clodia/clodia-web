@@ -7,8 +7,9 @@
  *     the name (no `$`), none when there are no aliases. RUNS `$lib/aliasPills`.
  *  2. A click inserts the alias TEXT (never `$name`) at the caret, or appends
  *     when the input had no focus, and the caret ends after the text. RUNS it.
- *  3. A click never sends: the component calls no channel API, dispatches no
- *     send, and its buttons are `type="button"` (no form submit).
+ *  3. A click inserts and then starts the turn through the input's own send
+ *     (`onSend`, owner 24 Nov 2026); the component calls no channel API itself
+ *     and its buttons are `type="button"` (no form submit).
  *  4. Every chat input mounts it: the topic/DM composer (inside the field,
  *     above the textarea), the expanded editor and the helpdesk widget; the
  *     settings section feeds the shared store, so edits refresh the pills.
@@ -56,7 +57,10 @@ if (comp) {
 	if (!/insert\(p\.text\)/.test(code)) guasti.push(`${COMP}: a click must insert the alias text (p.text)`);
 	if (/insert\([^)]*p\.name/.test(code) || /['"`]\$['"`]\s*\+\s*p\.name|\$\{?\s*p\.name/.test(code.replace(/\{p\.name\}/g, ''))) guasti.push(`${COMP}: must not insert \`$name\``);
 	if (!/title=\{p\.text\}/.test(code)) guasti.push(`${COMP}: the tooltip must show the full text`);
-	if (/postChannelMessage|apiPost|dispatch\(\s*['"]send|requestSubmit|\.submit\(|\bsend\(/.test(code)) guasti.push(`${COMP}: a pill must never send`);
+	// Owner, 24 Nov 2026: a pill also STARTS THE TURN — through the input's own
+	// send (`onSend`), never an API call of its own.
+	if (/postChannelMessage|apiPost|dispatch\(\s*['"]send|requestSubmit|\.submit\(|\bsend\(/.test(code)) guasti.push(`${COMP}: a pill sends only through onSend, never by itself`);
+	if (!/export let onSend/.test(code) || !/await tick\(\);\s*await onSend\(\)/.test(code)) guasti.push(`${COMP}: after inserting, the pill must call onSend (after a tick)`);
 	const buttons = [...code.matchAll(/<button\b[^>]*>/g)].map((m) => m[0]);
 	if (!buttons.length) guasti.push(`${COMP}: no pill button`);
 	if (buttons.some((b) => !/type="button"/.test(b))) guasti.push(`${COMP}: pill buttons must be type="button"`);
@@ -81,11 +85,14 @@ if (page) {
 		if (pills < 0 || ta < 0 || pills > ta) guasti.push(`${PAGE}: <AliasPills target={composer}> must sit inside .input-box, above the textarea`);
 	}
 	if (!/<AliasPills target=\{expandedComposer\}/.test(code)) guasti.push(`${PAGE}: the expanded editor must show the pills too`);
+	if (!/<AliasPills target=\{composer\}[^>]*onSend=\{\(\) => send\(\)\}/.test(code)) guasti.push(`${PAGE}: the chat pills must start the turn (onSend = send)`);
+	if (!/<AliasPills target=\{expandedComposer\}[^>]*onSend=\{\(\) => submitFromExpanded\(\)\}/.test(code)) guasti.push(`${PAGE}: the expanded editor's pills must send from it`);
 	if (!/expandChannelAliases\(draft, \$channelAliases\)/.test(code)) guasti.push(`${PAGE}: \`$name\` expansion must read the shared store`);
 }
 const WIDGET = 'src/lib/components/ChatWidget.svelte';
 const widget = leggiSorgente(WIDGET, guasti, 'helpdesk widget');
 if (widget && !/<AliasPills target=\{input\}/.test(senzaCommenti(widget))) guasti.push(`${WIDGET}: the helpdesk composer must show the pills`);
+if (widget && !/<AliasPills target=\{input\}[^>]*onSend=\{\(\) => send\(\)\}/.test(senzaCommenti(widget))) guasti.push(`${WIDGET}: the helpdesk pills must start the turn too`);
 const SETTINGS = 'src/routes/settings/+page.svelte';
 const settings = leggiSorgente(SETTINGS, guasti, 'alias settings');
 if (settings && !/putChannelAliases\([\s\S]{0,200}?setChannelAliases\(aliases\)/.test(senzaCommenti(settings))) {
@@ -96,4 +103,4 @@ if (guasti.length) {
 	console.error('check-alias-pills:\n  - ' + guasti.join('\n  - '));
 	process.exit(1);
 }
-console.log('alias pills: from the aliases, insert the text not `$name`, never send, in every chat input ✓');
+console.log('alias pills: from the aliases, insert the text not `$name`, then send through the input own send, in every chat input ✓');
