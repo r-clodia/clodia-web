@@ -2415,6 +2415,16 @@
 	<EdgeTabPanel label="Partecipanti" icon="👥" count={participants.length} top="28%">
 		{@render corpo_participants()}
 	</EdgeTabPanel>
+	<!-- clodia-platform#729: the files the same way, below «Aiuto» (72% against
+	     its 50%): file browser, the Mac shared folder and the zip export. -->
+	<EdgeTabPanel label="File" icon="📁" count={files.length} top="72%">
+		{@render corpo_file()}
+		<div class="remote-actions">
+			<button type="button" class="zip-all" disabled={zipping}
+				title="Esporta: scarica uno ZIP con tutti i file del topic su questo dispositivo"
+				on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
+		</div>
+	</EdgeTabPanel>
 {/if}
 
 <div class="channel">
@@ -3055,19 +3065,8 @@
 					</summary>
 					{@render corpo_tools(true)}
 				</details>
-				<details class="side-section">
-					<summary>
-						<span>File</span>
-						<span class="section-count">{files.length}</span>
-					</summary>
-					{@render corpo_file()}
-				</details>
-
-				<div class="remote-actions">
-					<button type="button" class="zip-all" disabled={zipping}
-						title="Esporta: scarica uno ZIP con tutti i file del topic su questo dispositivo"
-						on:click={downloadZip}>{zipping ? '⏳ zip…' : '⬇ zip'}</button>
-				</div>
+				<!-- File: a tab on the right edge, like Partecipanti (clodia-platform#729).
+				     See the EdgeTabPanels below. -->
 			</aside>
 		{/if}
 	</div>
