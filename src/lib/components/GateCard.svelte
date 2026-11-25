@@ -19,12 +19,15 @@
 	import { gateLabel } from '$lib/gateLabel';
 	import { gateDestination } from '$lib/gateCard';
 	import GateMatrix from './GateMatrix.svelte';
+	import { asyncChoices } from '$lib/gatePinned.js';
 
 	type Gate = { id: string; agent: string; instance: string; verb: string };
 	type Cell = { who: 'spawn' | 'seed' | 'all'; where?: 'chat' | 'global' };
 	type GateInfo = { crosses?: string; decided_by?: string; decider_name?: string;
 	                  scope?: string; asker_role?: string; asker_note?: string;
-	                  editable?: Record<string, unknown>; remember?: Record<string, string> };
+	                  editable?: Record<string, unknown>; remember?: Record<string, string>;
+	                  /** `async`: nobody waits on the call — a courier send (#736). */
+	                  mode?: string; reason?: string };
 
 	export let g: Gate;
 	/** From `gateCardState`, computed by the host for THIS message. */
@@ -103,10 +106,21 @@
 		{:else}
 			<span class="jobprop-q">🛡️ <b>{g.agent}</b> {gateLabel(g.verb).azione} <code>{gateLabel(g.verb).oggetto}</code> — approvi?</span>
 		{/if}
+		{#if info?.mode === 'async'}
+			<!-- A courier send (#736): the mail waits in the queue, nobody waits
+			     on the call. Three answers (owner, 25 Nov 2026): deny, authorise
+			     the recipient in this channel or in all channels. -->
+			{#if info.reason}<span class="gate-crosses">✉️ {info.reason}</span>{/if}
+			{#each asyncChoices(isAdmin) as c (c.label)}
+				<button type="button" class="jobprop-ok" disabled={busy}
+					on:click={() => dispatch('decide', { approve: true, cell: c.cell })}>{c.label}</button>
+			{/each}
+		{:else}
 		<GateMatrix compact agent={g.agent} instance={g.instance} verb={g.verb}
 			cells={info?.remember} {hasRoom} {isAdmin}
 			{busy}
 			on:decide={(e) => dispatch('decide', { approve: true, cell: e.detail })} />
+		{/if}
 		{#if !isDestinationGate(g.verb) && info?.editable}
 			<!-- Approve WITH CORRECTIONS (clodia-platform#448): only on a verb gate,
 			     and «per stavolta»: the cell is { who: 'spawn' }. -->
