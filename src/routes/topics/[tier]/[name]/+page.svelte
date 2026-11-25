@@ -94,6 +94,7 @@
 	import { CHOICES_RE, leggiChoices, pillsAttive } from '$lib/pillPersistenti';
 	import GateGroupCard from '$lib/components/GateGroupCard.svelte';
 	import GateCard from '$lib/components/GateCard.svelte';
+	import { pinnedGates } from '$lib/gatePinned.js';
 	import { PAGE_CONTEXT_RE } from '$lib/pageContext';
 	import { currentRoom } from '$lib/stores/helpdesk';
 	import RetierDialog from '$lib/components/RetierDialog.svelte';
@@ -841,8 +842,14 @@
 	                  /** Fields the approver may correct before approving (#448). */
 	                  editable?: Record<string, unknown>;
 	                  /** The cells of the approval matrix this gate has (#693). */
-	                  remember?: Record<string, string> };
+	                  remember?: Record<string, string>;
+	                  /** `async` for a courier send (#736). */
+	                  mode?: string; reason?: string };
 	let gateInfo: Record<string, GateInfo> = {};
+	/** The pending requests as read, for the pinned bar (#736). */
+	let gatePending: Array<{ agent: string; instance?: string; verb: string; chat?: string | null;
+	                         mode?: string; reason?: string; at?: number }> = [];
+	$: gatePinned = pinnedGates(gatePending, tier, name);
 	/** Gate ancora APERTI. Serve a distinguere «da decidere» da «già deciso»:
 	 *  senza, dopo un ricarico un gate risolto tornava a mostrare i bottoni,
 	 *  perché la memoria della decisione vive solo in questa pagina. Offrire di
@@ -857,8 +864,10 @@
 	let gateInfoTs = 0;
 	async function refreshGateInfo() {
 		try {
-			const r = await apiGet<{ requests: Array<GateInfo & { agent: string; instance: string; verb: string }> }>(
+			const r = await apiGet<{ requests: Array<GateInfo & { agent: string; instance: string; verb: string;
+			                                                     chat?: string | null; at?: number }> }>(
 				'/api/gate/pending');
+			gatePending = r?.requests ?? [];
 			const m: Record<string, GateInfo> = {};
 			const aperti = new Set<string>();
 			for (const q of r?.requests ?? []) {
@@ -867,7 +876,8 @@
 				m[k] = { crosses: q.crosses, decided_by: q.decided_by,
 				         decider_name: q.decider_name, scope: q.scope,
 				         asker_role: q.asker_role, asker_note: q.asker_note,
-				         editable: q.editable, remember: q.remember };
+				         editable: q.editable, remember: q.remember,
+				         mode: q.mode, reason: q.reason };
 			}
 			gateInfo = m;
 			gateAperti = aperti;
@@ -934,6 +944,8 @@
 						+ (cell.where === 'chat' ? ' in questa stanza' : ' in tutte le stanze')
 			);
 			if (mem && mem.remembered === false && mem.error) loadErr = mem.error;
+			// The pinned bar follows the queue: a decided request leaves it.
+			void refreshGateInfo();
 		} catch (e) {
 			loadErr = e instanceof ApiError || e instanceof Error ? e.message : String(e);
 		} finally {
@@ -2611,6 +2623,20 @@
 	<div class="body">
 		<main class="stream-wrap">
 			<div class="timeline">
+				{#if gatePinned.length}
+					<!-- Undecided gates stay in view at the top of the chat (owner,
+					     25 Nov 2026, #736): a request nobody answered must not scroll
+					     away with the conversation. The card in the stream stays too. -->
+					<div class="gate-pinned" aria-label="Approvazioni in attesa">
+						{#each gatePinned as pg (pg.id)}
+							<GateCard g={pg} stato="da-decidere" info={gateInfo[pg.id]}
+								canDecide={canDecideGate(pg.id)} busy={gateDeciding} isAdmin={$isAdmin}
+								on:decide={(e) => e.detail.approve
+									? decideGate(`pin:${pg.id}`, pg, true, e.detail.cell, e.detail.corrections)
+									: decideGate(`pin:${pg.id}`, pg, false)} />
+						{/each}
+					</div>
+				{/if}
 				<div class="stream" bind:this={stream} on:scroll={updateScrollPosition} on:click={handleStreamClick} role="presentation">
 					{#each shownMessages as m, i (m.id)}
 					<!-- `id="m-<id>"` è l'ancora che i link esterni citano — oggi la
@@ -3699,7 +3725,9 @@
 	@keyframes spin { to { transform: rotate(360deg); } }
 	.body { display: flex; gap: 16px; flex: 1 1 auto; min-height: 0; margin-top: 12px; }
 	.stream-wrap { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
-	.timeline { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
+	.timeline { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+	.gate-pinned { flex: 0 0 auto; max-height: 40vh; overflow-y: auto; padding: 0 4px 6px;
+		border-bottom: 1px solid var(--border); background: var(--bg); }
 	.stream { flex: 1 1 auto; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 4px; }
 	.new-messages {
 		position: absolute;
